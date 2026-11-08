@@ -89,14 +89,19 @@ async function readBytes(workspace, relative) {
     if (!opened.isFile() || opened.nlink !== 1n || !sameFile(stat, opened)) {
       throw new Error('The file changed while opening it. Try again.');
     }
-    const buffer = Buffer.allocUnsafe(maxFileBytes + 1);
+    if (opened.size > BigInt(maxFileBytes)) throw new Error('The editor supports files up to 2 MB.');
+    const buffer = Buffer.allocUnsafe(Number(opened.size) + 1);
     let length = 0;
-    while (length <= maxFileBytes) {
+    while (length < buffer.length) {
       const { bytesRead } = await handle.read(buffer, length, buffer.length - length, null);
-      if (!bytesRead) return { file, bytes: buffer.subarray(0, length), stat: opened };
+      if (!bytesRead) break;
       length += bytesRead;
     }
-    throw new Error('The editor supports files up to 2 MB.');
+    const current = await handle.stat({ bigint: true });
+    if (BigInt(length) !== opened.size || current.size !== opened.size || current.mtimeNs !== opened.mtimeNs) {
+      throw new Error('The file changed while reading it. Try again.');
+    }
+    return { file, bytes: buffer.subarray(0, length), stat: opened };
   } finally {
     await handle.close();
   }
@@ -178,6 +183,6 @@ async function saveRecoveryCopy(workspace, relative, text) {
 }
 
 module.exports = {
-  createWorkspace, inside, listFolder, readSource, resolveEntry, saveSource, saveRecoveryCopy,
+  createWorkspace, inside, listFolder, maxFileBytes, readSource, resolveEntry, saveSource, saveRecoveryCopy,
   verifyRevision, workspacePath,
 };

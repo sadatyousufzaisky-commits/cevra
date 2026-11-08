@@ -6,6 +6,7 @@ const { createWorkspace, listFolder, readSource, saveSource, saveRecoveryCopy, w
 const { startNodeRun } = require('./runner.cjs');
 const { createTestSession } = require('./project-tests.cjs');
 const { createDraftStore } = require('./drafts.cjs');
+const { searchProject } = require('./project-search.cjs');
 
 app.setName('CEVRA');
 
@@ -16,6 +17,7 @@ const drafts = createDraftStore(path.join(app.getPath('userData'), 'drafts'));
 let window;
 let workspace;
 let activeRun;
+let activeSearch;
 let rendererReady = false;
 let closePending = false;
 let allowClose = false;
@@ -53,8 +55,12 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
   if (discard && workspace) await drafts.clear(workspace.root);
   const { entries, unreadable } = await readDrafts();
   const recovered = entries.filter(draft => draft.root === next.root);
+  activeSearch?.controller.abort();
   workspace = next;
-  return { id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable };
+  return {
+    id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable,
+    caseInsensitivePaths: process.platform === 'win32',
+  };
 }
 
 handle('initial', async () => {
@@ -112,6 +118,20 @@ handle('discard', async name => {
 
 handle('list', (id, folder) => listFolder(currentWorkspace(id), folder));
 handle('read', (id, file) => readSource(currentWorkspace(id), file));
+handle('search', async (id, requestId, query, caseSensitive, snapshots) => {
+  const project = currentWorkspace(id);
+  activeSearch?.controller.abort();
+  const search = { id, requestId, controller: new AbortController() };
+  activeSearch = search;
+  try {
+    return await searchProject(project, query, caseSensitive, snapshots, search.controller.signal);
+  } finally {
+    if (activeSearch === search) activeSearch = undefined;
+  }
+});
+handle('cancel-search', (id, requestId) => {
+  if (activeSearch?.id === id && activeSearch.requestId === requestId) activeSearch.controller.abort();
+});
 handle('save', (id, file, text, revision) => saveSource(currentWorkspace(id), file, text, revision));
 handle('save-copy', (id, file, text) => saveRecoveryCopy(currentWorkspace(id), file, text));
 handle('draft', (id, file, text, revision) => {
@@ -212,6 +232,7 @@ async function launch() {
     if (window !== workbench) return;
     rendererReady = false;
     closePending = false;
+    activeSearch?.controller.abort();
     stopRun();
     const now = Date.now();
     const repeated = now - lastRendererCrash < 2_000;
@@ -227,6 +248,7 @@ async function launch() {
   });
   workbench.on('close', event => {
     if (allowClose || !rendererReady) {
+      activeSearch?.controller.abort();
       stopRun();
       return;
     }

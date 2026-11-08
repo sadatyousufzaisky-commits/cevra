@@ -131,6 +131,7 @@ test('saves a nested UTF-8 file with BOM and CRLF and preserves external changes
   await fs.writeFile(path.join(project, relative), 'external change\n');
   await editor.press('Control+s');
   await page.locator('#message').getByText(/This file changed on disk/).waitFor();
+  await page.getByRole('button', { name: 'Save recovery copy', exact: true }).waitFor();
   assert.equal(await fs.readFile(path.join(project, relative), 'utf8'), 'external change\n');
   assert.match(await editor.textContent(), /saved pending one/);
 });
@@ -348,4 +349,106 @@ test('the desktop bridge blocks workspace escapes and rejects a Windows junction
   assert.match(errors[2], /links cannot be opened/);
   assert.match(errors[3], /workspace has closed/);
   assert.equal(await fs.readFile(path.join(outside, 'secret.cjs'), 'utf8'), 'outside contents');
+});
+
+test('project search follows unsaved versions and Back and Forward restore editor positions', async t => {
+  const folder = 'nested (# % &)';
+  const target = 'draft.cjs';
+  const relative = path.join(folder, target);
+  const workbench = await openWorkbench(t, {
+    'origin.cjs': '// origin\nconst original = 1;\n',
+    [relative]: '// on disk\nconst item = "disk-only";\n',
+  });
+  const { page, editor, file, open, project, selected } = workbench;
+  await file(folder).click();
+  await open(target);
+  await replaceEditor(workbench, '// in memory\nconst item = "draft-only";\n');
+  await open('origin.cjs');
+  await editor.press('Control+Home');
+  await editor.press('ArrowDown');
+  await editor.press('ArrowRight');
+  await editor.press('ArrowRight');
+  const cursor = page.locator('#cursor');
+  await cursor.getByText('Ln 2, Col 3', { exact: true }).waitFor();
+
+  await editor.press('Control+Shift+f');
+  const query = page.getByRole('searchbox', { name: 'Search project' });
+  const results = page.getByRole('list', { name: 'Search matches' });
+  await query.fill('disk-only');
+  await page.locator('#search-status').getByText('No matches', { exact: true }).waitFor();
+  await query.fill('draft-only');
+  await results.getByRole('button', { name: relative + ':2:15 const item = "draft-only";' }).click();
+  await selected(target).waitFor();
+  await cursor.getByText('Ln 2, Col 15', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'draft-only');
+  assert.match(await fs.readFile(path.join(project, relative), 'utf8'), /disk-only/);
+
+  await page.getByRole('button', { name: 'Go back', exact: true }).click();
+  await selected('origin.cjs').waitFor();
+  await cursor.getByText('Ln 2, Col 3', { exact: true }).waitFor();
+  await editor.press('Alt+ArrowRight');
+  await selected(target).waitFor();
+  await cursor.getByText('Ln 2, Col 15', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'draft-only');
+
+  await page.keyboard.insertText('fresh-only');
+  await page.locator('#search-status').getByText('No matches', { exact: true }).waitFor();
+  await query.fill('fresh-only');
+  await results.getByRole('button', { name: /fresh-only/ }).waitFor();
+  await editor.press('Control+z');
+  await page.locator('#search-status').getByText('No matches', { exact: true }).waitFor();
+  assert.match(await editor.textContent(), /draft-only/);
+  await page.getByRole('button', { name: 'Search project', exact: true }).click();
+  await open('origin.cjs');
+  await cursor.getByText('Ln 2, Col 3', { exact: true }).waitFor();
+});
+
+test('project search rejects stale disk matches and allows cancellation from the sidebar', async t => {
+  const { page, open, project, selected } = await openWorkbench(t, {
+    'active.cjs': '// keep this editor active\n',
+    'result.cjs': 'console.log("search original");\n',
+  });
+  await open('active.cjs');
+  await page.getByRole('button', { name: 'Search project', exact: true }).click();
+  const query = page.getByRole('searchbox', { name: 'Search project' });
+  const status = page.locator('#search-status');
+  const results = page.getByRole('list', { name: 'Search matches' });
+  await query.fill('search original');
+  const hit = results.getByRole('button', { name: /result\.cjs:1:14/ });
+  await hit.waitFor();
+  await fs.writeFile(path.join(project, 'result.cjs'), '// moved\nconsole.log("replacement");\n');
+  await hit.click();
+  await status.getByText('This match is out of date. Search again.', { exact: true }).waitFor();
+  await selected('active.cjs').waitFor();
+
+  await query.evaluate(input => {
+    input.value = 'replacement';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('search-cancel').click();
+  });
+  await status.getByText('Search canceled.', { exact: true }).waitFor();
+  assert.equal(await results.getByRole('button').count(), 0);
+  await query.press('Enter');
+  await results.getByRole('button', { name: /result\.cjs:2:14/ }).click();
+  await selected('result.cjs').waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'replacement');
+});
+
+test('in-file search supports case and whole-word replacement with one undo', async t => {
+  const { page, editor, open } = await openWorkbench(t, { 'notes.txt': 'alpha alphabet ALPHA\nalpha\n' });
+  await open('notes.txt');
+  await editor.press('Control+f');
+  const panel = page.locator('.cm-search');
+  const find = panel.getByRole('textbox', { name: 'Find', exact: true });
+  await find.fill('alpha');
+  await find.press('End');
+  await panel.getByRole('checkbox', { name: 'match case' }).check();
+  await panel.getByRole('checkbox', { name: 'by word' }).check();
+  const replacement = panel.getByRole('textbox', { name: 'Replace', exact: true });
+  await replacement.fill('beta');
+  await replacement.press('End');
+  await panel.getByRole('button', { name: 'replace all', exact: true }).click();
+  assert.deepEqual((await editor.locator('.cm-line').allTextContents()).slice(0, 2), ['beta alphabet ALPHA', 'beta']);
+  await editor.press('Control+z');
+  assert.deepEqual((await editor.locator('.cm-line').allTextContents()).slice(0, 2), ['alpha alphabet ALPHA', 'alpha']);
 });

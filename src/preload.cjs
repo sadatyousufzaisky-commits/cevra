@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('cevra', {
   confirmDiscard: name => ipcRenderer.invoke('cevra:discard', name),
   list: (id, folder) => ipcRenderer.invoke('cevra:list', id, folder),
   read: (id, file) => ipcRenderer.invoke('cevra:read', id, file),
+  search: (id, request, query, caseSensitive, snapshots) =>
+    ipcRenderer.invoke('cevra:search', id, request, query, caseSensitive, snapshots),
+  cancelSearch: (id, request) => ipcRenderer.invoke('cevra:cancel-search', id, request),
   save: (id, file, text, revision) => ipcRenderer.invoke('cevra:save', id, file, text, revision),
   saveCopy: (id, file, text) => ipcRenderer.invoke('cevra:save-copy', id, file, text),
   draft: (id, file, text, revision) => ipcRenderer.invoke('cevra:draft', id, file, text, revision),

@@ -19,6 +19,9 @@
     <symbol id="save" viewBox="0 0 24 24"><path d="M5 4h12l3 3v13H4V4h1 M8 4v6h8V4 M8 20v-6h8v6"/></symbol>
     <symbol id="return" viewBox="0 0 24 24"><path d="M19 5v10H5 M9 11l-4 4 4 4"/></symbol>
     <symbol id="flask" viewBox="0 0 24 24"><path d="M9 3h6m-5 0v7l-5 8a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-8V3M8 15h8"/></symbol>
+    <symbol id="back" viewBox="0 0 24 24"><path d="M20 12H4m6-6-6 6 6 6"/></symbol>
+    <symbol id="forward" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+    <symbol id="search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></symbol>
   </svg>
   <header class="titlebar">
     <div class="brand">
@@ -48,14 +51,32 @@
   </header>
   <main class="workbench">
     <aside class="explorer" aria-label="Project explorer">
-      <h2 class="section-label">Explorer</h2>
-      <div class="explorer-content">
+      <header class="sidebar-header">
+        <h2 id="sidebar-heading" class="section-label">Explorer</h2>
+        <div class="sidebar-actions">
+          <button id="nav-back" class="sidebar-action" aria-label="Go back" title="Go back (Alt+Left)" disabled><svg aria-hidden="true"><use href="#back"></use></svg></button>
+          <button id="nav-forward" class="sidebar-action" aria-label="Go forward" title="Go forward (Alt+Right)" disabled><svg aria-hidden="true"><use href="#forward"></use></svg></button>
+          <button id="search-toggle" class="sidebar-action" aria-label="Search project" aria-pressed="false" title="Search project (Ctrl+Shift+F)" disabled><svg aria-hidden="true"><use href="#search"></use></svg></button>
+        </div>
+      </header>
+      <div id="explorer-content" class="explorer-content">
         <div id="project-root" class="project-root" hidden>
           <svg aria-hidden="true"><use href="#folder"></use></svg><span></span>
         </div>
         <p id="tree-empty" class="tree-empty">Open a folder to browse its files.</p>
         <nav id="tree" aria-label="Project files"></nav>
       </div>
+      <section id="project-search" class="project-search" aria-label="Project search" hidden>
+        <div class="search-controls">
+          <input id="search-query" type="search" aria-label="Search project" maxlength="256" placeholder="Find text in project" spellcheck="false" autocomplete="off">
+          <div class="search-options">
+            <label><input id="search-case" type="checkbox"> Match case</label>
+            <button id="search-cancel" class="button" disabled>Cancel</button>
+          </div>
+          <p id="search-status" class="search-status" role="status"></p>
+        </div>
+        <ul id="search-results" class="search-results" aria-label="Search matches"></ul>
+      </section>
       <div class="explorer-footer"><span class="status-dot"></span> Local workspace</div>
     </aside>
     <section class="studio" aria-label="Editor and execution">

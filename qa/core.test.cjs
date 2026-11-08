@@ -7,6 +7,7 @@ const { createWorkspace, listFolder, readSource, saveSource, saveRecoveryCopy } 
 const { startNodeRun, startNodeTests } = require('../src/runner.cjs');
 const { createDraftStore } = require('../src/drafts.cjs');
 const { writeAtomic } = require('../src/atomic-file.cjs');
+const { searchProject } = require('../src/project-search.cjs');
 
 async function fixture(t) {
   const folder = await temporaryFolder(t, 'cevra-core-');
@@ -181,4 +182,49 @@ test('draft writes retain the last acknowledged edit and isolate damaged records
   });
   await reopened.set(root, 'one.txt', null);
   assert.deepEqual((await reopened.list()).entries.map(draft => draft.path), ['two.txt']);
+});
+
+test('project search reads safe text and uses unsaved versions in place of disk copies', async t => {
+  const { folder, root, workspace } = await fixture(t);
+  const nested = 'nested (# % &)';
+  const outside = path.join(folder, 'outside');
+  for (const directory of [nested, 'node_modules', '.cache']) await fs.mkdir(path.join(root, directory));
+  await fs.mkdir(outside);
+  await fs.writeFile(path.join(root, nested, 'café.txt'), '\uFEFFskip\r\n  café [x+y]\r\n');
+  await fs.writeFile(path.join(root, 'open.txt'), 'old [x+y]\n');
+  await fs.writeFile(path.join(root, 'binary.txt'), Buffer.concat([Buffer.from('[x+y]'), Buffer.from([0])]));
+  await fs.writeFile(path.join(root, 'node_modules', 'hidden.txt'), '[x+y]');
+  await fs.writeFile(path.join(root, '.cache', 'hidden.txt'), '[x+y]');
+  await fs.writeFile(path.join(outside, 'secret.txt'), '[x+y]');
+  await fs.symlink(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+  const { files, count, skipped } = await searchProject(workspace, '[x+y]', false, [
+    { path: 'open.txt', documentId: 5, version: 8, text: 'updated [X+Y]\n' },
+  ], new AbortController().signal);
+  assert.equal(count, 2);
+  assert.equal(skipped, 1);
+  assert.deepEqual(files[0], {
+    path: 'open.txt', documentId: 5, version: 8,
+    matches: [{ line: 1, column: 9, length: 5, preview: 'updated [X+Y]' }],
+  });
+  assert.equal(files[1].path, path.join(nested, 'café.txt'));
+  assert.match(files[1].revision, /^[a-f0-9]{64}$/);
+  assert.deepEqual(files[1].matches, [{ line: 2, column: 8, length: 5, preview: '  café [x+y]' }]);
+  assert.equal((await searchProject(workspace, '[X+Y]', true, [], new AbortController().signal)).count, 0);
+});
+
+test('project search caps results, handles cancellation, and rejects an unsafe draft path', async t => {
+  const { root, workspace } = await fixture(t);
+  await fs.writeFile(path.join(root, 'many.txt'), 'token\n'.repeat(600));
+  const result = await searchProject(workspace, 'token', false, [], new AbortController().signal);
+  assert.equal(result.count, 400);
+  assert.equal(result.limited, true);
+  assert.equal(result.files[0].matches.at(-1).line, 400);
+
+  const search = new AbortController();
+  const pending = searchProject(workspace, 'token', false, [], search.signal);
+  setImmediate(() => search.abort());
+  await assert.rejects(pending, { name: 'AbortError' });
+  await assert.rejects(searchProject(workspace, 'token', false, [
+    { path: '../outside.txt', documentId: 1, version: 0, text: 'token' },
+  ], new AbortController().signal), /outside the workspace/);
 });

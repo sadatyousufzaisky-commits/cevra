@@ -4,6 +4,8 @@ import { EditorView } from '@codemirror/view';
 import { indentUnit } from '@codemirror/language';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { createNavigationHistory } from './navigation-history.js';
+import { createSearchPanel } from './search-panel.js';
 
 const api = window.cevra;
 const byId = id => document.getElementById(id);
@@ -23,15 +25,21 @@ const retryButton = byId('rerun-failures');
 const stopButton = byId('stop-run');
 const diagnosticButton = byId('jump-to-error');
 const failureList = byId('test-failures');
+const searchToggle = byId('search-toggle');
+const backButton = byId('nav-back');
+const forwardButton = byId('nav-forward');
 const runnable = /\.(?:js|cjs|mjs)$/i;
 const maxOutput = 160_000;
 
 const documents = new Map();
 const expanded = new Map();
+const navigation = createNavigationHistory();
 let project;
 let active;
 let changingProject = true;
 let fileRequest = 0;
+let documentSequence = 0;
+let navigating = false;
 let runSequence = 0;
 let run;
 let diagnostic;
@@ -95,6 +103,9 @@ function syncCommands() {
   retryButton.disabled = testButton.disabled;
   stopButton.hidden = !run;
   stopButton.disabled = run?.stage !== 'running';
+  searchToggle.disabled = !project || changingProject;
+  backButton.disabled = changingProject || navigating || !navigation.peek('back');
+  forwardButton.disabled = changingProject || navigating || !navigation.peek('forward');
 }
 
 function syncCursor() {
@@ -167,6 +178,8 @@ function editorState(tab, text) {
       EditorView.updateListener.of(update => {
         tab.state = update.state;
         if (update.docChanged) {
+          tab.version++;
+          navigation.map(tab.id, update.changes, update.state.doc);
           const dirty = !tab.savedDoc || !update.state.doc.eq(tab.savedDoc);
           if (dirty !== tab.dirty) {
             tab.dirty = dirty;
@@ -177,6 +190,7 @@ function editorState(tab, text) {
             syncDirty();
           }
           queueDraft(tab);
+          searchPanel.changed();
         }
         if (update.docChanged || update.selectionSet) syncCursor();
       }),
@@ -186,7 +200,7 @@ function editorState(tab, text) {
 
 function selectTreeFile() {
   for (const button of tree.querySelectorAll('button[data-file]')) {
-    if (button.dataset.file === active?.path) button.setAttribute('aria-current', 'true');
+    if (active && documentKey(button.dataset.file) === documentKey(active.path)) button.setAttribute('aria-current', 'true');
     else button.removeAttribute('aria-current');
   }
 }
@@ -284,11 +298,15 @@ function renderTabs() {
 
 function showFile(tab) {
   const changed = active !== tab;
+  if (changed && active) active.scroll = view.scrollSnapshot();
   active = tab;
   editor.hidden = !tab;
   byId('welcome').hidden = Boolean(tab);
   if (tab) {
-    if (changed) view.setState(tab.state);
+    if (changed) {
+      view.setState(tab.state);
+      if (tab.scroll) view.dispatch({ effects: tab.scroll });
+    }
     view.focus();
   }
   renderTabs();
@@ -301,8 +319,21 @@ function normalized(text) {
   return text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
 }
 
+function documentKey(path) {
+  return project.caseInsensitivePaths ? path.replaceAll('\\', '/').toLowerCase() : path;
+}
+
+function findDocument(path) {
+  const exact = documents.get(path);
+  if (exact || !project.caseInsensitivePaths) return exact;
+  const key = documentKey(path);
+  return [...documents.values()].find(tab => documentKey(tab.path) === key);
+}
+
 function createTab(path, text, revision) {
   const tab = {
+    id: ++documentSequence,
+    version: 0,
     path,
     projectId: project.id,
     name: path.split(/[\\/]/).at(-1),
@@ -317,16 +348,33 @@ function createTab(path, text, revision) {
   return tab;
 }
 
-async function openFile(path) {
+async function openFile(path, expected) {
   const request = ++fileRequest;
   const openedProject = project;
   if (!openedProject) return null;
-  let tab = documents.get(path);
-  if (!tab) {
-    const { text, revision } = await api.read(openedProject.id, path);
-    if (request !== fileRequest || project !== openedProject) return null;
-    tab = createTab(path, text, revision);
+  let tab = findDocument(path);
+  if (expected?.version !== undefined &&
+      (!tab || tab.id !== expected.documentId || tab.version !== expected.version)) {
+    throw new Error('This match is out of date. Search again.');
   }
+  if (!tab || expected?.revision) {
+    let disk;
+    try {
+      disk = await api.read(openedProject.id, path);
+    } catch (error) {
+      if (expected) throw new Error('This match is out of date. Search again.');
+      throw error;
+    }
+    if (request !== fileRequest || project !== openedProject || (expected && !expected.isCurrent())) return null;
+    if (expected?.revision && disk.revision !== expected.revision) {
+      throw new Error('This match is out of date. Search again.');
+    }
+    if (expected?.revision && tab && (tab.dirty || tab.revision !== disk.revision)) {
+      throw new Error('The open file changed on disk. Reopen it, then search again.');
+    }
+    tab ??= createTab(path, disk.text, disk.revision);
+  }
+  if (expected && !expected.isCurrent()) return null;
   showFile(tab);
   notify(tab.recoveryConflict ? 'The original changed or is unavailable. Save a recovery copy.' : tab.path,
     tab.recoveryConflict);
@@ -345,6 +393,7 @@ async function removeTab(tab) {
     }
   }
   documents.delete(tab.path);
+  if (tab.dirty) searchPanel.changed();
   if (tab === active) showFile([...documents.values()].at(-1));
   syncDirty();
 }
@@ -365,6 +414,8 @@ async function closeFile(tab) {
 
 async function adoptProject(next) {
   ++fileRequest;
+  navigation.clear();
+  searchPanel.reset();
   project = next;
   documents.clear();
   expanded.clear();
@@ -435,7 +486,16 @@ async function saveFile(tab) {
     tab.savedDoc = doc;
     tab.dirty = !tab.state.doc.eq(doc);
     queueDraft(tab);
+    searchPanel.changed();
     notify('Saved ' + tab.path);
+  } catch (error) {
+    if (/^This file changed on disk\./.test(errorText(error))) {
+      const disk = await api.read(tab.projectId, tab.path).catch(() => null);
+      tab.diskRevision = disk?.revision;
+      tab.savedDoc = disk ? Text.of(normalized(disk.text).split('\n')) : null;
+      tab.recoveryConflict = true;
+    }
+    throw error;
   } finally {
     tab.saving = undefined;
     syncDirty();
@@ -651,16 +711,76 @@ api.onRun(event => {
   syncCommands();
 });
 
-async function jumpToLocation({ path, line, column }) {
-  const tab = await openFile(path);
-  if (!tab) return;
+function documentPosition(line, column) {
   const target = view.state.doc.line(Math.max(1, Math.min(line, view.state.doc.lines)));
-  const pos = Math.max(target.from, Math.min(target.from + column - 1, target.to));
-  view.dispatch({ selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: 'center' }) });
-  view.focus();
-  if (tab.dirty) notify('The source location refers to the saved version of this file.');
+  return Math.max(target.from, Math.min(target.from + column - 1, target.to));
 }
 
+function captureLocation() {
+  if (!active) return null;
+  const selection = view.state.selection;
+  const line = view.state.doc.lineAt(selection.main.head);
+  return {
+    path: active.path, documentId: active.id, selection, scroll: view.scrollSnapshot(),
+    line: line.number, column: selection.main.head - line.from + 1,
+  };
+}
+
+async function jumpToLocation({ path, line, column, length = 0 }, expected) {
+  const origin = captureLocation();
+  const tab = await openFile(path, expected);
+  if (!tab) return;
+  const pos = documentPosition(line, column);
+  const end = Math.min(view.state.doc.length, pos + length);
+  if (origin?.documentId !== tab.id || origin?.selection.main.head !== pos) {
+    navigation.record(origin);
+  }
+  view.dispatch({
+    selection: { anchor: end, head: pos },
+    effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+  });
+  view.focus();
+  if (tab.dirty && !expected) notify('The source location refers to the saved version of this file.');
+  syncCommands();
+}
+
+async function travel(direction) {
+  const destination = navigation.peek(direction);
+  if (!destination || navigating || changingProject) return;
+  const origin = captureLocation();
+  navigating = true;
+  syncCommands();
+  try {
+    const tab = await openFile(destination.path);
+    if (!tab) return;
+    const sameDocument = tab.id === destination.documentId;
+    const pos = documentPosition(destination.line, destination.column);
+    const selection = sameDocument ? destination.selection : { anchor: pos };
+    const effects = (sameDocument && destination.scroll) || EditorView.scrollIntoView(pos, { y: 'center' });
+    navigation.complete(direction, origin);
+    view.dispatch({ selection, effects });
+    view.focus();
+  } catch (error) {
+    navigation.discard(direction, destination);
+    throw error;
+  } finally {
+    navigating = false;
+    syncCommands();
+  }
+}
+
+const searchPanel = createSearchPanel({
+  api,
+  getProject: () => project,
+  getSnapshots: () => [...documents.values()].filter(tab => tab.dirty).map(tab => ({
+    path: tab.path, documentId: tab.id, version: tab.version, text: tab.state.doc.toString(),
+  })),
+  jump: jumpToLocation,
+  errorText,
+});
+
+backButton.onclick = () => travel('back').catch(report);
+forwardButton.onclick = () => travel('forward').catch(report);
 openButton.onclick = welcomeOpen.onclick = () => openProject(api.chooseFolder).catch(report);
 exampleButton.onclick = () => openProject(api.openExample).catch(report);
 saveButton.onclick = () => saveFile(active).catch(report);
@@ -711,6 +831,12 @@ document.addEventListener('keydown', event => {
   if (event.key === 'F5') {
     event.preventDefault();
     void runFile();
+  } else if (command && event.shiftKey && key === 'f') {
+    event.preventDefault();
+    searchPanel.show();
+  } else if (!command && event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+    event.preventDefault();
+    travel(event.key === 'ArrowLeft' ? 'back' : 'forward').catch(report);
   } else if (command && event.altKey && key === 't') {
     event.preventDefault();
     void runTests();

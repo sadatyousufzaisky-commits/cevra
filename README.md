@@ -28,6 +28,14 @@ After a failure, **Rerun failures** saves edits and retries tests that have yet 
 
 The built-in example includes a failing test for fractional weights. In `total.cjs`, replace `Math.floor(weight)` with `weight` and choose **Rerun failures** to check the fix.
 
+## Search and navigate
+
+- **Ctrl+F** finds and replaces text in the current file. Use the case, whole-word, and regular-expression options to narrow a search. Replacements can be undone in the editor.
+- **Ctrl+Shift+F** searches the project for literal text with an optional **Match case** setting. Open drafts take precedence over their disk copies. Click a result to select the exact match, or choose **Cancel** to stop a search.
+- **Alt+Left** and **Alt+Right** return to the previous or next position after a jump from search, a runtime error, or a test failure.
+
+Project search shows up to 400 matches and skips binary, unreadable, or oversized files. It excludes version-control directories and common dependency caches. If a file changes on disk after the search, CEVRA checks its revision before opening the result.
+
 ## Verify CEVRA
 
 Run `npm test` on Windows before expanding the workbench. The core suite exercises JavaScript process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.
