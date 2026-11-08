@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">CEVRA icon</title>
+  <g transform="translate(12 14)" fill="#32ECA9">
+    <path d="M31 0H73L93 20V24H39L24 39V61L39 76H93V80L73 100H31L0 69V31Z"/>
+    <path d="M62 30H68V41L59 50L68 59V70H62L42 50Z"/>
+    <path d="M84 30H78V41L87 50L78 59V70H84L104 50Z"/>
+  </g>
+</svg>
