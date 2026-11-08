@@ -5,11 +5,13 @@
   "main": "src/main.cjs",
   "scripts": {
     "build": "esbuild src/workbench.js --bundle --minify --outfile=dist/workbench.js",
-    "start": "npm run build && electron ."
+    "start": "npm run build && electron .",
+    "test": "npm run build && node --test qa/workbench.test.cjs"
   },
   "devDependencies": {
     "electron": "45.2.3",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "playwright": "1.65.0"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "6.2.5",

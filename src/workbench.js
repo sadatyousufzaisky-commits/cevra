@@ -17,8 +17,11 @@ const welcomeOpen = byId('welcome-open');
 const exampleButton = byId('open-example');
 const saveButton = byId('save-file');
 const runButton = byId('run-file');
+const testButton = byId('run-tests');
+const retryButton = byId('rerun-failures');
 const stopButton = byId('stop-run');
 const diagnosticButton = byId('jump-to-error');
+const failureList = byId('test-failures');
 const runnable = /\.(?:js|cjs|mjs)$/i;
 const maxOutput = 160_000;
 
@@ -31,6 +34,7 @@ let fileRequest = 0;
 let runSequence = 0;
 let run;
 let diagnostic;
+let retryAvailable = false;
 let outputText = '';
 
 const view = new EditorView({ parent: editor });
@@ -80,6 +84,9 @@ function syncCommands() {
   saveButton.disabled = !active?.dirty || Boolean(active.saving || changingProject);
   runButton.disabled = !active || !runnable.test(active.path) || Boolean(changingProject || run);
   runButton.hidden = Boolean(run);
+  testButton.disabled = !project || Boolean(changingProject || run);
+  retryButton.hidden = !retryAvailable || byId('run-panel').dataset.mode !== 'tests';
+  retryButton.disabled = testButton.disabled;
   stopButton.hidden = !run;
   stopButton.disabled = run?.stage !== 'running';
 }
@@ -298,6 +305,7 @@ async function openProject(picker) {
     byId('project-title').title = project.root;
     byId('welcome').querySelector('h1').textContent = 'Choose a file to edit.';
     byId('welcome-copy').textContent = 'The Explorer shows the files in this project.';
+    retryAvailable = false;
     resetOutput();
     notify(project.root);
     if (next.entry) await openFile(next.entry);
@@ -331,13 +339,23 @@ function setRunState(text, state = '') {
   badge.dataset.state = state;
 }
 
-function resetOutput(target = '') {
+function resetOutput(target = '', mode = 'file') {
+  const testing = mode === 'tests';
+  byId('run-panel').dataset.mode = mode;
+  byId('run-heading').textContent = testing ? 'Test results' : 'Run output';
+  byId('test-results').hidden = !testing;
+  byId('test-empty').hidden = false;
+  byId('test-empty').textContent = 'Waiting for test results…';
+  byId('test-totals').hidden = true;
+  failureList.replaceChildren();
   diagnostic = undefined;
   byId('run-diagnostic').hidden = true;
   byId('run-target').textContent = target;
   outputText = '';
   output.classList.remove('has-output');
-  output.textContent = target ? 'Waiting for program output…' : 'Run a JavaScript file to see its output here.';
+  output.setAttribute('aria-label', testing ? 'Test output' : 'Program output');
+  output.textContent = testing ? 'Waiting for test output…' :
+    target ? 'Waiting for program output…' : 'Run a JavaScript file to see its output here.';
   setRunState('Ready');
 }
 
@@ -349,18 +367,14 @@ function appendOutput(text) {
   if (follow) output.scrollTop = output.scrollHeight;
 }
 
-async function runFile() {
-  if (runButton.disabled) return;
-  const tab = active;
+async function launchRun(mode, target, start) {
   const id = ++runSequence;
-  run = { id, stage: 'starting' };
-  resetOutput(tab.path);
+  run = { id, mode, stage: 'starting' };
+  resetOutput(target, mode);
   setRunState('Starting', 'running');
   syncCommands();
   try {
-    await saveFile(tab);
-    if (tab.dirty) throw new Error('The file changed during save. Run it again to include the latest edits.');
-    await api.start(project.id, tab.path, tab.revision, id);
+    await start(id);
     if (run?.id === id) {
       run.stage = 'running';
       setRunState('Running', 'running');
@@ -369,10 +383,32 @@ async function runFile() {
   } catch (error) {
     run = undefined;
     setRunState('Could not run', 'error');
+    if (mode === 'tests') byId('test-empty').textContent = 'The tests could not start.';
     appendOutput(errorText(error));
     syncCommands();
     report(error);
   }
+}
+
+function runFile() {
+  if (runButton.disabled) return;
+  const tab = active;
+  return launchRun('file', tab.path, async id => {
+    await saveFile(tab);
+    if (tab.dirty) throw new Error('The file changed during save. Run it again to include the latest edits.');
+    await api.start(project.id, tab.path, tab.revision, id);
+  });
+}
+
+function runTests(retry = false) {
+  if (testButton.disabled || (retry && !retryAvailable)) return;
+  return launchRun('tests', retry ? 'Failed tests' : 'Project tests', async id => {
+    for (const tab of documents.values()) await saveFile(tab);
+    if ([...documents.values()].some(tab => tab.dirty)) {
+      throw new Error('An open file changed during save. Run tests again to include the latest edits.');
+    }
+    await api.test(project.id, retry, id);
+  });
 }
 
 async function stopRun() {
@@ -383,14 +419,89 @@ async function stopRun() {
   await api.stop();
 }
 
+function locationLabel({ path, line, column }) {
+  return `${path}:${line}:${column}`;
+}
+
+function appendFailure({ name, message, location }) {
+  byId('test-empty').hidden = true;
+  const item = document.createElement('li');
+  const row = document.createElement(location ? 'button' : 'div');
+  row.className = 'test-result';
+  const title = label(name);
+  const detail = label(message);
+  title.title = name;
+  detail.title = message;
+  row.append(title, detail);
+  if (location) {
+    const source = label(locationLabel(location));
+    source.className = 'test-source';
+    source.title = source.textContent;
+    row.append(source);
+    row.onclick = () => jumpToLocation(location).catch(report);
+  }
+  item.append(row);
+  failureList.append(item);
+}
+
+function finishTests(event, elapsed) {
+  const { counts } = event;
+  retryAvailable = event.retryAvailable;
+  const empty = byId('test-empty');
+  if (counts) {
+    const totals = byId('test-totals');
+    totals.textContent = [
+      `${counts.passed - counts.cached} passed`, `${counts.failed} failed`,
+      counts.cached && `${counts.cached} already passed`,
+      counts.skipped && `${counts.skipped} skipped`,
+      counts.todo && `${counts.todo} todo`,
+      counts.cancelled && `${counts.cancelled} cancelled`,
+    ].filter(Boolean).join(' · ');
+    totals.title = totals.textContent;
+    totals.hidden = counts.tests === 0;
+    if (counts.omitted) {
+      const remaining = document.createElement('li');
+      remaining.className = 'test-empty';
+      remaining.textContent = `${counts.omitted} more failures in the test output.`;
+      failureList.append(remaining);
+    }
+  }
+
+  if (event.stopped) {
+    setRunState('Stopped');
+    empty.textContent = 'The test run was stopped.';
+  } else if (event.code === 0 && counts?.tests === 0) {
+    setRunState('No tests');
+    empty.textContent = 'No JavaScript tests were discovered in this project.';
+  } else if (event.code === 0 && counts) {
+    setRunState('Passed · ' + elapsed, 'ok');
+    empty.textContent = 'No test failures.';
+  } else {
+    setRunState('Failed · ' + (counts ? elapsed : event.code ?? 'launch'), 'error');
+    empty.textContent = 'See test output for details.';
+  }
+  if (event.error) appendOutput(event.error);
+  if (!outputText) output.textContent = 'The tests produced no output.';
+}
+
 api.onRun(event => {
   if (event.runId !== run?.id) return;
   if (event.type === 'output') {
     appendOutput(event.text);
     return;
   }
+  if (event.type === 'test-failure') {
+    appendFailure(event);
+    return;
+  }
+  const { mode } = run;
   run = undefined;
   const elapsed = event.elapsed < 1000 ? `${event.elapsed} ms` : `${(event.elapsed / 1000).toFixed(1)} s`;
+  if (mode === 'tests') {
+    finishTests(event, elapsed);
+    syncCommands();
+    return;
+  }
   if (event.stopped) setRunState('Stopped');
   else if (event.code === 0) setRunState('Passed · ' + elapsed, 'ok');
   else setRunState(`Failed · ${event.code ?? event.signal ?? 'launch'}`, 'error');
@@ -398,8 +509,7 @@ api.onRun(event => {
   if (!outputText) output.textContent = 'The program produced no output.';
   if (event.location) {
     diagnostic = event.location;
-    diagnosticButton.querySelector('span').textContent =
-      `${diagnostic.path}:${diagnostic.line}:${diagnostic.column}`;
+    diagnosticButton.querySelector('span').textContent = locationLabel(diagnostic);
     const summary = byId('run-error-summary');
     summary.textContent = summary.title = event.summary ?? '';
     byId('run-diagnostic').hidden = false;
@@ -407,9 +517,7 @@ api.onRun(event => {
   syncCommands();
 });
 
-async function jumpToError() {
-  if (!diagnostic) return;
-  const { path, line, column } = diagnostic;
+async function jumpToLocation({ path, line, column }) {
   const tab = await openFile(path);
   if (!tab) return;
   const target = view.state.doc.line(Math.max(1, Math.min(line, view.state.doc.lines)));
@@ -423,8 +531,10 @@ openButton.onclick = welcomeOpen.onclick = () => openProject(api.chooseFolder).c
 exampleButton.onclick = () => openProject(api.openExample).catch(report);
 saveButton.onclick = () => saveFile(active).catch(report);
 runButton.onclick = runFile;
+testButton.onclick = () => runTests();
+retryButton.onclick = () => runTests(true);
 stopButton.onclick = () => stopRun().catch(report);
-diagnosticButton.onclick = () => jumpToError().catch(report);
+diagnosticButton.onclick = () => { if (diagnostic) jumpToLocation(diagnostic).catch(report); };
 
 document.addEventListener('keydown', event => {
   const command = event.ctrlKey || event.metaKey;
@@ -432,6 +542,9 @@ document.addEventListener('keydown', event => {
   if (event.key === 'F5') {
     event.preventDefault();
     void runFile();
+  } else if (command && event.altKey && key === 't') {
+    event.preventDefault();
+    void runTests();
   } else if (command && key === 'o') {
     event.preventDefault();
     openProject(api.chooseFolder).catch(report);

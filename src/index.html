@@ -18,6 +18,7 @@
     <symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12 M18 6 6 18"/></symbol>
     <symbol id="save" viewBox="0 0 24 24"><path d="M5 4h12l3 3v13H4V4h1 M8 4v6h8V4 M8 20v-6h8v6"/></symbol>
     <symbol id="return" viewBox="0 0 24 24"><path d="M19 5v10H5 M9 11l-4 4 4 4"/></symbol>
+    <symbol id="flask" viewBox="0 0 24 24"><path d="M9 3h6m-5 0v7l-5 8a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-8V3M8 15h8"/></symbol>
   </svg>
   <header class="titlebar">
     <div class="brand">
@@ -32,6 +33,9 @@
       </button>
       <button id="save-file" class="button icon-button" aria-label="Save file" title="Save file (Ctrl+S)" disabled>
         <svg aria-hidden="true"><use href="#save"></use></svg>
+      </button>
+      <button id="run-tests" class="button" title="Save open files and run tests (Ctrl+Alt+T)" disabled>
+        <svg aria-hidden="true"><use href="#flask"></use></svg> Run tests
       </button>
       <button id="run-file" class="button primary" title="Run file (F5)" disabled>
         <svg aria-hidden="true"><use href="#play"></use></svg> <span>Run file</span><kbd>F5</kbd>
@@ -67,11 +71,13 @@
           </div>
         </div>
       </section>
-      <section class="run-panel" aria-labelledby="run-heading">
+      <section id="run-panel" class="run-panel" aria-labelledby="run-heading">
         <header class="run-header">
           <h2 id="run-heading">Run output</h2>
           <span id="run-state" class="run-state" role="status">Ready</span>
           <span id="run-target" class="run-target"></span>
+          <span id="test-totals" class="run-target" hidden></span>
+          <button id="rerun-failures" class="button rerun-button" title="Save open files and rerun failures" hidden>Rerun failures</button>
         </header>
         <div id="run-diagnostic" class="run-diagnostic" hidden>
           <span>Source location</span>
@@ -80,7 +86,13 @@
           </button>
           <span id="run-error-summary" class="run-error-summary"></span>
         </div>
-        <pre id="run-output" class="run-output" tabindex="0" aria-label="Program output">Run a JavaScript file to see its output here.</pre>
+        <div class="run-body">
+          <section id="test-results" class="test-results" aria-label="Test failures" hidden>
+            <p id="test-empty" class="test-empty"></p>
+            <ul id="test-failures" class="test-failures"></ul>
+          </section>
+          <pre id="run-output" class="run-output" tabindex="0" aria-label="Program output">Run a JavaScript file to see its output here.</pre>
+        </div>
       </section>
     </section>
   </main>

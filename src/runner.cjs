@@ -1,53 +1,38 @@
 const { execFile, spawn } = require('node:child_process');
 const path = require('node:path');
-const { fileURLToPath } = require('node:url');
+const { pathToFileURL } = require('node:url');
 const { stripVTControlCharacters } = require('node:util');
-const { inside, resolveEntry, verifyRevision } = require('./workspace.cjs');
+const { resolveEntry, verifyRevision } = require('./workspace.cjs');
+const { nodeFile, sourceLocation } = require('./source-location.cjs');
 
-const nodeFile = /\.(?:js|cjs|mjs)$/i;
 const maxOutput = 160_000;
-
-function sourceLocation(root, stderr) {
-  const lines = stderr.split(/\r?\n/);
-  for (const [index, line] of lines.entries()) {
-    const trimmed = line.trim();
-    let value = trimmed;
-    if (trimmed.startsWith('at ')) {
-      const frame = trimmed.lastIndexOf(' (');
-      value = frame !== -1 && trimmed.endsWith(')')
-        ? trimmed.slice(frame + 2, -1)
-        : trimmed.replace(/^at (?:async )?/, '');
-    }
-
-    const match = /^(.+?):(\d+)(?::(\d+))?$/.exec(value);
-    if (!match) continue;
-    let [, file, row, column] = match;
-    if (file.startsWith('file://')) {
-      try {
-        file = fileURLToPath(file);
-      } catch {
-        continue;
-      }
-    }
-    if (!path.isAbsolute(file) || !inside(root, file)) continue;
-    const relative = path.relative(root, file);
-    if (!nodeFile.test(relative) || relative.split(path.sep).includes('node_modules')) continue;
-    const caret = /^\s*\^/.test(lines[index + 2] || '') ? lines[index + 2].indexOf('^') + 1 : 1;
-    return { path: relative, line: Number(row), column: column ? Number(column) : caret };
-  }
-  return null;
-}
 
 async function startNodeRun(workspace, relative, revision, publish) {
   const file = await resolveEntry(workspace, relative);
   if (!nodeFile.test(file)) throw new Error('Select a .js, .mjs, or .cjs file to run.');
   await verifyRevision(file, revision);
+  return startProcess(workspace.root, [file], publish);
+}
+
+function startNodeTests(workspace, stateFile, publish) {
+  const reporter = pathToFileURL(path.join(__dirname, 'node-reporter.cjs')).href;
+  return startProcess(workspace.root, [
+    '--test',
+    '--no-strip-types',
+    '--test-reporter=' + reporter,
+    '--test-rerun-failures=' + stateFile,
+  ], publish, true);
+}
+
+function startProcess(root, args, publish, testMode = false) {
   const windows = process.platform === 'win32';
-  const child = spawn(process.execPath, [file], {
-    cwd: workspace.root,
+  const stdio = ['ignore', 'pipe', 'pipe'];
+  if (testMode) stdio.push('ipc');
+  const child = spawn(process.execPath, args, {
+    cwd: root,
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
     detached: !windows,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio,
     windowsHide: true,
   });
   const started = Date.now();
@@ -69,7 +54,7 @@ async function startNodeRun(workspace, relative, revision, publish) {
   for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]]) {
     stream.setEncoding('utf8');
     stream.on('data', text => {
-      if (name === 'stderr' && stderr.length < maxOutput) {
+      if (!testMode && name === 'stderr' && stderr.length < maxOutput) {
         stderr += text.slice(0, maxOutput - stderr.length);
       }
       pending = (pending + text).slice(-maxOutput);
@@ -77,10 +62,11 @@ async function startNodeRun(workspace, relative, revision, publish) {
     });
   }
 
+  if (testMode) child.on('message', publish);
   child.on('error', error => { spawnError = error.message; });
   child.once('close', (code, signal) => {
     flush();
-    const failed = !stopped && code !== 0;
+    const failed = !testMode && !stopped && code !== 0;
     const detail = failed ? stripVTControlCharacters(stderr) : '';
     publish({
       type: 'exit',
@@ -89,7 +75,7 @@ async function startNodeRun(workspace, relative, revision, publish) {
       stopped,
       error: spawnError,
       elapsed: Date.now() - started,
-      location: failed ? sourceLocation(workspace.root, detail) : null,
+      location: failed ? sourceLocation(root, detail) : null,
       summary: /^[A-Za-z]*Error(?: \[[^\]]+\])?: [^\r\n]+/m.exec(detail)?.[0],
     });
   });
@@ -114,4 +100,4 @@ async function startNodeRun(workspace, relative, revision, publish) {
   };
 }
 
-module.exports = { startNodeRun };
+module.exports = { startNodeRun, startNodeTests };

@@ -4,9 +4,11 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { createWorkspace, listFolder, readSource, saveSource } = require('./workspace.cjs');
 const { startNodeRun } = require('./runner.cjs');
+const { createTestSession } = require('./project-tests.cjs');
 
 const page = path.join(__dirname, 'index.html');
 const pageURL = pathToFileURL(page).href;
+const tests = createTestSession(app.getPath('temp'));
 let window;
 let workspace;
 let activeRun;
@@ -51,14 +53,19 @@ handle('choose-folder', async () => {
 handle('open-example', async () => {
   const folder = path.join(app.getPath('userData'), 'examples', 'first-run');
   await fs.mkdir(folder, { recursive: true });
-  const entry = 'hello.js';
-  const example = path.join(__dirname, '..', 'examples', entry);
-  try {
-    await fs.copyFile(example, path.join(folder, entry), fs.constants.COPYFILE_EXCL);
-  } catch (error) {
-    if (error.code !== 'EEXIST') throw error;
+  for (const [source, destination] of [
+    ['hello.js', 'hello.js'],
+    ['total.cjs', 'total.cjs'],
+    ['weights.fixture', 'weights.test.cjs'],
+  ]) {
+    try {
+      await fs.copyFile(path.join(__dirname, '..', 'examples', source),
+        path.join(folder, destination), fs.constants.COPYFILE_EXCL);
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
   }
-  return openWorkspace(folder, entry);
+  return openWorkspace(folder, 'hello.js');
 });
 
 handle('discard', async name => {
@@ -76,13 +83,12 @@ handle('list', (id, folder) => listFolder(currentWorkspace(id), folder));
 handle('read', (id, file) => readSource(currentWorkspace(id), file));
 handle('save', (id, file, text, revision) => saveSource(currentWorkspace(id), file, text, revision));
 
-handle('start', async (id, file, revision, runId) => {
-  const project = currentWorkspace(id);
+async function execute(runId, start) {
   if (activeRun) throw new Error('A program is already running.');
   const run = { stopRequested: false };
   activeRun = run;
   try {
-    run.controller = await startNodeRun(project, file, revision, event => {
+    run.controller = await start(event => {
       if (activeRun === run && event.type === 'exit') activeRun = undefined;
       if (window && !window.isDestroyed()) {
         window.webContents.send('cevra:run-event', { ...event, runId });
@@ -93,7 +99,13 @@ handle('start', async (id, file, revision, runId) => {
     activeRun = undefined;
     throw error;
   }
-});
+}
+
+handle('start', (id, file, revision, runId) =>
+  execute(runId, publish => startNodeRun(currentWorkspace(id), file, revision, publish)));
+
+handle('test', (id, retry, runId) =>
+  execute(runId, publish => tests.start(currentWorkspace(id), retry === true, publish)));
 
 function stopRun() {
   if (!activeRun) return;
@@ -149,3 +161,4 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => app.quit());
+app.on('will-quit', tests.dispose);

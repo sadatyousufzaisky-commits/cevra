@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('cevra', {
   read: (id, file) => ipcRenderer.invoke('cevra:read', id, file),
   save: (id, file, text, revision) => ipcRenderer.invoke('cevra:save', id, file, text, revision),
   start: (id, file, revision, runId) => ipcRenderer.invoke('cevra:start', id, file, revision, runId),
+  test: (id, retry, runId) => ipcRenderer.invoke('cevra:test', id, retry, runId),
   stop: () => ipcRenderer.invoke('cevra:stop'),
   setDirty: value => ipcRenderer.send('cevra:dirty', value),
   onRun: callback => ipcRenderer.on('cevra:run-event', (_event, detail) => callback(detail)),
