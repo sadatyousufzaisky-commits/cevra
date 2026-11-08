@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>CEVRA</title>
+  <link rel="stylesheet" href="./workbench.css">
+  <script src="../dist/workbench.js" defer></script>
+</head>
+<body>
+  <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="folder" viewBox="0 0 24 24"><path d="M3 19V5h7l2 3h9v11Z"/></symbol>
+    <symbol id="file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6Z M14 3v5h4 M9 13h6 M9 16h6"/></symbol>
+    <symbol id="play" viewBox="0 0 24 24"><path d="m8 5 12 7-12 7Z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12 M18 6 6 18"/></symbol>
+    <symbol id="save" viewBox="0 0 24 24"><path d="M5 4h12l3 3v13H4V4h1 M8 4v6h8V4 M8 20v-6h8v6"/></symbol>
+    <symbol id="return" viewBox="0 0 24 24"><path d="M19 5v10H5 M9 11l-4 4 4 4"/></symbol>
+  </svg>
+  <header class="titlebar">
+    <div class="brand">
+      <img src="../cevra-icon.png" alt="" width="32" height="32">
+      <span>CEVRA</span>
+    </div>
+    <span class="title-divider" aria-hidden="true"></span>
+    <span id="project-title" class="project-title">Workbench</span>
+    <div class="title-actions">
+      <button id="open-folder" class="button" title="Open folder (Ctrl+O)">
+        <svg aria-hidden="true"><use href="#folder"></use></svg> Open folder
+      </button>
+      <button id="save-file" class="button icon-button" aria-label="Save file" title="Save file (Ctrl+S)" disabled>
+        <svg aria-hidden="true"><use href="#save"></use></svg>
+      </button>
+      <button id="run-file" class="button primary" title="Run file (F5)" disabled>
+        <svg aria-hidden="true"><use href="#play"></use></svg> <span>Run file</span><kbd>F5</kbd>
+      </button>
+      <button id="stop-run" class="button stop-button" aria-label="Stop run" title="Stop run" hidden>
+        <svg aria-hidden="true"><use href="#stop"></use></svg> Stop
+      </button>
+    </div>
+  </header>
+  <main class="workbench">
+    <aside class="explorer" aria-label="Project explorer">
+      <h2 class="section-label">Explorer</h2>
+      <div class="explorer-content">
+        <div id="project-root" class="project-root" hidden>
+          <svg aria-hidden="true"><use href="#folder"></use></svg><span></span>
+        </div>
+        <p id="tree-empty" class="tree-empty">Open a folder to browse its files.</p>
+        <nav id="tree" aria-label="Project files"></nav>
+      </div>
+      <div class="explorer-footer"><span class="status-dot"></span> Local workspace</div>
+    </aside>
+    <section class="studio" aria-label="Editor and execution">
+      <div id="tabs" class="tabs" aria-label="Open files" hidden></div>
+      <div id="editor" class="editor" hidden></div>
+      <section id="welcome" class="welcome">
+        <div class="welcome-content">
+          <div class="eyebrow"><span></span> CEVRA WORKBENCH</div>
+          <h1>Your project starts here.</h1>
+          <p id="welcome-copy">Open a project folder, or try the built-in JavaScript example to see how editing and execution fit together.</p>
+          <div class="welcome-actions">
+            <button id="welcome-open" class="button primary"><svg aria-hidden="true"><use href="#folder"></use></svg> Open folder</button>
+            <button id="open-example" class="button"><svg aria-hidden="true"><use href="#play"></use></svg> Open example</button>
+          </div>
+        </div>
+      </section>
+      <section class="run-panel" aria-labelledby="run-heading">
+        <header class="run-header">
+          <h2 id="run-heading">Run output</h2>
+          <span id="run-state" class="run-state" role="status">Ready</span>
+          <span id="run-target" class="run-target"></span>
+        </header>
+        <div id="run-diagnostic" class="run-diagnostic" hidden>
+          <span>Source location</span>
+          <button id="jump-to-error" class="diagnostic-link">
+            <span></span><svg aria-hidden="true"><use href="#return"></use></svg>
+          </button>
+          <span id="run-error-summary" class="run-error-summary"></span>
+        </div>
+        <pre id="run-output" class="run-output" tabindex="0" aria-label="Program output">Run a JavaScript file to see its output here.</pre>
+      </section>
+    </section>
+  </main>
+  <footer class="statusbar">
+    <span id="message" class="message" role="status">Ready to open a project</span>
+    <span id="language" class="status-field"></span>
+    <span id="cursor" class="status-field"></span>
+  </footer>
+</body>
+</html>
