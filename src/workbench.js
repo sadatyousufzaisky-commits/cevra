@@ -1,5 +1,5 @@
 import { basicSetup } from 'codemirror';
-import { EditorState } from '@codemirror/state';
+import { EditorState, Text } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { indentUnit } from '@codemirror/language';
 import { javascript } from '@codemirror/lang-javascript';
@@ -16,6 +16,7 @@ const openButton = byId('open-folder');
 const welcomeOpen = byId('welcome-open');
 const exampleButton = byId('open-example');
 const saveButton = byId('save-file');
+const recoveryButton = byId('save-recovery');
 const runButton = byId('run-file');
 const testButton = byId('run-tests');
 const retryButton = byId('rerun-failures');
@@ -29,7 +30,7 @@ const documents = new Map();
 const expanded = new Map();
 let project;
 let active;
-let changingProject = false;
+let changingProject = true;
 let fileRequest = 0;
 let runSequence = 0;
 let run;
@@ -79,12 +80,17 @@ function report(error) {
 }
 
 function syncCommands() {
-  const saving = [...documents.values()].some(tab => tab.saving);
-  openButton.disabled = welcomeOpen.disabled = exampleButton.disabled = Boolean(run || changingProject || saving);
-  saveButton.disabled = !active?.dirty || Boolean(active.saving || changingProject);
-  runButton.disabled = !active || !runnable.test(active.path) || Boolean(changingProject || run);
+  const open = [...documents.values()];
+  const saving = open.some(tab => tab.saving);
+  const discarding = open.some(tab => tab.discarding);
+  openButton.disabled = welcomeOpen.disabled = exampleButton.disabled = Boolean(run || changingProject || saving || discarding);
+  saveButton.disabled = !active?.dirty || Boolean(active.saving || active.discarding || changingProject);
+  saveButton.hidden = Boolean(active?.recoveryConflict);
+  recoveryButton.hidden = !active?.recoveryConflict;
+  recoveryButton.disabled = !active?.dirty || Boolean(active.saving || changingProject);
+  runButton.disabled = !active || !runnable.test(active.path) || Boolean(changingProject || run || discarding);
   runButton.hidden = Boolean(run);
-  testButton.disabled = !project || Boolean(changingProject || run);
+  testButton.disabled = !project || Boolean(changingProject || run || discarding);
   retryButton.hidden = !retryAvailable || byId('run-panel').dataset.mode !== 'tests';
   retryButton.disabled = testButton.disabled;
   stopButton.hidden = !run;
@@ -104,9 +110,48 @@ function syncCursor() {
 }
 
 function syncDirty() {
-  api.setDirty([...documents.values()].some(tab => tab.dirty));
   syncCommands();
   renderTabs();
+  syncDraftStatus();
+}
+
+function syncDraftStatus() {
+  const status = byId('draft-status');
+  const all = [...documents.values()];
+  const failed = all.some(tab => tab.draftError);
+  const pending = all.some(tab => tab.draftTask);
+  const dirty = all.some(tab => tab.dirty);
+  status.dataset.state = failed ? 'error' : pending ? 'pending' : dirty ? 'saved' : 'clear';
+  status.hidden = status.dataset.state === 'clear';
+  status.textContent = failed ? 'Draft backup failed' : pending ? 'Updating drafts…' : dirty ? 'Draft backed up' : '';
+  status.title = all.find(tab => tab.draftError)?.draftError?.message ?? '';
+}
+
+function serialize(tab, doc = tab.state.doc) {
+  return tab.bom + doc.toString().replaceAll('\n', tab.eol);
+}
+
+function queueDraft(tab) {
+  tab.draftPending = true;
+  if (!tab.draftTask) {
+    tab.draftTask = (async () => {
+      while (tab.draftPending) {
+        tab.draftPending = false;
+        try {
+          await api.draft(tab.projectId, tab.path, tab.dirty && !tab.discarding ? serialize(tab) : null,
+            tab.revision);
+          tab.draftError = undefined;
+        } catch (error) {
+          tab.draftError = error;
+        }
+      }
+    })().finally(() => {
+      tab.draftTask = undefined;
+      syncDraftStatus();
+    });
+  }
+  syncDraftStatus();
+  return tab.draftTask;
 }
 
 function editorState(tab, text) {
@@ -122,11 +167,16 @@ function editorState(tab, text) {
       EditorView.updateListener.of(update => {
         tab.state = update.state;
         if (update.docChanged) {
-          const dirty = !update.state.doc.eq(tab.savedDoc);
+          const dirty = !tab.savedDoc || !update.state.doc.eq(tab.savedDoc);
           if (dirty !== tab.dirty) {
             tab.dirty = dirty;
+            if (!dirty && tab.recoveryConflict) {
+              tab.recoveryConflict = false;
+              tab.revision = tab.diskRevision;
+            }
             syncDirty();
           }
+          queueDraft(tab);
         }
         if (update.docChanged || update.selectionSet) syncCursor();
       }),
@@ -247,6 +297,26 @@ function showFile(tab) {
   syncCursor();
 }
 
+function normalized(text) {
+  return text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+}
+
+function createTab(path, text, revision) {
+  const tab = {
+    path,
+    projectId: project.id,
+    name: path.split(/[\\/]/).at(-1),
+    revision,
+    bom: text.startsWith('\uFEFF') ? '\uFEFF' : '',
+    eol: text.includes('\r\n') ? '\r\n' : text.includes('\n') ? '\n' : text.includes('\r') ? '\r' : '\n',
+    dirty: false,
+  };
+  tab.state = editorState(tab, normalized(text));
+  tab.savedDoc = tab.state.doc;
+  documents.set(path, tab);
+  return tab;
+}
+
 async function openFile(path) {
   const request = ++fileRequest;
   const openedProject = project;
@@ -255,34 +325,81 @@ async function openFile(path) {
   if (!tab) {
     const { text, revision } = await api.read(openedProject.id, path);
     if (request !== fileRequest || project !== openedProject) return null;
-    const bom = text.startsWith('\uFEFF') ? '\uFEFF' : '';
-    const content = text.slice(bom.length);
-    const eol = content.includes('\r\n') ? '\r\n' : content.includes('\n') ? '\n' :
-      content.includes('\r') ? '\r' : '\n';
-    tab = {
-      path,
-      name: path.split(/[\\/]/).at(-1),
-      revision,
-      bom,
-      eol,
-      dirty: false,
-    };
-    tab.state = editorState(tab, content.replace(/\r\n?/g, '\n'));
-    tab.savedDoc = tab.state.doc;
-    documents.set(path, tab);
+    tab = createTab(path, text, revision);
   }
   showFile(tab);
-  notify(tab.path);
+  notify(tab.recoveryConflict ? 'The original changed or is unavailable. Save a recovery copy.' : tab.path,
+    tab.recoveryConflict);
   return tab;
 }
 
-async function closeFile(tab) {
-  if (changingProject || tab.saving) return;
-  const openedProject = project;
-  if (tab.dirty && !await api.confirmDiscard(tab.name)) return;
-  if (project !== openedProject || documents.get(tab.path) !== tab || tab.saving) return;
+async function removeTab(tab) {
+  if (tab.dirty || tab.draftTask || tab.draftError) {
+    tab.discarding = true;
+    syncCommands();
+    await queueDraft(tab);
+    if (tab.draftError) {
+      tab.discarding = false;
+      syncCommands();
+      throw tab.draftError;
+    }
+  }
   documents.delete(tab.path);
   if (tab === active) showFile([...documents.values()].at(-1));
+  syncDirty();
+}
+
+async function closeFile(tab) {
+  if (changingProject || tab.saving || tab.discarding) return;
+  const openedProject = project;
+  if (tab.dirty && !await api.confirmDiscard(tab.name)) return;
+  if (project !== openedProject || documents.get(tab.path) !== tab || tab.saving || tab.discarding) return;
+  editor.inert = true;
+  try {
+    await removeTab(tab);
+  } finally {
+    editor.inert = false;
+    if (active) view.focus();
+  }
+}
+
+async function adoptProject(next) {
+  ++fileRequest;
+  project = next;
+  documents.clear();
+  expanded.clear();
+  showFile(undefined);
+  renderTree();
+  byId('project-title').textContent = project.name;
+  byId('project-title').title = project.root;
+  byId('welcome').querySelector('h1').textContent = 'Choose a file to edit.';
+  byId('welcome-copy').textContent = 'The Explorer shows the files in this project.';
+  retryAvailable = false;
+  resetOutput();
+  notify(project.root);
+  let restored;
+  for (const draft of next.recovered) {
+    const disk = await api.read(next.id, draft.path).catch(() => null);
+    if (disk?.text === draft.text) {
+      await api.draft(next.id, draft.path, null).catch(report);
+      continue;
+    }
+    const tab = createTab(draft.path, draft.text, draft.revision);
+    tab.savedDoc = disk ? Text.of(normalized(disk.text).split('\n')) : null;
+    tab.dirty = true;
+    tab.diskRevision = disk?.revision;
+    tab.recoveryConflict = draft.revision !== disk?.revision;
+    restored ??= tab;
+  }
+  if (restored) {
+    showFile(restored);
+    const count = documents.size;
+    const recovered = 'Recovered ' + count + (count === 1 ? ' unsaved file.' : ' unsaved files.');
+    notify(restored.recoveryConflict ? recovered + ' The original changed or is unavailable.' : recovered);
+  } else if (next.entry) {
+    await openFile(next.entry);
+  }
+  if (next.unreadable) notify('Some draft backups could not be read. The backups are still on disk.', true);
   syncDirty();
 }
 
@@ -290,46 +407,63 @@ async function openProject(picker) {
   if (openButton.disabled) return;
   changingProject = true;
   syncCommands();
+  editor.inert = true;
   try {
-    if ([...documents.values()].some(tab => tab.dirty) && !await api.confirmDiscard(project.name)) return;
-    const next = await picker();
-    if (!next) return;
-    ++fileRequest;
-    project = next;
-    documents.clear();
-    expanded.clear();
-    showFile(undefined);
-    syncDirty();
-    renderTree();
-    byId('project-title').textContent = project.name;
-    byId('project-title').title = project.root;
-    byId('welcome').querySelector('h1').textContent = 'Choose a file to edit.';
-    byId('welcome-copy').textContent = 'The Explorer shows the files in this project.';
-    retryAvailable = false;
-    resetOutput();
-    notify(project.root);
-    if (next.entry) await openFile(next.entry);
+    const open = [...documents.values()];
+    const discard = open.some(tab => tab.dirty);
+    if (discard && !await api.confirmDiscard(project.name)) return;
+    await Promise.all(open.map(tab => tab.draftTask));
+    const next = await picker(discard);
+    if (next) await adoptProject(next);
   } finally {
+    editor.inert = false;
+    if (active) view.focus();
     changingProject = false;
     syncCommands();
   }
 }
 
 async function saveFile(tab) {
-  if (!tab?.dirty) return;
+  if (!tab?.dirty || tab.discarding) return;
+  if (tab.recoveryConflict) throw new Error('The original changed or is unavailable. Save a recovery copy.');
   if (tab.saving) return tab.saving;
   const doc = tab.state.doc;
-  const text = doc.toString();
-  tab.saving = api.save(project.id, tab.path, tab.bom + text.replaceAll('\n', tab.eol), tab.revision);
+  tab.saving = api.save(tab.projectId, tab.path, serialize(tab, doc), tab.revision);
   syncCommands();
   try {
     tab.revision = await tab.saving;
     tab.savedDoc = doc;
     tab.dirty = !tab.state.doc.eq(doc);
+    queueDraft(tab);
     notify('Saved ' + tab.path);
   } finally {
     tab.saving = undefined;
     syncDirty();
+  }
+}
+
+async function saveRecoveredCopy(tab) {
+  if (recoveryButton.disabled || !tab?.recoveryConflict) return;
+  const doc = tab.state.doc;
+  tab.saving = api.saveCopy(tab.projectId, tab.path, serialize(tab, doc));
+  syncCommands();
+  try {
+    const name = await tab.saving;
+    project.files = await api.list(project.id, '');
+    renderTree();
+    if (doc.eq(tab.state.doc)) {
+      editor.inert = true;
+      try {
+        await removeTab(tab);
+      } finally {
+        editor.inert = false;
+      }
+      await openFile(name);
+    }
+    notify('Saved recovery copy ' + name);
+  } finally {
+    tab.saving = undefined;
+    syncCommands();
   }
 }
 
@@ -530,11 +664,46 @@ async function jumpToLocation({ path, line, column }) {
 openButton.onclick = welcomeOpen.onclick = () => openProject(api.chooseFolder).catch(report);
 exampleButton.onclick = () => openProject(api.openExample).catch(report);
 saveButton.onclick = () => saveFile(active).catch(report);
+recoveryButton.onclick = () => saveRecoveredCopy(active).catch(report);
 runButton.onclick = runFile;
 testButton.onclick = () => runTests();
 retryButton.onclick = () => runTests(true);
 stopButton.onclick = () => stopRun().catch(report);
 diagnosticButton.onclick = () => { if (diagnostic) jumpToLocation(diagnostic).catch(report); };
+
+api.beforeClose(async () => {
+  document.body.inert = true;
+  try {
+    const open = [...documents.values()];
+    await Promise.allSettled(open.map(tab => tab.saving));
+    await Promise.all(open.map(tab => tab.draftError ? queueDraft(tab) : tab.draftTask));
+    await api.closeReady(open.some(tab => tab.dirty), open.some(tab => tab.draftError));
+  } catch (error) {
+    document.body.inert = false;
+    report(error);
+  }
+});
+
+api.onCloseCanceled(() => {
+  document.body.inert = false;
+  if (active) view.focus();
+});
+
+async function initialize() {
+  syncCommands();
+  try {
+    const initial = await api.initial();
+    if (initial.project) await adoptProject(initial.project);
+    if (initial.unavailable) notify('A draft workspace is unavailable. Reopen it when it is accessible.', true);
+    else if (initial.unreadable) notify('Some draft backups could not be read. The backups are still on disk.', true);
+  } catch (error) {
+    report(error);
+  } finally {
+    changingProject = false;
+    api.ready();
+    syncCommands();
+  }
+}
 
 document.addEventListener('keydown', event => {
   const command = event.ctrlKey || event.metaKey;
@@ -556,3 +725,5 @@ document.addEventListener('keydown', event => {
     closeFile(active).catch(report);
   }
 }, { capture: true });
+
+void initialize();

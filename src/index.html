@@ -34,6 +34,7 @@
       <button id="save-file" class="button icon-button" aria-label="Save file" title="Save file (Ctrl+S)" disabled>
         <svg aria-hidden="true"><use href="#save"></use></svg>
       </button>
+      <button id="save-recovery" class="button" hidden>Save recovery copy</button>
       <button id="run-tests" class="button" title="Save open files and run tests (Ctrl+Alt+T)" disabled>
         <svg aria-hidden="true"><use href="#flask"></use></svg> Run tests
       </button>
@@ -98,6 +99,7 @@
   </main>
   <footer class="statusbar">
     <span id="message" class="message" role="status">Ready to open a project</span>
+    <span id="draft-status" class="status-field" data-state="clear" hidden></span>
     <span id="language" class="status-field"></span>
     <span id="cursor" class="status-field"></span>
   </footer>

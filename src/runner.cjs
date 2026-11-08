@@ -8,15 +8,17 @@ const { nodeFile, sourceLocation } = require('./source-location.cjs');
 const maxOutput = 160_000;
 
 async function startNodeRun(workspace, relative, revision, publish) {
-  const file = await resolveEntry(workspace, relative);
-  if (!nodeFile.test(file)) throw new Error('Select a .js, .mjs, or .cjs file to run.');
-  await verifyRevision(file, revision);
+  if (typeof relative !== 'string' || !nodeFile.test(relative)) {
+    throw new Error('Select a .js, .mjs, or .cjs file to run.');
+  }
+  const { file } = await verifyRevision(workspace, relative, revision);
   return startProcess(workspace.root, [file], publish);
 }
 
-function startNodeTests(workspace, stateFile, publish) {
+async function startNodeTests(workspace, stateFile, publish) {
+  const root = await resolveEntry(workspace, '');
   const reporter = pathToFileURL(path.join(__dirname, 'node-reporter.cjs')).href;
-  return startProcess(workspace.root, [
+  return startProcess(root, [
     '--test',
     '--no-strip-types',
     '--test-reporter=' + reporter,
@@ -40,6 +42,7 @@ function startProcess(root, args, publish, testMode = false) {
   let stderr = '';
   let timer;
   let stopped = false;
+  let closed = false;
   let spawnError;
 
   function flush() {
@@ -54,8 +57,8 @@ function startProcess(root, args, publish, testMode = false) {
   for (const [name, stream] of [['stdout', child.stdout], ['stderr', child.stderr]]) {
     stream.setEncoding('utf8');
     stream.on('data', text => {
-      if (!testMode && name === 'stderr' && stderr.length < maxOutput) {
-        stderr += text.slice(0, maxOutput - stderr.length);
+      if (!testMode && name === 'stderr') {
+        stderr = (stderr + text).slice(-maxOutput);
       }
       pending = (pending + text).slice(-maxOutput);
       timer ??= setTimeout(flush, 35);
@@ -65,6 +68,7 @@ function startProcess(root, args, publish, testMode = false) {
   if (testMode) child.on('message', publish);
   child.on('error', error => { spawnError = error.message; });
   child.once('close', (code, signal) => {
+    closed = true;
     flush();
     const failed = !testMode && !stopped && code !== 0;
     const detail = failed ? stripVTControlCharacters(stderr) : '';
@@ -82,12 +86,17 @@ function startProcess(root, args, publish, testMode = false) {
 
   return {
     stop() {
-      if (stopped || !child.pid) return;
+      if (closed || stopped || !child.pid) return;
       stopped = true;
       if (windows) {
         const taskkill = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe');
         execFile(taskkill, ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true }, error => {
-          if (error) child.kill();
+          if (error) {
+            child.kill();
+            child.stdout.destroy();
+            child.stderr.destroy();
+            if (child.connected) child.disconnect();
+          }
         });
       } else {
         try {

@@ -1,11 +1,30 @@
 const assert = require('node:assert/strict');
+const { execFile } = require('node:child_process');
+const { once } = require('node:events');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
+const { setTimeout: delay } = require('node:timers/promises');
+const { promisify } = require('node:util');
 const { _electron } = require('playwright');
 
 const repo = path.resolve(__dirname, '..');
+const execute = promisify(execFile);
+
+async function assertWindowsProcessStopped(pid) {
+  if (process.platform !== 'win32') return;
+  for (let attempt = 0; attempt < 80; attempt++) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error.code === 'ESRCH') return;
+      throw error;
+    }
+    await delay(25);
+  }
+  assert.fail('The Windows process was still running after cleanup.');
+}
 
 async function openWorkbench(t, files) {
   const temp = await fs.realpath(os.tmpdir());
@@ -30,41 +49,67 @@ async function openWorkbench(t, files) {
     await fs.writeFile(target, content);
   }
 
-  const env = { ...process.env };
-  delete env.NODE_TEST_CONTEXT;
-  delete env.ELECTRON_RUN_AS_NODE;
-  app = await _electron.launch({
-    executablePath: require('electron'),
-    args: [repo, '--user-data-dir=' + profile],
-    cwd: repo,
-    env,
-    chromiumSandbox: true,
-    timeout: 20_000,
-  });
-  await app.evaluate(({ dialog }, folder) => {
-    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
-    dialog.showMessageBoxSync = () => 1;
-  }, project);
-  const page = await app.firstWindow();
-  page.setDefaultTimeout(8_000);
-  await page.locator('#open-folder').click();
-  await page.getByRole('heading', { name: 'Choose a file to edit.' }).waitFor();
-  const explorer = page.getByRole('navigation', { name: 'Project files' });
-  const file = name => explorer.getByRole('button', { name, exact: true });
-  const selected = name => page.locator('#tabs [aria-current="true"]').getByText(name, { exact: true });
-  return {
-    project,
-    page,
-    editor: page.getByRole('textbox', { name: 'Source editor' }),
-    file,
-    selected,
-    open: async name => {
-      await file(name).click();
-      await selected(name).waitFor();
-    },
-    state: page.locator('#run-state'),
-    output: page.locator('#run-output'),
-  };
+  async function launch() {
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    delete env.ELECTRON_RUN_AS_NODE;
+    app = await _electron.launch({
+      executablePath: require('electron'),
+      args: [repo, '--user-data-dir=' + profile],
+      cwd: repo,
+      env,
+      chromiumSandbox: true,
+      timeout: 20_000,
+    });
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+      dialog.showMessageBox = async () => ({ response: 1 });
+      dialog.showMessageBoxSync = () => 1;
+    }, project);
+    const page = await app.firstWindow();
+    page.setDefaultTimeout(8_000);
+    const explorer = page.getByRole('navigation', { name: 'Project files' });
+    const file = name => explorer.getByRole('button', { name, exact: true });
+    const selected = name => page.locator('#tabs [aria-current="true"]').getByText(name, { exact: true });
+    return {
+      app,
+      project,
+      profile,
+      page,
+      editor: page.getByRole('textbox', { name: 'Source editor' }),
+      file,
+      selected,
+      open: async name => {
+        await file(name).click();
+        await selected(name).waitFor();
+      },
+      state: page.locator('#run-state'),
+      output: page.locator('#run-output'),
+      restart: async ({ crash = false } = {}) => {
+        if (crash) {
+          const processUnderTest = app.process();
+          const exited = once(processUnderTest, 'exit');
+          if (process.platform === 'win32') {
+            const taskkill = path.join(process.env.SystemRoot, 'System32', 'taskkill.exe');
+            await execute(taskkill, ['/pid', String(processUnderTest.pid), '/t', '/f'], { windowsHide: true });
+          } else {
+            assert.ok(processUnderTest.kill('SIGKILL'));
+          }
+          await exited;
+        } else {
+          const closed = app.waitForEvent('close', { timeout: 10_000 });
+          await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+          await closed;
+        }
+        app = undefined;
+        return launch();
+      },
+    };
+  }
+  const result = await launch();
+  await result.page.locator('#open-folder').click();
+  await result.page.getByRole('heading', { name: 'Choose a file to edit.' }).waitFor();
+  return result;
 }
 
 test('saves a nested UTF-8 file with BOM and CRLF and preserves external changes', async t => {
@@ -95,7 +140,12 @@ test('saves before execution, runs from the project root, and stops a running sc
   const changed = 'console.log("saved before execution");\nconsole.log(process.cwd());\n';
   const { project, page, open, editor, state, output } = await openWorkbench(t, {
     [name]: 'console.log("old contents");\n',
-    'long.cjs': 'console.log("ready to stop");\nsetInterval(() => {}, 1000);\n',
+    'long.cjs': [
+      'const { spawn } = require("node:child_process");',
+      'const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", windowsHide: true });',
+      'child.on("spawn", () => console.log("ready to stop " + child.pid));',
+      'setInterval(() => {}, 1000);',
+    ].join('\n'),
   });
   await open(name);
   await editor.press('Control+a');
@@ -109,9 +159,11 @@ test('saves before execution, runs from the project root, and stops a running sc
 
   await open('long.cjs');
   await editor.press('F5');
-  await output.getByText('ready to stop', { exact: true }).waitFor();
+  await output.getByText(/ready to stop \d+/).waitFor();
+  const child = Number(/ready to stop (\d+)/.exec(await output.textContent())[1]);
   await page.getByRole('button', { name: 'Stop run', exact: true }).click();
   await state.getByText('Stopped', { exact: true }).waitFor();
+  await assertWindowsProcessStopped(child);
 });
 
 test('jumps to runtime and syntax errors in nested files at unusual paths', async t => {
@@ -188,4 +240,112 @@ test('jumps to a test assertion and retries only the failed case after saving a 
   assert.equal(await fs.readFile(path.join(project, 'calculate.cjs'), 'utf8'), fix);
   assert.doesNotMatch(await output.textContent(), /first case executed/);
   assert.equal(await retry.isVisible(), false);
+});
+
+async function replaceEditor(workbench, text) {
+  await workbench.editor.press('Control+a');
+  await workbench.page.keyboard.insertText(text);
+  await workbench.page.locator('#draft-status[data-state="saved"]').waitFor();
+}
+
+test('keeps drafts across a regular quit and clears them on confirmed discard', { timeout: 35_000 }, async t => {
+  let workbench = await openWorkbench(t, { 'note.txt': 'original\n' });
+  await workbench.open('note.txt');
+  await replaceEditor(workbench, 'keep this across quit\n');
+  workbench = await workbench.restart();
+  await workbench.selected('note.txt').waitFor();
+  assert.match(await workbench.editor.textContent(), /keep this across quit/);
+  assert.equal(await fs.readFile(path.join(workbench.project, 'note.txt'), 'utf8'), 'original\n');
+  await workbench.page.getByRole('button', { name: 'Close note.txt', exact: true }).click();
+  await workbench.page.getByRole('heading', { name: 'Choose a file to edit.' }).waitFor();
+  assert.deepEqual((await fs.readdir(path.join(workbench.profile, 'drafts'))).filter(name => name.endsWith('.json')), []);
+  workbench = await workbench.restart();
+  await workbench.page.getByRole('heading', { name: 'Your project starts here.' }).waitFor();
+});
+
+test('reloads a crashed renderer and saves the recovered draft normally', { timeout: 35_000 }, async t => {
+  const workbench = await openWorkbench(t, {
+    'renderer.cjs': 'console.log("original");\n',
+    'running.cjs': 'console.log("running " + process.pid);\nsetInterval(() => {}, 1000);\n',
+  });
+  await workbench.open('renderer.cjs');
+  await replaceEditor(workbench, 'console.log("renderer recovery");\n');
+  await workbench.open('running.cjs');
+  await workbench.editor.press('F5');
+  await workbench.output.getByText(/running \d+/).waitFor();
+  const running = Number(/running (\d+)/.exec(await workbench.output.textContent())[1]);
+  const replacement = workbench.app.waitForEvent('window', { timeout: 10_000 });
+  await workbench.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.forcefullyCrashRenderer());
+  const page = await replacement;
+  await assertWindowsProcessStopped(running);
+  page.setDefaultTimeout(8_000);
+  const editor = page.getByRole('textbox', { name: 'Source editor' });
+  await page.getByText('Recovered 1 unsaved file.', { exact: true }).waitFor();
+  assert.match(await editor.textContent(), /renderer recovery/);
+  await editor.press('Control+s');
+  await page.getByText('Saved renderer.cjs', { exact: true }).waitFor();
+  await page.locator('#draft-status[data-state="clear"]').waitFor({ state: 'attached' });
+  assert.equal(await fs.readFile(path.join(workbench.project, 'renderer.cjs'), 'utf8'), 'console.log("renderer recovery");\n');
+});
+
+test('recovers multiple drafts after a forced app crash and protects changed or deleted originals', { timeout: 35_000 }, async t => {
+  let workbench = await openWorkbench(t, {
+    'normal.txt': 'normal original\n',
+    'changed.txt': 'changed original\n',
+    'deleted.txt': 'deleted original\n',
+  });
+  for (const name of ['normal', 'changed', 'deleted']) {
+    await workbench.open(name + '.txt');
+    await replaceEditor(workbench, name + ' draft\n');
+  }
+  const { project } = workbench;
+  await fs.writeFile(path.join(project, 'changed.txt'), 'external edit\n');
+  await fs.unlink(path.join(project, 'deleted.txt'));
+  workbench = await workbench.restart({ crash: true });
+  await workbench.page.getByText(/Recovered 3 unsaved files/).waitFor();
+
+  const tabs = workbench.page.locator('#tabs');
+  await tabs.getByRole('button', { name: 'normal.txt, unsaved', exact: true }).click();
+  assert.match(await workbench.editor.textContent(), /normal draft/);
+  await workbench.editor.press('Control+s');
+  await workbench.page.getByText('Saved normal.txt', { exact: true }).waitFor();
+  assert.equal(await fs.readFile(path.join(project, 'normal.txt'), 'utf8'), 'normal draft\n');
+
+  for (const name of ['changed', 'deleted']) {
+    await tabs.getByRole('button', { name: name + '.txt, unsaved', exact: true }).click();
+    assert.match(await workbench.editor.textContent(), new RegExp(name + ' draft'));
+    await workbench.editor.press('Control+s');
+    await workbench.page.getByText(/The original changed or is unavailable/).waitFor();
+    await workbench.page.getByRole('button', { name: 'Save recovery copy', exact: true }).click();
+    await workbench.page.getByText(/Saved recovery copy/).waitFor();
+    const recovered = (await fs.readdir(project)).find(file => file.startsWith(name + ' (recovered '));
+    assert.ok(recovered);
+    assert.equal(await fs.readFile(path.join(project, recovered), 'utf8'), name + ' draft\n');
+  }
+  assert.equal(await fs.readFile(path.join(project, 'changed.txt'), 'utf8'), 'external edit\n');
+  await assert.rejects(fs.stat(path.join(project, 'deleted.txt')), { code: 'ENOENT' });
+});
+
+test('the desktop bridge blocks workspace escapes and rejects a Windows junction', async t => {
+  const { project, page } = await openWorkbench(t, { 'inside.cjs': 'console.log("inside");\n' });
+  const outside = path.join(path.dirname(project), 'outside');
+  await fs.mkdir(outside);
+  await fs.writeFile(path.join(outside, 'secret.cjs'), 'outside contents');
+  await fs.symlink(outside, path.join(project, 'junction'), process.platform === 'win32' ? 'junction' : 'dir');
+  const errors = await page.evaluate(async () => {
+    const { project } = await window.cevra.initial();
+    const { revision } = await window.cevra.read(project.id, 'inside.cjs');
+    const operations = [
+      window.cevra.read(project.id, '../outside/secret.cjs'),
+      window.cevra.save(project.id, 'junction/secret.cjs', 'changed', revision),
+      window.cevra.start(project.id, 'junction/secret.cjs', revision, 1),
+      window.cevra.read('expired-workspace', 'inside.cjs'),
+    ];
+    return (await Promise.allSettled(operations)).map(result => result.reason?.message);
+  });
+  assert.match(errors[0], /outside the workspace/);
+  assert.match(errors[1], /links cannot be opened/);
+  assert.match(errors[2], /links cannot be opened/);
+  assert.match(errors[3], /workspace has closed/);
+  assert.equal(await fs.readFile(path.join(outside, 'secret.cjs'), 'utf8'), 'outside contents');
 });

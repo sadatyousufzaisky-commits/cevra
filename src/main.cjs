@@ -2,19 +2,24 @@ const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { createWorkspace, listFolder, readSource, saveSource } = require('./workspace.cjs');
+const { createWorkspace, listFolder, readSource, saveSource, saveRecoveryCopy, workspacePath } = require('./workspace.cjs');
 const { startNodeRun } = require('./runner.cjs');
 const { createTestSession } = require('./project-tests.cjs');
+const { createDraftStore } = require('./drafts.cjs');
+
+app.setName('CEVRA');
 
 const page = path.join(__dirname, 'index.html');
 const pageURL = pathToFileURL(page).href;
 const tests = createTestSession(app.getPath('temp'));
+const drafts = createDraftStore(path.join(app.getPath('userData'), 'drafts'));
 let window;
 let workspace;
 let activeRun;
-let dirty = false;
-
-app.setName('CEVRA');
+let rendererReady = false;
+let closePending = false;
+let allowClose = false;
+let lastRendererCrash = 0;
 
 function isWorkbench(event) {
   return window && event.sender === window.webContents &&
@@ -33,24 +38,50 @@ function currentWorkspace(id) {
   return workspace;
 }
 
-async function openWorkspace(folder, entry) {
-  if (activeRun) throw new Error('Stop the current run before opening another project.');
-  const next = await createWorkspace(folder);
-  const files = await listFolder(next);
-  workspace = next;
-  return { ...next, files, entry };
+async function readDrafts() {
+  try {
+    return await drafts.list();
+  } catch {
+    return { entries: [], unreadable: true };
+  }
 }
 
-handle('choose-folder', async () => {
+async function openWorkspace(folder, { entry, discard, recovering = false } = {}) {
+  if (activeRun && !recovering) throw new Error('Stop the current run before opening another project.');
+  const next = await createWorkspace(folder);
+  const files = await listFolder(next);
+  if (discard && workspace) await drafts.clear(workspace.root);
+  const { entries, unreadable } = await readDrafts();
+  const recovered = entries.filter(draft => draft.root === next.root);
+  workspace = next;
+  return { id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable };
+}
+
+handle('initial', async () => {
+  const { entries, unreadable } = await readDrafts();
+  const roots = new Set([workspace?.root, ...entries.map(draft => draft.root)]);
+  let unavailable = false;
+  for (const root of roots) {
+    if (!root) continue;
+    try {
+      return { project: await openWorkspace(root, { recovering: true }), unavailable };
+    } catch {
+      unavailable = true;
+    }
+  }
+  return { unavailable, unreadable };
+});
+
+handle('choose-folder', async discard => {
   const choice = await dialog.showOpenDialog(window, {
     title: 'Open a CEVRA workspace',
     properties: ['openDirectory'],
   });
   if (choice.canceled) return null;
-  return openWorkspace(choice.filePaths[0]);
+  return openWorkspace(choice.filePaths[0], { discard: discard === true });
 });
 
-handle('open-example', async () => {
+handle('open-example', async discard => {
   const folder = path.join(app.getPath('userData'), 'examples', 'first-run');
   await fs.mkdir(folder, { recursive: true });
   for (const [source, destination] of [
@@ -65,7 +96,7 @@ handle('open-example', async () => {
       if (error.code !== 'EEXIST') throw error;
     }
   }
-  return openWorkspace(folder, 'hello.js');
+  return openWorkspace(folder, { entry: 'hello.js', discard: discard === true });
 });
 
 handle('discard', async name => {
@@ -82,6 +113,12 @@ handle('discard', async name => {
 handle('list', (id, folder) => listFolder(currentWorkspace(id), folder));
 handle('read', (id, file) => readSource(currentWorkspace(id), file));
 handle('save', (id, file, text, revision) => saveSource(currentWorkspace(id), file, text, revision));
+handle('save-copy', (id, file, text) => saveRecoveryCopy(currentWorkspace(id), file, text));
+handle('draft', (id, file, text, revision) => {
+  const project = currentWorkspace(id);
+  if (path.relative(project.root, workspacePath(project, file)) === '') throw new Error('Choose a regular file.');
+  return drafts.set(project.root, file, text, revision);
+});
 
 async function execute(runId, start) {
   if (activeRun) throw new Error('A program is already running.');
@@ -90,7 +127,7 @@ async function execute(runId, start) {
   try {
     run.controller = await start(event => {
       if (activeRun === run && event.type === 'exit') activeRun = undefined;
-      if (window && !window.isDestroyed()) {
+      if (rendererReady && window && !window.isDestroyed()) {
         window.webContents.send('cevra:run-event', { ...event, runId });
       }
     });
@@ -115,15 +152,45 @@ function stopRun() {
 
 handle('stop', stopRun);
 
-ipcMain.on('cevra:dirty', (event, value) => {
-  if (isWorkbench(event)) dirty = value === true;
+ipcMain.on('cevra:ready', event => {
+  if (isWorkbench(event)) rendererReady = true;
 });
 
-app.whenReady().then(() => {
+handle('close-ready', (hasDrafts, backupFailed) => {
+  if (!closePending) return;
+  const stay = backupFailed ? dialog.showMessageBoxSync(window, {
+    type: 'error',
+    message: 'Some draft backups could not be updated.',
+    detail: 'Only completed backups can be recovered.',
+    buttons: ['Keep editing', 'Quit anyway'],
+    defaultId: 0,
+    cancelId: 0,
+  }) === 0 : hasDrafts && dialog.showMessageBoxSync(window, {
+    type: 'question',
+    message: 'Quit CEVRA and keep your drafts?',
+    detail: 'CEVRA will reopen the drafts next time.',
+    buttons: ['Keep editing', 'Quit and keep drafts'],
+    defaultId: 0,
+    cancelId: 0,
+  }) === 0;
+  closePending = false;
+  if (stay) {
+    window.webContents.send('cevra:close-canceled');
+  } else {
+    allowClose = true;
+    setImmediate(() => window?.close());
+  }
+});
+
+async function launch() {
+  const previous = window;
+  const bounds = previous?.getBounds();
+  const maximized = previous?.isMaximized();
   Menu.setApplicationMenu(null);
-  window = new BrowserWindow({
+  const workbench = new BrowserWindow({
     width: 1380,
     height: 900,
+    ...bounds,
     minWidth: 740,
     minHeight: 560,
     backgroundColor: '#101417',
@@ -137,28 +204,56 @@ app.whenReady().then(() => {
       nodeIntegration: false,
     },
   });
-  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  window.webContents.on('will-navigate', event => event.preventDefault());
-  window.webContents.on('will-attach-webview', event => event.preventDefault());
-  window.on('close', event => {
-    if (dirty && dialog.showMessageBoxSync(window, {
-      type: 'warning',
-      message: 'Quit CEVRA and discard unsaved changes?',
-      buttons: ['Keep editing', 'Quit'],
-      defaultId: 0,
-      cancelId: 0,
-    }) === 0) {
-      event.preventDefault();
+  window = workbench;
+  workbench.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  workbench.webContents.on('will-navigate', event => event.preventDefault());
+  workbench.webContents.on('will-attach-webview', event => event.preventDefault());
+  workbench.webContents.on('render-process-gone', () => {
+    if (window !== workbench) return;
+    rendererReady = false;
+    closePending = false;
+    stopRun();
+    const now = Date.now();
+    const repeated = now - lastRendererCrash < 2_000;
+    lastRendererCrash = now;
+    setImmediate(() => {
+      if (window !== workbench || workbench.isDestroyed() || allowClose) return;
+      if (repeated) workbench.close();
+      else launch().catch(error => {
+        console.error(error);
+        app.exit(1);
+      });
+    });
+  });
+  workbench.on('close', event => {
+    if (allowClose || !rendererReady) {
+      stopRun();
       return;
     }
-    stopRun();
+    event.preventDefault();
+    if (!closePending) {
+      closePending = true;
+      workbench.webContents.send('cevra:before-close');
+    }
   });
-  window.on('closed', () => { window = undefined; });
-  return window.loadFile(page);
-}).catch(error => {
-  console.error(error);
-  app.exit(1);
-});
+  workbench.on('closed', () => { if (window === workbench) window = undefined; });
+  if (maximized) workbench.maximize();
+  previous?.destroy();
+  await workbench.loadFile(page);
+}
+
+if (app.requestSingleInstanceLock()) {
+  app.on('second-instance', () => {
+    if (window?.isMinimized()) window.restore();
+    window?.focus();
+  });
+  app.whenReady().then(launch).catch(error => {
+    console.error(error);
+    app.exit(1);
+  });
+} else {
+  app.quit();
+}
 
 app.on('window-all-closed', () => app.quit());
 app.on('will-quit', tests.dispose);

@@ -30,4 +30,12 @@ The built-in example includes a failing test for fractional weights. In `total.c
 
 ## Verify CEVRA
 
-Run `npm test` from the repository. The suite launches CEVRA with temporary projects and exercises saving, execution, error navigation, and failed-test retries through the desktop UI. It covers nested files and paths with spaces, parentheses, brackets, Unicode, and URL-special characters.
+Run `npm test` on Windows before expanding the workbench. The core suite exercises JavaScript process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.
+
+GitHub Actions runs the same checks on Windows for every push and pull request.
+
+## Recover unsaved edits
+
+CEVRA stores unsaved edits in a local draft journal. **Draft backed up** in the status bar means the current edit has been written to the journal. CEVRA reopens those drafts after a renderer crash, after restarting the app, or after choosing **Quit and keep drafts**. Closing a tab and confirming discard removes its draft.
+
+If an original file has changed or disappeared, **Save recovery copy** writes a separate file in the project root. The journal protects edits through the last completed backup. Reopen a disconnected workspace when it becomes accessible to recover its drafts.

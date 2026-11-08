@@ -142,4 +142,5 @@ button.test-result:hover { background: var(--raised); }
 .statusbar { display: flex; align-items: center; gap: 16px; padding: 0 12px; background: var(--chrome); border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .message { margin-right: auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .message[data-error="true"] { color: var(--danger); }
+.status-field[data-state="error"] { color: var(--danger); }
 .status-field { white-space: nowrap; }

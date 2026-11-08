@@ -6,7 +6,9 @@
   "scripts": {
     "build": "esbuild src/workbench.js --bundle --minify --outfile=dist/workbench.js",
     "start": "npm run build && electron .",
-    "test": "npm run build && node --test qa/workbench.test.cjs"
+    "test": "npm run test:core && npm run test:desktop",
+    "test:core": "node --test qa/core.test.cjs",
+    "test:desktop": "npm run build && node --test qa/workbench.test.cjs"
   },
   "devDependencies": {
     "electron": "45.2.3",

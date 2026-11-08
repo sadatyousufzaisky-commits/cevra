@@ -1,15 +1,21 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('cevra', {
-  chooseFolder: () => ipcRenderer.invoke('cevra:choose-folder'),
-  openExample: () => ipcRenderer.invoke('cevra:open-example'),
+  initial: () => ipcRenderer.invoke('cevra:initial'),
+  chooseFolder: discard => ipcRenderer.invoke('cevra:choose-folder', discard),
+  openExample: discard => ipcRenderer.invoke('cevra:open-example', discard),
   confirmDiscard: name => ipcRenderer.invoke('cevra:discard', name),
   list: (id, folder) => ipcRenderer.invoke('cevra:list', id, folder),
   read: (id, file) => ipcRenderer.invoke('cevra:read', id, file),
   save: (id, file, text, revision) => ipcRenderer.invoke('cevra:save', id, file, text, revision),
+  saveCopy: (id, file, text) => ipcRenderer.invoke('cevra:save-copy', id, file, text),
+  draft: (id, file, text, revision) => ipcRenderer.invoke('cevra:draft', id, file, text, revision),
   start: (id, file, revision, runId) => ipcRenderer.invoke('cevra:start', id, file, revision, runId),
   test: (id, retry, runId) => ipcRenderer.invoke('cevra:test', id, retry, runId),
   stop: () => ipcRenderer.invoke('cevra:stop'),
-  setDirty: value => ipcRenderer.send('cevra:dirty', value),
+  ready: () => ipcRenderer.send('cevra:ready'),
+  closeReady: (hasDrafts, backupFailed) => ipcRenderer.invoke('cevra:close-ready', hasDrafts, backupFailed),
+  beforeClose: callback => ipcRenderer.on('cevra:before-close', () => callback()),
+  onCloseCanceled: callback => ipcRenderer.on('cevra:close-canceled', () => callback()),
   onRun: callback => ipcRenderer.on('cevra:run-event', (_event, detail) => callback(detail)),
 });

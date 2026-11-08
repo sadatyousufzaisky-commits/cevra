@@ -1,10 +1,14 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
+const { writeAtomic } = require('./atomic-file.cjs');
 
 const maxFileBytes = 2 * 1024 * 1024;
 const hiddenDirectories = new Set(['.git', 'node_modules']);
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+const pendingWrites = new Map();
+const windows = process.platform === 'win32';
+const reservedName = /^(?:con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³]) *(?:\.|$)/i;
 
 function inside(root, file) {
   const relative = path.relative(root, file);
@@ -17,26 +21,55 @@ function fingerprint(bytes) {
 
 async function createWorkspace(folder) {
   const root = await fs.realpath(folder);
-  if (!(await fs.stat(root)).isDirectory()) throw new Error('Choose a project folder.');
-  return { id: randomUUID(), root, name: path.basename(root) || root };
+  const identity = await fs.stat(root, { bigint: true });
+  if (!identity.isDirectory()) throw new Error('Choose a project folder.');
+  return { id: randomUUID(), root, identity, name: path.basename(root) || root };
 }
 
-async function resolveEntry(workspace, relative) {
-  if (typeof relative !== 'string' || path.isAbsolute(relative) || relative.includes(':')) {
+function workspacePath(workspace, relative) {
+  if (typeof relative !== 'string' || path.isAbsolute(relative) || /[:\0]/.test(relative)) {
+    throw new Error('Invalid workspace path.');
+  }
+  const parts = relative.split(windows ? /[\\/]/ : '/');
+  if (parts.some(part => part === '..')) throw new Error('Path is outside the workspace.');
+  if (parts.some(part => hiddenDirectories.has(part.toLowerCase()) ||
+    (windows && part !== '.' && (/[. ]$/.test(part) || reservedName.test(part))))) {
     throw new Error('Invalid workspace path.');
   }
   const entry = path.resolve(workspace.root, relative);
   if (!inside(workspace.root, entry)) throw new Error('Path is outside the workspace.');
+  return entry;
+}
+
+function sameFile(a, b) {
+  return a.dev === b.dev && a.ino === b.ino;
+}
+
+async function checkedEntry(workspace, relative) {
+  const entry = workspacePath(workspace, relative);
+  const root = await fs.lstat(workspace.root, { bigint: true });
+  if (!root.isDirectory() || !sameFile(root, workspace.identity)) {
+    throw new Error('The workspace folder changed. Open it again.');
+  }
   const real = await fs.realpath(entry);
-  if (!inside(workspace.root, real)) throw new Error('Path points outside the workspace.');
-  return real;
+  if (path.relative(entry, real) !== '') throw new Error('Workspace links cannot be opened.');
+  const stat = await fs.lstat(real, { bigint: true });
+  if (stat.isSymbolicLink() || (stat.isFile() && stat.nlink !== 1n)) {
+    throw new Error('Workspace links cannot be opened.');
+  }
+  return { file: real, stat };
+}
+
+async function resolveEntry(workspace, relative) {
+  return (await checkedEntry(workspace, relative)).file;
 }
 
 async function listFolder(workspace, relative = '') {
   const folder = await resolveEntry(workspace, relative);
   const entries = await fs.readdir(folder, { withFileTypes: true });
   return entries
-    .filter(entry => (entry.isDirectory() && !hiddenDirectories.has(entry.name)) || entry.isFile())
+    .filter(entry => !hiddenDirectories.has(entry.name.toLowerCase()) &&
+      !/^\.cevra-[a-f0-9-]+\.tmp$/i.test(entry.name) && (entry.isDirectory() || entry.isFile()))
     .map(entry => ({
       name: entry.name,
       path: path.join(relative, entry.name),
@@ -46,17 +79,21 @@ async function listFolder(workspace, relative = '') {
       a.name.localeCompare(b.name, undefined, { numeric: true }));
 }
 
-async function readBytes(file) {
-  const handle = await fs.open(file, 'r');
+async function readBytes(workspace, relative) {
+  const { file, stat } = await checkedEntry(workspace, relative);
+  if (!stat.isFile()) throw new Error('Choose a regular file.');
+  if (stat.size > BigInt(maxFileBytes)) throw new Error('The editor supports files up to 2 MB.');
+  const handle = await fs.open(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
   try {
-    const stat = await handle.stat();
-    if (!stat.isFile()) throw new Error('Choose a regular file.');
-    if (stat.size > maxFileBytes) throw new Error('The editor supports files up to 2 MB.');
+    const opened = await handle.stat({ bigint: true });
+    if (!opened.isFile() || opened.nlink !== 1n || !sameFile(stat, opened)) {
+      throw new Error('The file changed while opening it. Try again.');
+    }
     const buffer = Buffer.allocUnsafe(maxFileBytes + 1);
     let length = 0;
     while (length <= maxFileBytes) {
       const { bytesRead } = await handle.read(buffer, length, buffer.length - length, null);
-      if (!bytesRead) return { bytes: buffer.subarray(0, length), mode: stat.mode };
+      if (!bytesRead) return { file, bytes: buffer.subarray(0, length), stat: opened };
       length += bytesRead;
     }
     throw new Error('The editor supports files up to 2 MB.');
@@ -66,8 +103,7 @@ async function readBytes(file) {
 }
 
 async function readSource(workspace, relative) {
-  const file = await resolveEntry(workspace, relative);
-  const { bytes } = await readBytes(file);
+  const { bytes } = await readBytes(workspace, relative);
   let text;
   try {
     text = utf8.decode(bytes);
@@ -78,34 +114,70 @@ async function readSource(workspace, relative) {
   return { text, revision: fingerprint(bytes) };
 }
 
-async function verifyRevision(file, revision) {
-  const current = await readBytes(file);
+async function verifyRevision(workspace, relative, revision) {
+  const current = await readBytes(workspace, relative);
   if (fingerprint(current.bytes) !== revision) {
     throw new Error('This file changed on disk. Copy any unsaved edits, then reopen the file.');
   }
-  return current.mode;
+  return current;
 }
 
-async function saveSource(workspace, relative, text, revision) {
+function validateText(text) {
   if (typeof text !== 'string' || Buffer.byteLength(text) > maxFileBytes) {
     throw new Error('The editor supports files up to 2 MB.');
   }
-  const file = await resolveEntry(workspace, relative);
-  const mode = await verifyRevision(file, revision);
-  const temporary = path.join(path.dirname(file), `.cevra-${randomUUID()}.tmp`);
-  const handle = await fs.open(temporary, 'wx', mode);
+  if (text.includes('\0')) throw new Error('The editor supports UTF-8 text files.');
+}
+
+async function saveSource(workspace, relative, text, revision) {
+  validateText(text);
+  const target = workspacePath(workspace, relative);
+  const key = windows ? target.toLowerCase() : target;
+  const previous = pendingWrites.get(key) ?? Promise.resolve();
+  const save = previous.catch(() => {}).then(async () => {
+    const current = await verifyRevision(workspace, relative, revision);
+    await writeAtomic(current.file, text, {
+      mode: Number(current.stat.mode) & 0o777,
+      beforeCommit: async () => {
+        const latest = await verifyRevision(workspace, relative, revision);
+        if (!sameFile(current.stat, latest.stat)) throw new Error('The file was replaced while saving.');
+      },
+    });
+    return fingerprint(text);
+  });
+  pendingWrites.set(key, save);
+  try {
+    return await save;
+  } finally {
+    if (pendingWrites.get(key) === save) pendingWrites.delete(key);
+  }
+}
+
+async function saveRecoveryCopy(workspace, relative, text) {
+  validateText(text);
+  const target = workspacePath(workspace, relative);
+  if (path.relative(workspace.root, target) === '') throw new Error('Choose a regular file.');
+  const original = path.parse(target);
+  const name = original.name.slice(0, 100) + ' (recovered ' + randomUUID().slice(0, 8) + ')' + original.ext;
+  await checkedEntry(workspace, '');
+  const file = workspacePath(workspace, name);
+  const handle = await fs.open(file, 'wx', 0o600);
+  let completed = false;
   try {
     try {
       await handle.writeFile(text);
+      await handle.sync();
     } finally {
       await handle.close();
     }
-    await verifyRevision(file, revision);
-    await fs.rename(temporary, file);
+    completed = true;
   } finally {
-    await fs.rm(temporary, { force: true });
+    if (!completed) await fs.unlink(file).catch(() => {});
   }
-  return fingerprint(text);
+  return name;
 }
 
-module.exports = { createWorkspace, inside, listFolder, readSource, resolveEntry, saveSource, verifyRevision };
+module.exports = {
+  createWorkspace, inside, listFolder, readSource, resolveEntry, saveSource, saveRecoveryCopy,
+  verifyRevision, workspacePath,
+};
