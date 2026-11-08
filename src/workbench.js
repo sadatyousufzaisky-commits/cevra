@@ -3,9 +3,12 @@ import { EditorState, Text } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { indentUnit } from '@codemirror/language';
 import { javascript } from '@codemirror/lang-javascript';
+import { linter, lintGutter, setDiagnostics, setDiagnosticsEffect } from '@codemirror/lint';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { createNavigationHistory } from './navigation-history.js';
+import { createProblemsPanel } from './problems-panel.js';
 import { createSearchPanel } from './search-panel.js';
+import { sourceLanguage } from './source-language.cjs';
 
 const api = window.cevra;
 const byId = id => document.getElementById(id);
@@ -55,6 +58,12 @@ const editorTheme = EditorView.theme({
   '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: '#1c272a' },
   '.cm-cursor': { borderLeftColor: '#39edaa' },
 }, { dark: true });
+const syntaxDecorations = [
+  linter(null),
+  lintGutter(),
+  EditorState.transactionExtender.of(transaction =>
+    transaction.docChanged ? { effects: setDiagnosticsEffect.of([]) } : null),
+];
 
 function icon(name, className) {
   const namespace = 'http://www.w3.org/2000/svg';
@@ -116,7 +125,7 @@ function syncCursor() {
   }
   const position = view.state.selection.main.head;
   const line = view.state.doc.lineAt(position);
-  byId('language').textContent = runnable.test(active.path) ? 'JavaScript' : 'Plain text';
+  byId('language').textContent = active.language?.name ?? 'Plain text';
   byId('cursor').textContent = `Ln ${line.number}, Col ${position - line.from + 1}`;
 }
 
@@ -173,7 +182,10 @@ function editorState(tab, text) {
       oneDark,
       editorTheme,
       indentUnit.of('  '),
-      runnable.test(tab.path) ? javascript() : [],
+      tab.language ? [
+        javascript({ typescript: tab.language.typescript, jsx: tab.language.jsx }),
+        syntaxDecorations,
+      ] : [],
       EditorView.contentAttributes.of({ 'aria-label': 'Source editor' }),
       EditorView.updateListener.of(update => {
         tab.state = update.state;
@@ -191,6 +203,7 @@ function editorState(tab, text) {
           }
           queueDraft(tab);
           searchPanel.changed();
+          problemsPanel.changed(tab);
         }
         if (update.docChanged || update.selectionSet) syncCursor();
       }),
@@ -337,6 +350,7 @@ function createTab(path, text, revision) {
     path,
     projectId: project.id,
     name: path.split(/[\\/]/).at(-1),
+    language: sourceLanguage(path),
     revision,
     bom: text.startsWith('\uFEFF') ? '\uFEFF' : '',
     eol: text.includes('\r\n') ? '\r\n' : text.includes('\n') ? '\n' : text.includes('\r') ? '\r' : '\n',
@@ -345,6 +359,7 @@ function createTab(path, text, revision) {
   tab.state = editorState(tab, normalized(text));
   tab.savedDoc = tab.state.doc;
   documents.set(path, tab);
+  problemsPanel.track(tab);
   return tab;
 }
 
@@ -393,6 +408,7 @@ async function removeTab(tab) {
     }
   }
   documents.delete(tab.path);
+  problemsPanel.remove(tab);
   if (tab.dirty) searchPanel.changed();
   if (tab === active) showFile([...documents.values()].at(-1));
   syncDirty();
@@ -416,6 +432,7 @@ async function adoptProject(next) {
   ++fileRequest;
   navigation.clear();
   searchPanel.reset();
+  problemsPanel.reset();
   project = next;
   documents.clear();
   expanded.clear();
@@ -564,6 +581,7 @@ function appendOutput(text) {
 async function launchRun(mode, target, start) {
   const id = ++runSequence;
   run = { id, mode, stage: 'starting' };
+  problemsPanel.show('output');
   resetOutput(target, mode);
   setRunState('Starting', 'running');
   syncCommands();
@@ -726,11 +744,11 @@ function captureLocation() {
   };
 }
 
-async function jumpToLocation({ path, line, column, length = 0 }, expected) {
+async function jumpToLocation({ path, line, column, offset, length = 0 }, expected) {
   const origin = captureLocation();
   const tab = await openFile(path, expected);
   if (!tab) return;
-  const pos = documentPosition(line, column);
+  const pos = offset ?? documentPosition(line, column);
   const end = Math.min(view.state.doc.length, pos + length);
   if (origin?.documentId !== tab.id || origin?.selection.main.head !== pos) {
     navigation.record(origin);
@@ -776,6 +794,18 @@ const searchPanel = createSearchPanel({
     path: tab.path, documentId: tab.id, version: tab.version, text: tab.state.doc.toString(),
   })),
   jump: jumpToLocation,
+  errorText,
+});
+
+const problemsPanel = createProblemsPanel({
+  api,
+  apply(tab, issues) {
+    const update = setDiagnostics(tab.state, issues);
+    if (tab === active) view.dispatch(update);
+    else tab.state = tab.state.update(update).state;
+  },
+  jump: jumpToLocation,
+  report,
   errorText,
 });
 
@@ -834,6 +864,9 @@ document.addEventListener('keydown', event => {
   } else if (command && event.shiftKey && key === 'f') {
     event.preventDefault();
     searchPanel.show();
+  } else if (command && event.shiftKey && key === 'm') {
+    event.preventDefault();
+    problemsPanel.show('problems', true);
   } else if (!command && event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
     event.preventDefault();
     travel(event.key === 'ArrowLeft' ? 'back' : 'forward').catch(report);

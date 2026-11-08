@@ -7,6 +7,7 @@ const { startNodeRun } = require('./runner.cjs');
 const { createTestSession } = require('./project-tests.cjs');
 const { createDraftStore } = require('./drafts.cjs');
 const { searchProject } = require('./project-search.cjs');
+const { createSyntaxService } = require('./syntax-service.cjs');
 
 app.setName('CEVRA');
 
@@ -14,6 +15,7 @@ const page = path.join(__dirname, 'index.html');
 const pageURL = pathToFileURL(page).href;
 const tests = createTestSession(app.getPath('temp'));
 const drafts = createDraftStore(path.join(app.getPath('userData'), 'drafts'));
+const syntax = createSyntaxService();
 let window;
 let workspace;
 let activeRun;
@@ -56,6 +58,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
   const { entries, unreadable } = await readDrafts();
   const recovered = entries.filter(draft => draft.root === next.root);
   activeSearch?.controller.abort();
+  syntax.stop();
   workspace = next;
   return {
     id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable,
@@ -118,6 +121,11 @@ handle('discard', async name => {
 
 handle('list', (id, folder) => listFolder(currentWorkspace(id), folder));
 handle('read', (id, file) => readSource(currentWorkspace(id), file));
+handle('syntax', (id, file, text) => {
+  const project = currentWorkspace(id);
+  if (path.relative(project.root, workspacePath(project, file)) === '') throw new Error('Choose a source file.');
+  return syntax.analyze(file, text);
+});
 handle('search', async (id, requestId, query, caseSensitive, snapshots) => {
   const project = currentWorkspace(id);
   activeSearch?.controller.abort();
@@ -233,6 +241,7 @@ async function launch() {
     rendererReady = false;
     closePending = false;
     activeSearch?.controller.abort();
+    syntax.stop();
     stopRun();
     const now = Date.now();
     const repeated = now - lastRendererCrash < 2_000;
@@ -279,3 +288,4 @@ if (app.requestSingleInstanceLock()) {
 
 app.on('window-all-closed', () => app.quit());
 app.on('will-quit', tests.dispose);
+app.on('will-quit', syntax.stop);

@@ -8,6 +8,7 @@ const { startNodeRun, startNodeTests } = require('../src/runner.cjs');
 const { createDraftStore } = require('../src/drafts.cjs');
 const { writeAtomic } = require('../src/atomic-file.cjs');
 const { searchProject } = require('../src/project-search.cjs');
+const { createSyntaxService } = require('../src/syntax-service.cjs');
 
 async function fixture(t) {
   const folder = await temporaryFolder(t, 'cevra-core-');
@@ -227,4 +228,60 @@ test('project search caps results, handles cancellation, and rejects an unsafe d
   await assert.rejects(searchProject(workspace, 'token', false, [
     { path: '../outside.txt', documentId: 1, version: 0, text: 'token' },
   ], new AbortController().signal), /outside the workspace/);
+});
+
+test('syntax checks locate JavaScript and TypeScript errors and handle EOF and JSX', { timeout: 15_000 }, async t => {
+  const syntax = createSyntaxService();
+  t.after(syntax.stop);
+  const js = 'const broken = ;\n';
+  const [broken, typed, valid, eof, jsx] = await Promise.all([
+    syntax.analyze('nested (# %)/entry.cjs', js),
+    syntax.analyze('typed.js', 'const count: number = 1;\n'),
+    syntax.analyze('valid.mts', 'import "./unavailable";\nconst count: number = 1;\nthrow new Error("never run");'),
+    syntax.analyze('unclosed.ts', 'export function read() {\n'),
+    syntax.analyze('view.tsx', 'const view = <button>Close</span>;\n'),
+  ]);
+  assert.deepEqual(broken.issues, [{
+    from: 15, to: 16, line: 1, column: 16, severity: 'error', code: 1109, message: 'Expression expected.',
+  }]);
+  assert.equal(js.slice(broken.issues[0].from, broken.issues[0].to), ';');
+  assert.equal(typed.issues[0].code, 8010);
+  assert.deepEqual(valid.issues, []);
+  assert.equal(eof.issues[0].line, 2);
+  assert.equal(eof.issues[0].column, 1);
+  assert.equal(eof.issues[0].from, eof.issues[0].to);
+  assert.match(jsx.issues[0].message, /closing tag/);
+});
+
+test('syntax checks bound source size and displayed diagnostics', { timeout: 15_000 }, async t => {
+  const syntax = createSyntaxService();
+  t.after(syntax.stop);
+  const many = await syntax.analyze('many.js', 'const broken = ;\n'.repeat(125));
+  assert.equal(many.issues.length, 100);
+  assert.equal(many.omitted, 25);
+  await assert.rejects(syntax.analyze('note.txt', 'const broken = ;'), /JavaScript or TypeScript/);
+  await assert.rejects(syntax.analyze('large.ts', 'a'.repeat(2 * 1024 * 1024 + 1)), /2 MB/);
+});
+
+test('syntax worker exits reject outstanding checks and a later request starts a replacement', { timeout: 15_000 }, async t => {
+  const { folder } = await fixture(t);
+  const worker = path.join(folder, 'worker.cjs');
+  await fs.writeFile(worker, [
+    'const { parentPort } = require("node:worker_threads");',
+    'parentPort.on("message", ({ id, text }) => {',
+    '  if (text === "exit") process.exit(23);',
+    '  parentPort.postMessage({ id, result: { issues: [], omitted: 0 } });',
+    '});',
+  ].join('\n'));
+  const syntax = createSyntaxService(worker);
+  t.after(syntax.stop);
+  const settled = await Promise.allSettled([
+    syntax.analyze('first.js', 'exit'),
+    syntax.analyze('second.ts', 'pending'),
+  ]);
+  for (const check of settled) {
+    assert.equal(check.status, 'rejected');
+    assert.match(check.reason.message, /analyzer stopped/);
+  }
+  assert.deepEqual(await syntax.analyze('second.ts', 'valid'), { issues: [], omitted: 0 });
 });

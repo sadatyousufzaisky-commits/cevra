@@ -93,13 +93,18 @@
           </div>
         </div>
       </section>
-      <section id="run-panel" class="run-panel" aria-labelledby="run-heading">
+      <section id="run-panel" class="run-panel" aria-label="Workbench panel">
         <header class="run-header">
-          <h2 id="run-heading">Run output</h2>
+          <div class="dock-views" role="group" aria-label="Workbench views">
+            <button id="show-output" class="dock-view" aria-pressed="true"><span id="run-heading">Run output</span></button>
+            <button id="show-problems" class="dock-view" aria-label="Problems" aria-pressed="false" title="Problems (Ctrl+Shift+M)">Problems <span id="problems-count" class="problems-count" aria-hidden="true" hidden></span></button>
+          </div>
           <span id="run-state" class="run-state" role="status">Ready</span>
           <span id="run-target" class="run-target"></span>
           <span id="test-totals" class="run-target" hidden></span>
           <button id="rerun-failures" class="button rerun-button" title="Save open files and rerun failures" hidden>Rerun failures</button>
+          <span id="problems-status" class="run-target" role="status" hidden></span>
+          <button id="problems-retry" class="button rerun-button" hidden>Retry checks</button>
         </header>
         <div id="run-diagnostic" class="run-diagnostic" hidden>
           <span>Source location</span>
@@ -115,6 +120,9 @@
           </section>
           <pre id="run-output" class="run-output" tabindex="0" aria-label="Program output">Run a JavaScript file to see its output here.</pre>
         </div>
+        <section id="problems-panel" class="problems-panel" aria-label="Syntax problems" hidden>
+          <ul id="problem-list" class="problem-list"></ul>
+        </section>
       </section>
     </section>
   </main>

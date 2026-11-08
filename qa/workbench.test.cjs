@@ -452,3 +452,120 @@ test('in-file search supports case and whole-word replacement with one undo', as
   await editor.press('Control+z');
   assert.deepEqual((await editor.locator('.cm-line').allTextContents()).slice(0, 2), ['alpha alphabet ALPHA', 'alpha']);
 });
+
+test('live Problems use unsaved source and navigate to the exact range before any run', async t => {
+  const folder = 'nested (# % &)';
+  const name = 'check.cjs';
+  const file = path.join(folder, name);
+  const original = '// saved text\nconst sample = 1;\n';
+  const workbench = await openWorkbench(t, {
+    'origin.cjs': 'const origin = true;\n',
+    [file]: original,
+  });
+  const { page, editor, open, project, selected, state } = workbench;
+  await workbench.file(folder).click();
+  await open(name);
+  await editor.press('Control+Shift+m');
+  const status = page.locator('#problems-status');
+  const problems = page.getByRole('region', { name: 'Syntax problems' });
+  await status.getByText('No syntax problems.', { exact: true }).waitFor();
+
+  await replaceEditor(workbench, '// unsaved text\nconst sample = ;\n');
+  const issue = problems.getByRole('button', { name: 'Error Expression expected. Ln 2, Col 16' });
+  await issue.waitFor();
+  await problems.getByRole('heading', { name: file, exact: true }).waitFor();
+  await editor.locator('.cm-lintRange-error').waitFor();
+  await page.locator('.cm-lint-marker-error').waitFor();
+  assert.equal(await state.textContent(), 'Ready');
+  assert.equal(await fs.readFile(path.join(project, file), 'utf8'), original);
+
+  await open('origin.cjs');
+  await issue.click();
+  await selected(name).waitFor();
+  await page.locator('#cursor').getByText('Ln 2, Col 16', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), ';');
+  await page.keyboard.insertText('42;');
+  await issue.waitFor({ state: 'detached' });
+  await editor.locator('.cm-lintRange-error').waitFor({ state: 'detached' });
+  await status.getByText('No syntax problems.', { exact: true }).waitFor();
+  assert.match(await editor.textContent(), /sample = 42;/);
+  assert.equal(await fs.readFile(path.join(project, file), 'utf8'), original);
+});
+
+test('Problems checks TypeScript tabs and clears closed documents', async t => {
+  const typed = 'const value = 1;\u2028const count: number = ;\n';
+  const column = typed.lastIndexOf(';') + 1;
+  const { page, open, editor, selected } = await openWorkbench(t, {
+    'typed.ts': typed,
+    'notes.txt': 'const ignored = ;\n',
+  });
+  await open('typed.ts');
+  await page.locator('#language').getByText('TypeScript', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Problems', exact: true }).click();
+  const problems = page.getByRole('region', { name: 'Syntax problems' });
+  const issue = problems.getByRole('button', { name: 'Error Expression expected. Ln 1, Col ' + column });
+  await issue.waitFor();
+  await open('notes.txt');
+  assert.equal(await page.locator('#language').textContent(), 'Plain text');
+  await issue.click();
+  await selected('typed.ts').waitFor();
+  await page.locator('#cursor').getByText('Ln 1, Col ' + column, { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), ';');
+  await editor.press('Control+w');
+  await selected('notes.txt').waitFor();
+  await page.locator('#problems-status').getByText('Open a JavaScript or TypeScript file to check syntax.').waitFor();
+  assert.equal(await problems.getByRole('button').count(), 0);
+});
+
+test('late syntax replies stay hidden and unavailable checks can be retried', { timeout: 25_000 }, async t => {
+  const workbench = await openWorkbench(t, { 'check.js': 'const n = 1;\n' });
+  const { app, page, open, editor } = workbench;
+  await app.evaluate(({ ipcMain }) => {
+    let unavailableOnce = true;
+    ipcMain.removeHandler('cevra:syntax');
+    ipcMain.handle('cevra:syntax', (_event, _id, _file, text) => {
+      if (text.includes('hold check')) {
+        return new Promise(resolve => {
+          ipcMain.releaseHeldSyntax = () => resolve({
+            issues: [{ from: 0, to: 5, line: 1, column: 1, severity: 'error', code: 1, message: 'Stale diagnostic' }],
+            omitted: 0,
+          });
+          ipcMain.waitForHeldSyntax?.();
+        });
+      }
+      if (text.includes('fail check') && unavailableOnce) {
+        unavailableOnce = false;
+        throw new Error('Test analyzer unavailable.');
+      }
+      return { issues: [], omitted: 0 };
+    });
+  });
+  await open('check.js');
+  await page.getByRole('button', { name: 'Problems', exact: true }).click();
+  const status = page.locator('#problems-status');
+  await status.getByText('No syntax problems.', { exact: true }).waitFor();
+  await replaceEditor(workbench, '// hold check\nconst n = ;\n');
+  await app.evaluate(({ ipcMain }) => {
+    if (ipcMain.releaseHeldSyntax) return;
+    return new Promise(resolve => { ipcMain.waitForHeldSyntax = resolve; });
+  });
+  await page.evaluate(() => {
+    const list = document.getElementById('problem-list');
+    window.sawStaleDiagnostic = false;
+    new MutationObserver(() => {
+      if (list.textContent.includes('Stale diagnostic')) window.sawStaleDiagnostic = true;
+    }).observe(list, { childList: true, subtree: true });
+  });
+  await replaceEditor(workbench, '// latest buffer\nconst n = 2;\n');
+  await app.evaluate(({ ipcMain }) => ipcMain.releaseHeldSyntax());
+  await status.getByText('No syntax problems.', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.sawStaleDiagnostic), false);
+  assert.equal(await editor.locator('.cm-lintRange-error').count(), 0);
+
+  await replaceEditor(workbench, '// fail check\nconst n = 3;\n');
+  await status.getByText('1 unavailable', { exact: true }).waitFor();
+  await page.getByText('Test analyzer unavailable.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Retry checks', exact: true }).click();
+  await status.getByText('No syntax problems.', { exact: true }).waitFor();
+  assert.match(await editor.textContent(), /const n = 3;/);
+});
