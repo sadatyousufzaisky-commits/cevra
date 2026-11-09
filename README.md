@@ -1,6 +1,6 @@
 # PROJECT CEVRA
 
-CEVRA is a public project building a desktop environment for the whole software development workflow. The first milestone connects editing, execution, and error navigation in one workbench. Its first benchmark against VS Code will be the time and actions it takes to get from an edit to a failed run and back to the relevant source line.
+CEVRA is a public project building a desktop environment for the whole software development workflow. It connects editing, execution, and error navigation in one workbench. The desktop benchmark measures these workflows in CEVRA and can run the same fixture in VS Code.
 
 ## Run the workbench
 
@@ -125,7 +125,15 @@ GitHub Actions runs the same checks on Windows for every push and pull request.
 
 Run `npm run benchmark` for five samples or `npm run benchmark -- --samples=20` for a longer run. The harness launches Electron with a fresh local profile for each sample and a generated 163-file workspace. It reports median and p95 times for opening the workspace and a file, editing, syntax feedback, project search, a failed run, and jumping from its output. It verifies the exact search, diagnostic, and runtime destinations. The folder picker and trust prompt are answered by the harness, and timings include app and automation overhead for each measured operation.
 
-For a matched VS Code comparison, generate the same workspace with `node qa/benchmark.cjs --fixture=PATH_TO_NEW_FOLDER`. On the same machine, use clean profiles, record editor versions and runtime versions, and run the same number of samples in each editor. Use `edit.ts` for opening, typing, and the syntax error `const benchmark = ;`. Search for `CEVRA_BENCHMARK_NEEDLE` and verify line 51, column 14. Run `main.cjs` and verify the jump to `fault # %.cjs` at line 3, column 9. Time the same start and end points and record the number of actions separately.
+On Windows, add a path to `Code.exe` to run a matched comparison in the same command.
+
+```powershell
+npm run benchmark -- --samples=5 "--vscode=C:\path\to\Code.exe"
+```
+
+The comparison alternates editor order across samples and uses the same fixture and fresh profiles. VS Code runs the failing script through its built-in Node launcher with the Node executable running the harness. CEVRA uses its bundled runtime. Both apps report a runtime version, and jump timings start when the harness activates each app's output link.
+
+To generate a fixture for manual runs, use `node qa/benchmark.cjs --fixture=PATH_TO_NEW_FOLDER`. Use `edit.ts` to type and correct `const benchmark = ;`. Search for `CEVRA_BENCHMARK_NEEDLE` at line 51, column 14. Run `main.cjs` and jump to `fault # %.cjs` at line 3, column 9.
 
 ## Recover unsaved edits
 

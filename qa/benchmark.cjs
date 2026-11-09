@@ -5,6 +5,7 @@ const path = require('node:path');
 const { performance } = require('node:perf_hooks');
 const { _electron } = require('playwright');
 const { temporaryFolder } = require('./temp.cjs');
+const { ensureIsolatedVscode, sampleVscode } = require('./benchmark-vscode.cjs');
 
 const repo = path.resolve(__dirname, '..');
 const needle = 'CEVRA_BENCHMARK_NEEDLE';
@@ -45,9 +46,11 @@ async function sample(root, profile) {
     timeout: 20_000,
   });
   try {
+    const runtime = await app.evaluate(() => process.versions.node);
     await app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
       dialog.showMessageBox = async () => ({ response: 1 });
+      dialog.showMessageBoxSync = () => 1;
     }, root);
     const page = await app.firstWindow();
     page.setDefaultTimeout(10_000);
@@ -122,12 +125,13 @@ async function sample(root, profile) {
       await page.locator('#run-state').getByText(/^Failed/).waitFor();
     });
     const destination = page.getByRole('button', { name: path.join(faultFolder, faultName) + ':3:9', exact: true });
+    await destination.waitFor();
     const runtimeJumpMs = await measure(async () => {
-      await destination.click();
+      await destination.dispatchEvent('click');
       await cursor('Ln 3, Col 9');
     });
     assert.equal(await page.locator('#tabs [aria-current=true]').textContent(), faultName);
-    return { openMs, openFileMs, editPaintMs, diagnosticsMs, searchMs, runToFailureMs, runtimeJumpMs };
+    return { runtime, timings: { openMs, openFileMs, editPaintMs, diagnosticsMs, searchMs, runToFailureMs, runtimeJumpMs } };
   } finally {
     await app.close();
   }
@@ -144,30 +148,45 @@ function summarize(samples) {
 }
 
 async function main() {
-  const [option, extra] = process.argv.slice(2);
-  if (extra) throw new Error('Use one option: --samples=5 or --fixture=PATH.');
-  if (option?.startsWith('--fixture=')) {
-    const destination = option.slice('--fixture='.length);
-    if (!destination) throw new Error('Choose a new fixture folder.');
-    await writeFixture(path.resolve(destination));
+  const options = new Map();
+  for (const argument of process.argv.slice(2)) {
+    const match = /^--(samples|fixture|vscode)=(.+)$/.exec(argument);
+    if (!match || options.has(match[1])) throw new Error('Use --samples=5, --vscode=PATH_TO_CODE_EXE, or --fixture=PATH.');
+    options.set(match[1], match[2]);
+  }
+  if (options.has('fixture')) {
+    if (options.size !== 1) throw new Error('Generate a fixture separately from running a benchmark.');
+    await writeFixture(path.resolve(options.get('fixture')));
     return;
   }
-  const count = option === undefined ? 5 : Number(/^--samples=(\d+)$/.exec(option)?.[1]);
+  const count = options.has('samples') ? Number(options.get('samples')) : 5;
   if (!Number.isInteger(count) || count < 1 || count > 30) throw new Error('Choose 1–30 benchmark samples.');
+  const executablePath = options.has('vscode') ? await fs.realpath(options.get('vscode')) : undefined;
+  if (executablePath) await ensureIsolatedVscode(executablePath);
   const cleanup = [];
   const folder = await temporaryFolder({ after: action => cleanup.push(action) }, 'cevra-benchmark-');
   try {
     const root = path.join(folder, 'workspace');
     await writeFixture(root);
     const results = [];
+    const vscode = [];
     for (let index = 0; index < count; index++) {
+      const compare = () => sampleVscode({ executablePath, root, profile: path.join(folder, 'vscode-' + index), needle, faultName });
+      if (executablePath && index % 2) vscode.push(await compare());
       results.push(await sample(root, path.join(folder, 'profile-' + index)));
+      if (executablePath && index % 2 === 0) vscode.push(await compare());
     }
     console.log(JSON.stringify({
       platform: os.platform(), osRelease: os.release(), cpu: os.cpus()[0]?.model, node: process.version,
-      electron: require('electron/package.json').version, files: featureCount + 3, samples: count,
+      electron: require('electron/package.json').version, cevraRuntime: results[0].runtime,
+      files: featureCount + 3, samples: count,
       verifiedNavigation: { correct: count * 3, attempted: count * 3 },
-      timingsMs: summarize(results),
+      timingsMs: summarize(results.map(result => result.timings)),
+      vscode: executablePath ? {
+        version: vscode[0].version, runtime: process.versions.node,
+        verifiedNavigation: { correct: count * 3, attempted: count * 3 },
+        timingsMs: summarize(vscode.map(result => result.timings)),
+      } : undefined,
     }, null, 2));
   } finally {
     for (const action of cleanup) await action();
