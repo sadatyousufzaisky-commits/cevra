@@ -84,6 +84,12 @@ Place the cursor on a JavaScript or TypeScript symbol and press **F12**, or sele
 
 Use **Alt+Left** to return to the original selection and **Alt+Right** to revisit the definition. CEVRA checks the target revision before opening it.
 
+## Find references to a symbol
+
+Press **Shift+F12** on a JavaScript or TypeScript symbol, or choose **Find References** in the **References** panel. Results include declarations and uses in closed source files and open drafts. Select a result to jump to the exact range, or choose **Cancel** while the search runs. Source edits invalidate the results, and CEVRA checks each destination before opening it.
+
+Discovery starts in the nearest `tsconfig.json` or `jsconfig.json` folder, or at the workspace root when there is no config. It skips separately configured subtrees, dependency caches, and links, and follows supported imports through the language bridge. The panel reports when the 256-file discovery or 400-result limit is reached.
+
 ## Verify CEVRA
 
 Run `npm test` on Windows before expanding the workbench. The core suite exercises JavaScript process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.

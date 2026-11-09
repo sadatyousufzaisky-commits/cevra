@@ -10,6 +10,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { createDefinitionNavigation } from './definition-navigation.js';
 import { createNavigationHistory } from './navigation-history.js';
 import { createProblemsPanel } from './problems-panel.js';
+import { createReferencesPanel } from './references-panel.js';
 import { createSearchPanel } from './search-panel.js';
 import { createSemanticContext } from './semantic-context.js';
 import { createSemanticCompletion } from './semantic-completion.js';
@@ -34,6 +35,7 @@ const recoveryButton = byId('save-recovery');
 const formatButton = byId('format-document');
 const inspectButton = byId('inspect-symbol');
 const definitionButton = byId('go-definition');
+const findReferencesButton = byId('find-references');
 const runButton = byId('run-file');
 const testButton = byId('run-tests');
 const retryButton = byId('rerun-failures');
@@ -43,6 +45,8 @@ const failureList = byId('test-failures');
 const searchToggle = byId('search-toggle');
 const backButton = byId('nav-back');
 const forwardButton = byId('nav-forward');
+const dock = byId('run-panel');
+const dockButtons = { output: byId('show-output'), problems: byId('show-problems'), references: byId('show-references') };
 const runnable = /\.(?:js|cjs|mjs)$/i;
 const maxOutput = 160_000;
 
@@ -118,7 +122,7 @@ function syncCommands() {
   recoveryButton.hidden = !active?.recoveryConflict;
   recoveryButton.disabled = !active?.dirty || Boolean(active.saving || changingProject);
   formatButton.disabled = !active?.language || Boolean(changingProject || active.formatting || active.discarding);
-  inspectButton.disabled = definitionButton.disabled = !active?.language || changingProject;
+  inspectButton.disabled = definitionButton.disabled = findReferencesButton.disabled = !active?.language || changingProject;
   runButton.disabled = !active || !runnable.test(active.path) || Boolean(changingProject || run || discarding);
   runButton.hidden = Boolean(run);
   testButton.disabled = !project || Boolean(changingProject || run || discarding);
@@ -237,6 +241,7 @@ function editorState(tab, text, ending) {
         if (update.docChanged) {
           problemsPanel.changed(tab);
           semantic.changed();
+          if (tab.language) referencesPanel.changed();
         }
         if (update.docChanged || (update.selectionSet && !update.startState.selection.eq(update.state.selection))) {
           definitionNavigation.invalidate();
@@ -451,6 +456,7 @@ async function removeTab(tab) {
   documents.delete(tab.path);
   semantic.changed();
   problemsPanel.remove(tab);
+  if (tab.language) referencesPanel.changed();
   if (tab.dirty) searchPanel.changed();
   if (tab === active) showFile([...documents.values()].at(-1));
   syncDirty();
@@ -475,6 +481,7 @@ async function adoptProject(next) {
   navigation.clear();
   searchPanel.reset();
   problemsPanel.reset();
+  referencesPanel.reset();
   semantic.changed();
   project = next;
   documents.clear();
@@ -554,6 +561,7 @@ async function saveFile(tab) {
     queueDraft(tab);
     searchPanel.changed();
     semantic.changed();
+    if (/\.json$/i.test(tab.path)) referencesPanel.changed();
     notify('Saved ' + tab.path);
   } catch (error) {
     if (/^This file changed on disk\./.test(errorText(error))) {
@@ -640,9 +648,18 @@ function setRunState(text, state = '') {
   badge.dataset.state = state;
 }
 
+function showDock(name, focus = false) {
+  dock.dataset.pane = name;
+  for (const [pane, button] of Object.entries(dockButtons)) button.setAttribute('aria-pressed', String(pane === name));
+  byId('problems-panel').hidden = byId('problems-status').hidden = name !== 'problems';
+  byId('references-panel').hidden = name !== 'references';
+  problemsPanel.render();
+  if (focus) dockButtons[name].focus();
+}
+
 function resetOutput(target = '', mode = 'file') {
   const testing = mode === 'tests';
-  byId('run-panel').dataset.mode = mode;
+  dock.dataset.mode = mode;
   byId('run-heading').textContent = testing ? 'Test results' : 'Run output';
   byId('test-results').hidden = !testing;
   byId('test-empty').hidden = false;
@@ -671,7 +688,7 @@ function appendOutput(text) {
 async function launchRun(mode, target, start) {
   const id = ++runSequence;
   run = { id, mode, stage: 'starting' };
-  problemsPanel.show('output');
+  showDock('output');
   resetOutput(target, mode);
   setRunState('Starting', 'running');
   syncCommands();
@@ -912,7 +929,11 @@ const signatureHelp = createSignatureHelp({ semantic, getActive, notify, report 
 const definitionNavigation = createDefinitionNavigation({
   semantic, getActive, getFileRequest: () => fileRequest, jump: jumpToLocation, notify, report,
 });
+const referencesPanel = createReferencesPanel({
+  api, semantic, getActive, show: () => showDock('references'), jump: jumpToLocation, errorText,
+});
 
+for (const [pane, button] of Object.entries(dockButtons)) button.onclick = () => showDock(pane);
 backButton.onclick = () => travel('back').catch(report);
 forwardButton.onclick = () => travel('forward').catch(report);
 openButton.onclick = welcomeOpen.onclick = () => openProject(api.chooseFolder).catch(report);
@@ -926,6 +947,10 @@ inspectButton.onclick = () => {
 definitionButton.onclick = () => {
   view.focus();
   void definitionNavigation.go(view);
+};
+findReferencesButton.onclick = () => {
+  view.focus();
+  void referencesPanel.find(view);
 };
 recoveryButton.onclick = () => saveRecoveredCopy(active).catch(report);
 runButton.onclick = runFile;
@@ -976,7 +1001,10 @@ document.addEventListener('keydown', event => {
     void runFile();
   } else if (event.key === 'F12' && view.hasFocus) {
     event.preventDefault();
-    void definitionNavigation.go(view);
+    if (!event.repeat) {
+      if (event.shiftKey) void referencesPanel.find(view);
+      else void definitionNavigation.go(view);
+    }
   } else if (command && event.altKey && key === 'i') {
     event.preventDefault();
     void symbolInfo.inspect(view);
@@ -990,7 +1018,7 @@ document.addEventListener('keydown', event => {
     searchPanel.show();
   } else if (command && event.shiftKey && key === 'm') {
     event.preventDefault();
-    problemsPanel.show('problems', true);
+    showDock('problems', true);
   } else if (!command && event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
     event.preventDefault();
     travel(event.key === 'ArrowLeft' ? 'back' : 'forward').catch(report);

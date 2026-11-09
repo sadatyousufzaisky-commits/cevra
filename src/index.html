@@ -102,6 +102,7 @@
           <div class="dock-views" role="group" aria-label="Workbench views">
             <button id="show-output" class="dock-view" aria-pressed="true"><span id="run-heading">Run output</span></button>
             <button id="show-problems" class="dock-view" aria-label="Problems" aria-pressed="false" title="Problems (Ctrl+Shift+M)">Problems <span id="problems-count" class="problems-count" aria-hidden="true" hidden></span></button>
+            <button id="show-references" class="dock-view" aria-pressed="false" title="References (Shift+F12 to search)">References</button>
           </div>
           <span id="run-state" class="run-state" role="status">Ready</span>
           <span id="run-target" class="run-target"></span>
@@ -126,6 +127,15 @@
         </div>
         <section id="problems-panel" class="problems-panel" aria-label="Syntax problems" hidden>
           <ul id="problem-list" class="problem-list"></ul>
+        </section>
+        <section id="references-panel" class="references-panel" aria-label="Symbol references" hidden>
+          <div class="references-tools">
+            <p id="references-status" role="status"></p>
+            <button id="find-references" class="button" title="Find References (Shift+F12)" disabled>Find References</button>
+            <button id="references-cancel" class="button" hidden>Cancel</button>
+          </div>
+          <p id="references-scope" class="references-scope"></p>
+          <ul id="reference-results" class="problem-list" aria-label="Reference locations"></ul>
         </section>
       </section>
     </section>

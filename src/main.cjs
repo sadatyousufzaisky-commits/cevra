@@ -141,6 +141,9 @@ handle('signature-help', (id, file, position, buffers) =>
   semantics.signatureHelp(currentWorkspace(id), file, position, buffers));
 handle('definition', (id, file, position, buffers) =>
   semantics.definition(currentWorkspace(id), file, position, buffers));
+handle('references', (id, file, position, buffers, requestId) =>
+  semantics.references(currentWorkspace(id), file, position, buffers, requestId));
+handle('cancel-references', (id, requestId) => semantics.cancelReferences(currentWorkspace(id), requestId));
 handle('search', async (id, requestId, query, caseSensitive, snapshots) => {
   const project = currentWorkspace(id);
   activeSearch?.controller.abort();

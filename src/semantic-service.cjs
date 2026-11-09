@@ -7,13 +7,18 @@ const maxBuffers = 64;
 const maxBufferBytes = 16 * 1024 * 1024;
 
 function createSemanticService() {
-  const worker = createWorkerService(path.join(__dirname, 'semantic-worker.cjs'), {
+  const workerFile = path.join(__dirname, 'semantic-worker.cjs');
+  const worker = createWorkerService(workerFile, {
     name: 'language service', task: 'language request', capacity: 6, heap: 192,
   });
+  const referenceWorker = createWorkerService(workerFile, {
+    name: 'reference search', task: 'reference search', capacity: 1, heap: 192,
+  });
   let draining = false;
+  let activeReferences;
   const pending = new Map();
 
-  async function query(operation, workspace, file, position, buffers) {
+  async function query(operation, workspace, file, position, buffers, engine = worker) {
     if (!sourceLanguage(file) || !Array.isArray(buffers) || !buffers.length ||
         !Number.isSafeInteger(position) || position < 0) {
       throw new Error('Choose a JavaScript or TypeScript source position.');
@@ -36,11 +41,16 @@ function createSemanticService() {
       return { file: absolute, documentId: buffer.documentId, version: buffer.version, text: buffer.text };
     });
     if (!active || position > active.text.length) throw new Error('The language request is outside the current document.');
-    return worker.request({
+    return engine.request({
       workspace: { id: workspace.id, root: workspace.root,
         identity: { dev: workspace.identity.dev, ino: workspace.identity.ino } },
       operation, target, position, sources,
     });
+  }
+
+  function stopReferences() {
+    activeReferences = undefined;
+    referenceWorker.stop();
   }
 
   async function drain() {
@@ -71,10 +81,25 @@ function createSemanticService() {
     definition: (workspace, file, position, buffers) => query('definition', workspace, file, position, buffers),
     complete: (workspace, file, position, buffers) => queue('complete', workspace, file, position, buffers),
     signatureHelp: (workspace, file, position, buffers) => queue('signatureHelp', workspace, file, position, buffers),
+    async references(workspace, file, position, buffers, requestId) {
+      if (!Number.isSafeInteger(requestId) || requestId < 1) throw new Error('Invalid reference search request.');
+      stopReferences();
+      const search = { workspaceId: workspace.id, requestId };
+      activeReferences = search;
+      try {
+        return await query('references', workspace, file, position, buffers, referenceWorker);
+      } finally {
+        if (activeReferences === search) stopReferences();
+      }
+    },
+    cancelReferences(workspace, requestId) {
+      if (activeReferences?.workspaceId === workspace.id && activeReferences.requestId === requestId) stopReferences();
+    },
     stop() {
       for (const job of pending.values()) job.resolve(null);
       pending.clear();
       worker.stop();
+      stopReferences();
     },
   };
 }

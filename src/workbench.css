@@ -138,7 +138,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .dock-view:hover { background: var(--raised); color: var(--text); }
 .dock-view[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--mint); }
 .problems-count { border-radius: 8px; padding: 0 5px; background: var(--raised); color: var(--danger); font-size: 11px; }
-.run-panel[data-pane="problems"] :is(#run-state, #run-target, #test-totals, #rerun-failures, .run-diagnostic, .run-body) { display: none; }
+.run-panel:is([data-pane="problems"], [data-pane="references"]) :is(#run-state, #run-target, #test-totals, #rerun-failures, .run-diagnostic, .run-body) { display: none; }
 .problems-panel { min-height: 0; flex: 1; overflow: auto; }
 .problem-list, .problem-list ul { list-style: none; margin: 0; padding: 0; }
 .problem-file { margin: 0; padding: 7px 15px; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--text); font: 12px var(--mono); overflow-wrap: anywhere; }
@@ -149,6 +149,15 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .problem-message { overflow-wrap: anywhere; }
 .problem-location, .problem-note { color: var(--muted); font: 12px var(--mono); }
 .problem-note { margin: 0; padding: 8px 15px; }
+.references-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.references-tools { display: flex; align-items: center; gap: 8px; padding: 6px 12px; }
+.references-tools p { flex: 1; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.references-tools .button { min-height: 27px; padding: 3px 8px; font-size: 12px; }
+.references-scope { margin: 0 12px 5px; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.references-scope:empty { display: none; }
+#reference-results { overflow: auto; }
+.reference-row code { font: 12px var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.reference-kind { color: var(--muted); font-size: 11px; }
 .run-state { flex: none; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 2px 7px; font-size: 12px; }
 .run-state[data-state="ok"], .run-state[data-state="running"] { color: var(--mint); }
 .run-state[data-state="error"] { color: var(--danger); }

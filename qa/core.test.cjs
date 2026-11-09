@@ -700,3 +700,116 @@ test('definition lookup returns distinct choices and rejects unresolved or non-w
     assert.deepEqual(await lookup(marked), { destinations: [], limited: false });
   }
 });
+
+test('reference search follows renamed imports into closed files and uses open drafts', { timeout: 20_000 }, async t => {
+  const { folder, root, workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const nested = 'lib (QA) # % & café';
+  for (const directory of [nested, 'separate', '.cache', 'node_modules']) await fs.mkdir(path.join(root, directory));
+  const declaration = path.join(nested, 'math.ts');
+  const original = '\uFEFF// Saved declaration\r\nexport function total(value: number) { return value; }\r\n';
+  const closed = path.join(nested, 'consumer.js');
+  const closedText = 'import { price as closedCall } from "@prices";\nclosedCall(8);\n// closedCall(9);\n';
+  const savedDraft = 'import { price as oldCall } from "@prices";\noldCall(1);\n';
+  const outside = path.join(folder, 'outside');
+  await fs.mkdir(outside);
+  await Promise.all([
+    fs.writeFile(path.join(root, declaration), original),
+    fs.writeFile(path.join(root, closed), closedText),
+    fs.writeFile(path.join(root, 'barrel.ts'), 'export { total as price } from "./' + nested + '/math";'),
+    fs.writeFile(path.join(root, 'draft.ts'), savedDraft),
+    fs.writeFile(path.join(root, 'unrelated.ts'), 'export function total() {}\ntotal();'),
+    fs.writeFile(path.join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { '@prices': ['./barrel'] } } })),
+    fs.writeFile(path.join(root, 'separate', 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { '@prices': ['./own'] } } })),
+    fs.writeFile(path.join(root, 'separate', 'own.ts'), 'export const price = () => 1;'),
+    fs.writeFile(path.join(root, 'separate', 'consumer.ts'), closedText),
+    fs.writeFile(path.join(root, '.cache', 'ignored.ts'), closedText),
+    fs.writeFile(path.join(root, 'node_modules', 'ignored.js'), closedText),
+    fs.writeFile(path.join(outside, 'outside.js'), closedText),
+  ]);
+  await fs.symlink(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+  const text = 'import { price as local } from "@prices";\nlocal(2);';
+  const source = { path: 'main.ts', documentId: 1, version: 0, text };
+  const draft = {
+    path: 'draft.ts', documentId: 2, version: 4,
+    text: '\nimport { price as freshCall } from "@prices";\nfreshCall(3);\n',
+  };
+  const result = await semantics.references(workspace, source.path, text.lastIndexOf('local') + 2, [source, draft], 1);
+  const files = new Map(result.files.map(file => [file.path, file]));
+  assert.deepEqual([...files.keys()].sort(), [declaration, closed, 'barrel.ts', 'draft.ts', 'main.ts'].sort());
+  assert.equal(result.scope, '.');
+  assert.equal(result.separateProjects, 1);
+  assert.equal(result.scopeLimited, false);
+  assert.equal(result.resultLimited, false);
+  assert.equal(files.get(declaration).revision, (await readSource(workspace, declaration)).revision);
+  assert.deepEqual(files.get(declaration).matches.map(({ line, column, declaration }) => [line, column, declaration]), [[2, 17, true]]);
+  const closedUse = files.get(closed).matches.find(match => match.line === 2);
+  assert.equal(closedText.slice(closedUse.offset, closedUse.offset + closedUse.length), 'closedCall');
+  assert.equal(files.get(closed).matches.some(match => match.line === 3), false);
+  assert.equal(files.get('draft.ts').documentId, 2);
+  assert.equal(files.get('draft.ts').version, 4);
+  assert.ok(files.get('draft.ts').matches.some(match => match.line === 3 && match.preview === 'freshCall(3);'));
+  assert.equal(await fs.readFile(path.join(root, 'draft.ts'), 'utf8'), savedDraft);
+});
+
+test('reference search follows verified CommonJS bindings and property calls from both ends',
+  { timeout: 20_000 }, async t => {
+  const { root, workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const files = {
+    'lib.cjs': 'function greet(name) { return name; }\nmodule.exports = { greet };',
+    'consumer.cjs': 'const { greet: speak } = require("./lib.cjs");\nspeak("caller");\nfunction unrelated(speak) { speak(); }',
+    'properties.cjs': 'const lib = require("./lib.cjs");\nlib.greet("first");\nlib["greet"]("second");',
+    'other.cjs': 'function greet() {}\nmodule.exports = { greet };',
+    'unrelated.cjs': 'const { greet: speak } = require("./other.cjs");\nspeak("unrelated");',
+  };
+  await Promise.all(Object.entries(files).map(([file, text]) => fs.writeFile(path.join(root, file), text)));
+  for (const [id, file, token] of [[1, 'lib.cjs', 'greet'], [2, 'consumer.cjs', 'speak("caller")']]) {
+    const text = files[file];
+    const result = await semantics.references(workspace, file, text.indexOf(token) + 2, [
+      { path: file, documentId: id, version: 0, text },
+    ], id);
+    const groups = new Map(result.files.map(group => [group.path, group.matches]));
+    assert.deepEqual([...groups.keys()].sort(), ['consumer.cjs', 'lib.cjs', 'properties.cjs']);
+    assert.deepEqual(groups.get('consumer.cjs').filter(match => match.line > 1).map(match => match.line), [2]);
+    const properties = groups.get('properties.cjs').map(match => [
+      match.line, files['properties.cjs'].slice(match.offset, match.offset + match.length),
+    ]);
+    assert.deepEqual(properties, [[2, 'greet'], [3, 'greet']]);
+  }
+});
+
+test('reference search reports bounded file discovery and results', { timeout: 20_000 }, async t => {
+  const { root, workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  await Promise.all(Array.from({ length: 256 }, (_, index) => fs.writeFile(path.join(root, `empty-${index}.js`), 'export {};')));
+  const text = 'const target = 1;\n' + 'target;\n'.repeat(410);
+  const source = { path: 'main.ts', documentId: 1, version: 0, text };
+  const result = await semantics.references(workspace, source.path, text.indexOf('target') + 2, [source], 1);
+  assert.equal(result.scopeLimited, true);
+  assert.equal(result.resultLimited, true);
+  assert.equal(result.count, 400);
+  assert.equal(result.files.length, 1);
+  assert.equal(result.files[0].matches.length, 400);
+});
+
+test('canceling references stops only the matching search and leaves other language requests available',
+  { timeout: 20_000 }, async t => {
+  const { workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const text = 'const value = 1;\nvalue;';
+  const source = { path: 'main.ts', documentId: 1, version: 0, text };
+  const position = text.lastIndexOf('value') + 2;
+  const stopped = assert.rejects(semantics.references(workspace, source.path, position, [source], 1), /reference search was canceled/);
+  semantics.cancelReferences(workspace, 1);
+  await stopped;
+  const newer = semantics.references(workspace, source.path, position, [source], 2);
+  semantics.cancelReferences(workspace, 1);
+  const [result, info] = await Promise.all([newer, semantics.quickInfo(workspace, source.path, position, [source])]);
+  assert.equal(result.count, 2);
+  assert.match(info.signature, /const value/);
+});

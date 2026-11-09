@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('cevra', {
   complete: (id, file, position, buffers) => ipcRenderer.invoke('cevra:complete', id, file, position, buffers),
   signatureHelp: (id, file, position, buffers) => ipcRenderer.invoke('cevra:signature-help', id, file, position, buffers),
   definition: (id, file, position, buffers) => ipcRenderer.invoke('cevra:definition', id, file, position, buffers),
+  references: (id, file, position, buffers, requestId) => ipcRenderer.invoke('cevra:references', id, file, position, buffers, requestId),
+  cancelReferences: (id, requestId) => ipcRenderer.invoke('cevra:cancel-references', id, requestId),
   search: (id, request, query, caseSensitive, snapshots) =>
     ipcRenderer.invoke('cevra:search', id, request, query, caseSensitive, snapshots),
   cancelSearch: (id, request) => ipcRenderer.invoke('cevra:cancel-search', id, request),

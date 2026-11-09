@@ -1,8 +1,5 @@
 export function createProblemsPanel({ api, apply, jump, report, errorText }) {
   const byId = id => document.getElementById(id);
-  const dock = byId('run-panel');
-  const output = byId('show-output');
-  const problems = byId('show-problems');
   const pane = byId('problems-panel');
   const list = byId('problem-list');
   const status = byId('problems-status');
@@ -137,18 +134,6 @@ export function createProblemsPanel({ api, apply, jump, report, errorText }) {
     if (needsRender) render();
   }
 
-  function show(name, focus = false) {
-    const showingProblems = name === 'problems';
-    dock.dataset.pane = name;
-    pane.hidden = status.hidden = !showingProblems;
-    problems.setAttribute('aria-pressed', String(showingProblems));
-    output.setAttribute('aria-pressed', String(!showingProblems));
-    if (focus) problems.focus();
-    render();
-  }
-
-  problems.onclick = () => show('problems');
-  output.onclick = () => show('output');
   retry.onclick = () => {
     for (const entry of documents.values()) {
       if (entry.status === 'unavailable') refresh(entry, 0);
@@ -156,7 +141,7 @@ export function createProblemsPanel({ api, apply, jump, report, errorText }) {
   };
 
   return {
-    show,
+    render,
     track(tab) {
       if (!tab.language) return;
       const entry = { tab, issues: [] };

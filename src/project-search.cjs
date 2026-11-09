@@ -1,11 +1,10 @@
 const path = require('node:path');
 const { setImmediate: yieldSearch } = require('node:timers/promises');
-const { listFolder, maxFileBytes, readSource, workspacePath } = require('./workspace.cjs');
+const { isSourceDirectory, listFolder, maxFileBytes, readSource, workspacePath } = require('./workspace.cjs');
 const { normalizeSource } = require('./source-text.cjs');
 
 const resultLimit = 400;
 const batchSize = 12;
-const ignoredFolders = new Set(['.git', '.hg', '.svn', 'node_modules', '.cache', '.venv', '.pnpm-store']);
 const caseInsensitivePaths = process.platform === 'win32';
 
 function fileKey(file) {
@@ -87,7 +86,7 @@ async function searchProject(workspace, query, caseSensitive, drafts, signal) {
     const files = [];
     for (const entry of entries) {
       if (entry.directory) {
-        if (!ignoredFolders.has(entry.name.toLowerCase())) folders.push(entry.path);
+        if (isSourceDirectory(entry.name)) folders.push(entry.path);
       } else if (!open.has(fileKey(entry.path))) {
         files.push(entry.path);
       }

@@ -6,6 +6,7 @@ const errors = {
   complete: 'Could not suggest completions. ',
   signatureHelp: 'Could not show the function signature. ',
   definition: 'Could not find the definition. ',
+  references: 'Could not find references. ',
 };
 
 let project;

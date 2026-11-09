@@ -6,6 +6,7 @@ const { writeAtomic } = require('./atomic-file.cjs');
 
 const maxFileBytes = 2 * 1024 * 1024;
 const hiddenDirectories = new Set(['.git', 'node_modules']);
+const skippedSourceDirectories = new Set([...hiddenDirectories, '.hg', '.svn', '.cache', '.venv', '.pnpm-store']);
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 const pendingWrites = new Map();
 const windows = process.platform === 'win32';
@@ -14,6 +15,10 @@ const reservedName = /^(?:con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-
 function inside(root, file) {
   const relative = path.relative(root, file);
   return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
+}
+
+function isSourceDirectory(name) {
+  return !skippedSourceDirectories.has(name.toLowerCase());
 }
 
 function fingerprint(bytes) {
@@ -242,6 +247,6 @@ async function saveRecoveryCopy(workspace, relative, text) {
 }
 
 module.exports = {
-  checkedEntrySync, createWorkspace, inside, listFolder, maxFileBytes, readSource, readSourceSync, resolveEntry, saveSource, saveRecoveryCopy,
+  checkedEntrySync, createWorkspace, inside, isSourceDirectory, listFolder, maxFileBytes, readSource, readSourceSync, resolveEntry, saveSource, saveRecoveryCopy,
   verifyRevision, workspacePath,
 };

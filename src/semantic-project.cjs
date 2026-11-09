@@ -5,11 +5,14 @@ const ts = require('typescript');
 const { checkedEntrySync, inside, readSourceSync, workspacePath } = require('./workspace.cjs');
 const { sourceLanguage } = require('./source-language.cjs');
 const { normalizeSource, sourceLocation } = require('./source-text.cjs');
+const { collectReferenceFiles } = require('./reference-files.cjs');
+const { collectCommonJsReferences } = require('./commonjs-references.cjs');
 
 const libraryDirectory = path.dirname(require.resolve('typescript'));
 const maxProbes = 2_048;
 const maxProjectBytes = 16 * 1024 * 1024;
 const maxDefinitions = 40;
+const maxReferences = 400;
 const windows = process.platform === 'win32';
 const supportedOptions = new Set([
   'target', 'module', 'moduleResolution', 'jsx', 'strict', 'strictNullChecks', 'noImplicitAny', 'paths',
@@ -72,6 +75,30 @@ function shorten(text, limit) {
   return text.length > limit ? text.slice(0, limit - 1) + '…' : text;
 }
 
+function verifiedDefinition(entry) {
+  // The local binding of an unresolved import is not its workspace declaration.
+  return !entry.unverified && entry.kind !== ts.ScriptElementKind.alias;
+}
+
+function describeReferences(text, locations) {
+  let line = 1;
+  let start = 0;
+  let next = text.indexOf('\n');
+  return locations.sort((a, b) => a.offset - b.offset || a.length - b.length).map(location => {
+    const { offset } = location;
+    while (next !== -1 && next < offset) {
+      line++;
+      start = next + 1;
+      next = text.indexOf('\n', start);
+    }
+    const from = Math.max(start, offset - 40);
+    const end = next === -1 ? text.length : next;
+    const to = Math.min(end, from + 140);
+    const preview = (from > start ? '…' : '') + text.slice(from, to) + (to < end ? '…' : '');
+    return { ...location, line, column: offset - start + 1, preview };
+  });
+}
+
 function activeSignature(info, position) {
   if (!info) return null;
   const { applicableSpan, selectedItemIndex, argumentIndex, items } = info;
@@ -130,9 +157,9 @@ function projectOptions(workspace, target, readFile) {
         if (options.moduleResolution === ts.ModuleResolutionKind.NodeNext) result.module = ts.ModuleKind.NodeNext;
         if (options.moduleResolution === ts.ModuleResolutionKind.Node16) result.module = ts.ModuleKind.Node16;
       }
-      return result;
+      return { options: result, directory };
     }
-    if (key(directory) === key(workspace.root)) return defaults;
+    if (key(directory) === key(workspace.root)) return { options: defaults, directory };
     directory = path.dirname(directory);
   }
 }
@@ -230,7 +257,7 @@ function createSemanticProject(workspace) {
     getCurrentDirectory: () => compilerPath(workspace.root),
     getCompilationSettings: () => request.options,
     getDefaultLibFileName: options => ts.getDefaultLibFilePath(options),
-    getScriptFileNames: () => [request.target],
+    getScriptFileNames: () => request.roots,
     getProjectVersion: () => String(generation),
     getScriptVersion: file => record(file)?.revision ?? '',
     getScriptSnapshot: file => record(file)?.snapshot,
@@ -242,6 +269,23 @@ function createSemanticProject(workspace) {
     hasInvalidatedResolutions: () => true,
   };
   const service = ts.createLanguageService(host);
+
+  function workspaceSource(file) {
+    const relative = path.relative(workspace.root, file);
+    if (!sourceLanguage(relative)) return null;
+    try {
+      workspacePath(workspace, relative);
+    } catch {
+      return null;
+    }
+    const source = record(file);
+    if (!source) return null;
+    const id = key(file);
+    const overlay = request.overlays.get(id);
+    const revision = overlay ? { documentId: overlay.documentId, version: overlay.version } :
+      { revision: source.revision.slice('disk:'.length) };
+    return { id, text: source.text, location: { path: relative, ...revision } };
+  }
 
   function query(target, sources, analyze) {
     checkedEntrySync(workspace, '');
@@ -257,14 +301,16 @@ function createSemanticProject(workspace) {
         directory = path.dirname(directory);
       }
     }
+    const file = compilerPath(target);
     request = {
-      target: compilerPath(target), overlays, overlayDirectories, records: new Map(), directories: new Map(),
+      roots: [file], overlays, overlayDirectories, records: new Map(), directories: new Map(),
       options: defaults, bytes: 0, probes: 0, limited: false,
     };
     generation++;
     try {
-      request.options = projectOptions(workspace, target, host.readFile);
-      const result = analyze(request.target, current.text);
+      const { options, directory } = projectOptions(workspace, target, host.readFile);
+      request.options = options;
+      const result = analyze(file, current.text, directory);
       if (request.limited) throw new Error('This import graph exceeds CEVRA’s analysis limit.');
       return result;
     } finally {
@@ -316,39 +362,91 @@ function createSemanticProject(workspace) {
       const seen = new Set();
       let limited = false;
       for (const entry of definitions) {
-        // TypeScript may return the local import binding when it cannot resolve the declaration.
-        if (entry.unverified || entry.kind === ts.ScriptElementKind.alias) continue;
-        const relative = path.relative(workspace.root, entry.fileName);
-        if (!sourceLanguage(relative)) continue;
-        try {
-          workspacePath(workspace, relative);
-        } catch {
-          continue;
-        }
-        const source = record(entry.fileName);
+        if (!verifiedDefinition(entry)) continue;
+        const source = workspaceSource(entry.fileName);
         const { start: offset, length } = entry.textSpan;
         if (!source || offset < 0 || length < 0 || offset + length > source.text.length) continue;
-        const id = key(entry.fileName);
-        const span = `${id}\0${offset}\0${length}`;
+        const span = `${source.id}\0${offset}\0${length}`;
         if (seen.has(span)) continue;
         if (destinations.length === maxDefinitions) {
           limited = true;
           break;
         }
-        const overlay = request.overlays.get(id);
-        const revision = overlay ? { documentId: overlay.documentId, version: overlay.version } :
-          { revision: source.revision.slice('disk:'.length) };
         seen.add(span);
         destinations.push({
-          path: relative, offset, length, ...sourceLocation(source.text, offset),
-          name: shorten(entry.name, 160), ...revision,
+          ...source.location, offset, length, ...sourceLocation(source.text, offset), name: shorten(entry.name, 160),
         });
       }
       return { destinations, limited };
     });
   }
 
-  return { quickInfo, complete, signatureHelp, definition, dispose: () => service.dispose() };
+  function referenceGroups(file, position, definition) {
+    const direct = service.findReferences(file, position) ?? [];
+    if (direct.length && direct[0].definition.kind !== ts.ScriptElementKind.alias) return direct;
+    const targets = definition?.definitions?.filter(verifiedDefinition) ?? [];
+    if (targets.length !== 1 || !workspaceSource(targets[0].fileName)) return direct;
+
+    const target = targets[0];
+    const canonical = service.findReferences(target.fileName, target.textSpan.start) ?? [];
+    // Querying a renamed import can return only the local binding. Also find the declaring symbol's uses.
+    if (direct.length) return [...canonical, ...direct];
+    if (!canonical.length) return canonical;
+    return [...canonical, { definition: canonical[0].definition, references: [{ fileName: file, textSpan: definition.textSpan }] }];
+  }
+
+  function references(target, position, sources) {
+    return query(target, sources, (file, _text, scope) => {
+      const scan = collectReferenceFiles(workspace, scope, target, request.overlays.values());
+      request.roots = scan.files.map(compilerPath);
+      const origin = service.getDefinitionAndBoundSpan(file, position);
+      const groups = referenceGroups(file, position, origin);
+      const commonJs = groups.length ? collectCommonJsReferences(service.getProgram(), file, origin?.textSpan, maxReferences) :
+        { entries: [], limited: false };
+      if (commonJs.entries.length) groups.push({ definition: groups[0].definition, references: commonJs.entries });
+      const matches = new Map();
+      let count = 0;
+      let resultLimited = false;
+      for (const group of groups) {
+        for (const entry of group.references) {
+          const source = workspaceSource(entry.fileName);
+          const { start: offset, length } = entry.textSpan;
+          if (!source || offset < 0 || length < 1 || offset + length > source.text.length) continue;
+          let bucket = matches.get(source.id);
+          if (!bucket) {
+            bucket = { source, entries: new Map() };
+            matches.set(source.id, bucket);
+          }
+          const declaration = Boolean(entry.isDefinition || (key(group.definition.fileName) === source.id &&
+            group.definition.textSpan.start === offset && group.definition.textSpan.length === length));
+          const span = `${offset}:${length}`;
+          const existing = bucket.entries.get(span);
+          if (existing) {
+            existing.declaration ||= declaration;
+          } else if (count === maxReferences) {
+            resultLimited = true;
+            break;
+          } else {
+            bucket.entries.set(span, { offset, length, declaration });
+            count++;
+          }
+        }
+        if (resultLimited) break;
+      }
+      const files = [...matches.values()].filter(bucket => bucket.entries.size).map(({ source, entries }) => ({
+        ...source.location, matches: describeReferences(source.text, [...entries.values()]),
+      }));
+      files.sort((a, b) => a.path.localeCompare(b.path));
+      return {
+        files, count, resultLimited, scopeLimited: scan.limited || commonJs.limited,
+        scope: path.relative(workspace.root, scope) || '.',
+        separateProjects: scan.separateProjects, skipped: scan.skipped + scan.files.filter(candidate => !record(candidate)).length,
+        symbol: shorten(groups[0]?.definition.name.replace(/\s+/g, ' ') ?? '', 160),
+      };
+    });
+  }
+
+  return { quickInfo, complete, signatureHelp, definition, references, dispose: () => service.dispose() };
 }
 
 module.exports = { createSemanticProject };

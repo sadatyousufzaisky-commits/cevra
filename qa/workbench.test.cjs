@@ -1112,3 +1112,97 @@ test('Go to Definition ignores a late reply after caret movement and verifies th
   await page.locator('#cursor').getByText('Ln 2, Col 17', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.getSelection().toString()), 'target');
 });
+
+test('Find References groups closed-file and draft usages and refuses an outdated disk result',
+  { timeout: 30_000 }, async t => {
+  const folder = 'callers (QA) & café [#%]';
+  const relative = path.join(folder, 'closed.js');
+  const closed = '\uFEFFimport { total as closedCall } from "../cost.js";\r\nclosedCall(9);\r\n';
+  const draftOnDisk = 'import { total as oldCall } from "./cost.js";\noldCall(2);\n';
+  const workbench = await openWorkbench(t, {
+    'cost.ts': 'export function total(value: number) { return value; }',
+    'main.ts': 'import { total as quote } from "./cost.js";\nquote(3);',
+    'draft.ts': draftOnDisk,
+    'unrelated.ts': 'export function total() {}\ntotal();',
+    [relative]: closed,
+  });
+  const { page, editor, open, selected, project } = workbench;
+  const pane = page.getByRole('region', { name: 'Symbol references' });
+  await open('draft.ts');
+  await replaceEditor(workbench, '\n' + draftOnDisk.replaceAll('oldCall', 'draftCall'));
+  await open('main.ts');
+  await editor.press('Control+End');
+  for (let index = 0; index < 6; index++) await editor.press('ArrowLeft');
+  const origin = await page.locator('#cursor').textContent();
+  await editor.press('Shift+F12');
+  await pane.getByRole('status').getByText(/references in 4 files/).waitFor();
+  assert.equal(await pane.getByRole('heading', { name: 'unrelated.ts', exact: true }).count(), 0);
+  await pane.getByRole('heading', { name: relative, exact: true }).waitFor();
+  await pane.getByRole('button', { name: /draft\.ts:3:1 draftCall\(2\)/ }).waitFor();
+  assert.equal(await pane.getByRole('button', { name: /oldCall/ }).count(), 0);
+  const usage = pane.getByRole('button', { name: /closed\.js:2:1 closedCall\(9\)/ });
+  assert.equal(await selected('closed.js').count(), 0);
+  await usage.click();
+  await selected('closed.js').waitFor();
+  await page.locator('#cursor').getByText('Ln 2, Col 1', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'closedCall');
+  await editor.press('Alt+ArrowLeft');
+  await selected('main.ts').waitFor();
+  await page.locator('#cursor').getByText(origin, { exact: true }).waitFor();
+  await fs.writeFile(path.join(project, relative), '// external change\n' + closed.slice(1));
+  await usage.click();
+  await pane.getByRole('status').getByText(/reference changed before it could be opened/).waitFor();
+  assert.equal(await selected('closed.js').count(), 0);
+  assert.equal(await fs.readFile(path.join(project, 'draft.ts'), 'utf8'), draftOnDisk);
+});
+
+test('Find References cancels searches and ignores replies after canceling or editing',
+  { timeout: 30_000 }, async t => {
+  const { app, page, editor, open } = await openWorkbench(t, { 'main.js': 'const value = 1;\nvalue;' });
+  await app.evaluate(({ ipcMain }) => {
+    let calls = 0;
+    const held = new Map();
+    const waiting = new Map();
+    ipcMain.waitForReferences = id => held.has(id) ? Promise.resolve() : new Promise(resolve => waiting.set(id, resolve));
+    ipcMain.releaseReferences = id => held.get(id)();
+    ipcMain.removeHandler('cevra:references');
+    ipcMain.handle('cevra:references', () => {
+      const id = ++calls;
+      const result = {
+        count: 1, scope: '.', symbol: id <= 2 ? 'Old reference query' : 'Current reference query',
+        files: [{ path: 'main.js', matches: [{ offset: 6, length: 5, line: 1, column: 7, preview: id <= 2 ? 'staleUsage' : 'currentUsage' }] }],
+      };
+      if (id > 2) return result;
+      return new Promise(resolve => {
+        held.set(id, () => resolve(result));
+        waiting.get(id)?.();
+      });
+    });
+  });
+  await page.evaluate(() => {
+    window.sawStaleReference = false;
+    const results = document.getElementById('reference-results');
+    new MutationObserver(records => {
+      if (records.some(record => [...record.addedNodes].some(node => node.textContent.includes('staleUsage')))) {
+        window.sawStaleReference = true;
+      }
+    }).observe(results, { childList: true, subtree: true });
+  });
+  await open('main.js');
+  await editor.press('Control+End');
+  await editor.press('Shift+F12');
+  await app.evaluate(({ ipcMain }) => ipcMain.waitForReferences(1));
+  const pane = page.getByRole('region', { name: 'Symbol references' });
+  await pane.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await pane.getByRole('status').getByText('Reference search canceled.', { exact: true }).waitFor();
+  await app.evaluate(({ ipcMain }) => ipcMain.releaseReferences(1));
+
+  await editor.press('Shift+F12');
+  await app.evaluate(({ ipcMain }) => ipcMain.waitForReferences(2));
+  await page.keyboard.insertText('\n// newer source');
+  await pane.getByRole('status').getByText('Source changed. Run Find References again.', { exact: true }).waitFor();
+  await app.evaluate(({ ipcMain }) => ipcMain.releaseReferences(2));
+  await pane.getByRole('button', { name: 'Find References', exact: true }).click();
+  await pane.getByRole('button', { name: /currentUsage/ }).waitFor();
+  assert.equal(await page.evaluate(() => window.sawStaleReference), false);
+});

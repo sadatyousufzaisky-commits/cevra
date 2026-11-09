@@ -15,7 +15,7 @@ export function createSemanticContext({ api, getActive, getDocuments, available 
   return {
     available,
     changed() { generation++; },
-    query(operation, tab, position) {
+    query(operation, tab, position, requestId) {
       const epoch = generation;
       const version = tab.version;
       const buffers = [snapshot(tab)];
@@ -23,7 +23,7 @@ export function createSemanticContext({ api, getActive, getDocuments, available 
         if (other !== tab && other.language && other.dirty) buffers.push(snapshot(other));
       }
       return {
-        result: api[operation](tab.projectId, tab.path, position, buffers),
+        result: api[operation](tab.projectId, tab.path, position, buffers, requestId),
         current: () => epoch === generation && tab.version === version && available() && getActive() === tab,
       };
     },
