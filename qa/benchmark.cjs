@@ -12,11 +12,12 @@ const needle = 'CEVRA_BENCHMARK_NEEDLE';
 const faultFolder = 'nested (QA) & café [#%]';
 const faultName = 'fault # %.cjs';
 const featureCount = 160;
+const editSource = 'const benchmark = 42;\n';
 
 async function writeFixture(root) {
   await fs.mkdir(root);
   await fs.mkdir(path.join(root, faultFolder));
-  await fs.writeFile(path.join(root, 'edit.ts'), 'const benchmark = 42;\n');
+  await fs.writeFile(path.join(root, 'edit.ts'), editSource);
   await fs.writeFile(path.join(root, 'main.cjs'), 'require(' + JSON.stringify('./' + faultFolder + '/' + faultName) + ')();\n');
   await fs.writeFile(path.join(root, faultFolder, faultName),
     'module.exports = function fail() {\n  const message = "benchmark runtime failure";\n  throw new Error(message);\n};\n');
@@ -171,9 +172,18 @@ async function main() {
     const results = [];
     const vscode = [];
     for (let index = 0; index < count; index++) {
-      const compare = () => sampleVscode({ executablePath, root, profile: path.join(folder, 'vscode-' + index), needle, faultName });
+      const compare = async () => {
+        try {
+          const result = await sampleVscode({ executablePath, root, profile: path.join(folder, 'vscode-' + index), needle, faultName });
+          assert.equal(await fs.readFile(path.join(root, 'edit.ts'), 'utf8'), editSource, 'The sample changed the fixture.');
+          return result;
+        } catch (error) {
+          throw new Error('VS Code sample ' + (index + 1) + ' failed.', { cause: error });
+        }
+      };
       if (executablePath && index % 2) vscode.push(await compare());
       results.push(await sample(root, path.join(folder, 'profile-' + index)));
+      assert.equal(await fs.readFile(path.join(root, 'edit.ts'), 'utf8'), editSource, 'The sample changed the fixture.');
       if (executablePath && index % 2 === 0) vscode.push(await compare());
     }
     console.log(JSON.stringify({

@@ -21,6 +21,7 @@ async function sampleVscode({ executablePath, root, profile, needle, faultName }
     'telemetry.telemetryLevel': 'off',
     'update.mode': 'none',
     'workbench.tips.enabled': false,
+    'debug.saveBeforeStart': 'none',
     launch: {
       version: '0.2.0',
       configurations: [{
@@ -57,11 +58,13 @@ async function sampleVscode({ executablePath, root, profile, needle, faultName }
     await page.locator('.monaco-workbench').waitFor();
     await keys('Control+k');
     await keys('Control+o');
-    const folder = page.locator('.quick-input-widget:visible input').first();
+    const picker = page.locator('.quick-input-widget:visible');
+    const folder = picker.getByRole('textbox', { name: /Folder path/ });
     await folder.fill(root + path.sep);
+    await picker.getByRole('option', { name: 'group-0', exact: true }).waitFor();
     const editFile = page.locator('.explorer-folders-view').getByText('edit.ts', { exact: true });
     const openMs = await measure(async () => {
-      await folder.press('Enter');
+      await picker.getByRole('button', { name: 'OK', exact: true }).click();
       await editFile.waitFor();
     });
     const firstLine = lines.getByText(/const.*benchmark.*42/);
