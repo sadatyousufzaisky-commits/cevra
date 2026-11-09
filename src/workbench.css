@@ -185,6 +185,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .file-breadcrumbs { flex: none; min-width: 0; padding: 4px 12px; overflow: hidden; border-bottom: 1px solid var(--line); color: var(--muted); font: 12px/17px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .editor { flex: 1; min-height: 0; }
 .editor .cm-editor { height: 100%; }
+.editor[data-line-numbers="false"] .cm-lineNumbers { display: none !important; }
 .cm-indent-guides { background-image: repeating-linear-gradient(to right, var(--indent-guide) 0 1px, transparent 1px var(--guide-step)); background-position: 6px 0; background-repeat: no-repeat; background-size: var(--guide-width) 100%; }
 .welcome { flex: 1; min-height: 0; display: grid; align-items: center; overflow: auto; padding: clamp(18px, 5vw, 72px); }
 .welcome-content { max-width: 500px; }
@@ -287,3 +288,74 @@ button.test-result:hover { background: var(--raised); }
 .symbol-option-name { min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .symbol-option-kind, .symbol-option-location { color: var(--muted); font: 12px var(--mono); }
 .symbol-option-location { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.edits-dialog {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.edits-dialog input,
+#replace-text {
+  min-width: 0;
+  background: var(--base);
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+#edits-preview {
+  max-height: min(52vh, 480px);
+  overflow: auto;
+}
+
+#edits-preview details {
+  border-top: 1px solid var(--line);
+  padding: 8px 0;
+}
+
+#edits-preview summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.edit-location {
+  padding: 8px 0 0 12px;
+}
+
+.edit-location pre {
+  margin: 2px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.edit-location del, .edit-location ins {
+  font-weight: 700;
+}
+
+.edits-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.settings-dialog select, .settings-dialog input[type="number"] {
+  background: var(--base);
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.settings-dialog form { margin-top: 12px; }
+.settings-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+.settings-fields label { display: flex; align-items: center; gap: 7px; }
+.settings-fields input[type="number"] { width: 6ch; }
+.settings-trust { padding: 10px 0; border-top: 1px solid var(--line); }
+.type-problems { border-top: 1px solid var(--line); margin-top: 8px; }
+#type-retry { margin: 0 15px 8px; }
+#replace-text { width: 100%; margin: 3px 0 5px; font: inherit; }

@@ -17,7 +17,7 @@ const windows = process.platform === 'win32';
 const supportedOptions = new Set([
   'target', 'module', 'moduleResolution', 'jsx', 'strict', 'strictNullChecks', 'noImplicitAny', 'paths',
   'baseUrl', 'lib', 'resolveJsonModule', 'exactOptionalPropertyTypes', 'noUncheckedIndexedAccess',
-  'customConditions', 'moduleSuffixes', 'verbatimModuleSyntax',
+  'customConditions', 'moduleSuffixes', 'verbatimModuleSyntax', 'checkJs', 'noUnusedLocals', 'noUnusedParameters',
 ]);
 const defaults = {
   allowJs: true, noEmit: true, types: [],
@@ -446,7 +446,86 @@ function createSemanticProject(workspace) {
     });
   }
 
-  return { quickInfo, complete, signatureHelp, definition, references, dispose: () => service.dispose() };
+  function rename(target, position, sources, name) {
+    const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, name);
+    if (name.includes('\\') || name === 'eval' || name === 'arguments' ||
+        scanner.scan() !== ts.SyntaxKind.Identifier || scanner.getTokenEnd() !== name.length) {
+      throw new Error('Use a single JavaScript or TypeScript identifier.');
+    }
+    return query(target, sources, (file, text, scope) => {
+      const scan = collectSourceFiles(workspace, { scope, target, overlays: request.overlays.values(), skipNestedProjects: true });
+      if (scan.limited || scan.skipped || scan.separateProjects || key(scope) !== key(workspace.root)) {
+        throw new Error('Rename requires one fully readable workspace project within the analysis limit.');
+      }
+      request.roots = scan.files.map(compilerPath);
+      const info = service.getRenameInfo(file, position, { allowRenameOfImportPath: false });
+      if (!info.canRename) throw new Error(info.localizedErrorMessage);
+      const { start, length } = info.triggerSpan;
+      if (text.slice(start, start + length) === name) throw new Error('Choose a different identifier.');
+      const definition = service.getDefinitionAndBoundSpan(file, position);
+      if (!definition?.definitions?.length || definition.definitions.some(entry => !workspaceSource(entry.fileName))) {
+        throw new Error('Choose a symbol declared inside this workspace.');
+      }
+      const program = service.getProgram();
+      const commonJs = collectCommonJsReferences(program, file, info.triggerSpan, maxReferences);
+      const locations = service.findRenameLocations(file, position, false, false, { providePrefixAndSuffixTextForRename: true }) ?? [];
+      if (!locations.length || locations.length > maxReferences) throw new Error('The rename has no edits or exceeds the edit limit.');
+      const spans = new Set(locations.map(({ fileName, textSpan }) => key(fileName) + ':' + textSpan.start));
+      if (commonJs.limited || commonJs.entries.some(entry => !spans.has(key(entry.fileName) + ':' + entry.textSpan.start))) {
+        throw new Error('This symbol has CommonJS references that cannot be renamed safely.');
+      }
+      for (const candidate of scan.files) {
+        if (!record(candidate)) throw new Error('A workspace source file could not be read.');
+      }
+      function conflicts(node) {
+        return (ts.isIdentifier(node) && node.text === name) || ts.forEachChild(node, conflicts);
+      }
+      for (const script of program.getSourceFiles()) {
+        if (!inside(workspace.root, script.fileName)) continue;
+        if (script.parseDiagnostics.length) {
+          throw new Error('Fix the workspace syntax errors before renaming a symbol.');
+        }
+        if (conflicts(script)) throw new Error('The new identifier already exists in the analyzed project.');
+      }
+      const files = new Map();
+      for (const location of locations) {
+        const source = workspaceSource(location.fileName);
+        if (!source) throw new Error('A rename location is outside the editable workspace.');
+        if (!files.has(source.id)) files.set(source.id, { ...source.location, matches: [] });
+        files.get(source.id).matches.push({
+          offset: location.textSpan.start,
+          length: location.textSpan.length,
+          replacement: (location.prefixText ?? '') + name + (location.suffixText ?? ''),
+        });
+      }
+      return [...files.values()].sort((a, b) => a.path.localeCompare(b.path));
+    });
+  }
+
+  function diagnostics(target, _position, sources) {
+    return query(target, sources, (file, text) => {
+      let directive;
+      for (const { pos, end } of ts.getLeadingCommentRanges(text, 0) ?? []) {
+        directive = /^\/\/\s*@ts-(check|nocheck)\b/.exec(text.slice(pos, end))?.[1] ?? directive;
+      }
+      if (directive === 'nocheck' || (!sourceLanguage(file).typescript && !request.options.checkJs && directive !== 'check')) {
+        return { enabled: false, directive, issues: [], omitted: 0 };
+      }
+      const entries = service.getSemanticDiagnostics(file).filter(issue =>
+        issue.start !== undefined && issue.length !== undefined &&
+        (issue.category === ts.DiagnosticCategory.Error || issue.category === ts.DiagnosticCategory.Warning));
+      const issues = entries.slice(0, 100).map(issue => ({
+        from: issue.start,
+        to: Math.min(text.length, issue.start + issue.length),
+        severity: issue.category === ts.DiagnosticCategory.Warning ? 'warning' : 'error',
+        source: 'TS' + issue.code,
+        message: ts.flattenDiagnosticMessageText(issue.messageText, '\n'),
+      }));
+      return { enabled: true, issues, omitted: entries.length - issues.length };
+    });
+  }
+
+  return { quickInfo, complete, signatureHelp, definition, references, rename, diagnostics, dispose: () => service.dispose() };
 }
 
 module.exports = { createSemanticProject };

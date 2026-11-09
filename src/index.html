@@ -44,7 +44,7 @@
       <button id="open-folder" class="button" aria-label="Open folder" title="Open folder (Ctrl+O)">
         <svg aria-hidden="true"><use href="#folder"></use></svg> <span>Open folder</span>
       </button>
-      <button id="save-file" class="button icon-button" aria-label="Save file" title="Save file (Ctrl+S)" disabled>
+      <button id="save-file" class="button icon-button" aria-label="Save file" title="Save file (Ctrl+S) · Save all (Ctrl+Shift+S)" disabled>
         <svg aria-hidden="true"><use href="#save"></use></svg>
       </button>
       <button id="save-recovery" class="button" hidden>Save recovery copy</button>
@@ -87,6 +87,8 @@
             <button id="search-cancel" class="button" disabled>Cancel</button>
           </div>
           <p id="search-status" class="search-status" role="status"></p>
+          <input id="replace-text" aria-label="Replacement text" maxlength="256" placeholder="Replace with (empty deletes)" spellcheck="false" autocomplete="off">
+          <button id="preview-replace" class="button" disabled>Preview Replace</button>
         </div>
         <ul id="search-results" class="search-results" aria-label="Search matches"></ul>
       </section>
@@ -138,13 +140,20 @@
             </section>
             <pre id="run-output" class="run-output" tabindex="0" aria-label="Program output">Run a JavaScript file to see its output here.</pre>
           </div>
-          <section id="problems-panel" class="problems-panel" aria-label="Syntax problems" hidden>
-            <ul id="problem-list" class="problem-list"></ul>
+          <section id="problems-panel" class="problems-panel" aria-label="Source problems" hidden>
+            <section aria-label="Syntax problems"><ul id="problem-list" class="problem-list"></ul></section>
+            <section class="type-problems" aria-labelledby="type-heading">
+              <h3 id="type-heading" class="problem-file">Type checking · active file</h3>
+              <p id="type-status" class="problem-note" role="status"></p>
+              <button id="type-retry" class="button" hidden>Retry type check</button>
+              <ul id="type-list" class="problem-list"></ul>
+            </section>
           </section>
           <section id="references-panel" class="references-panel" aria-label="Symbol references" hidden>
             <div class="references-tools">
               <p id="references-status" role="status"></p>
               <button id="find-references" class="button" title="Find References (Shift+F12)" disabled>Find References</button>
+              <button id="rename-symbol" class="button" title="Rename Symbol (F2)" disabled>Rename Symbol</button>
               <button id="references-cancel" class="button" hidden>Cancel</button>
             </div>
             <p id="references-scope" class="references-scope"></p>
@@ -159,6 +168,7 @@
     <span id="draft-status" class="status-field" data-state="clear" hidden></span>
     <button id="inspect-symbol" class="status-action" title="Inspect symbol (Ctrl+Alt+I)" disabled>Inspect symbol</button>
     <button id="go-definition" class="status-action" title="Go to Definition (F12)" disabled>Go to Definition</button>
+    <button id="editor-settings" class="status-action" title="Editor settings (Ctrl+,)" disabled>Settings</button>
     <label class="theme-control">Theme
       <select id="theme-choice" disabled>
         <option value="dark">CEVRA Dark</option>
@@ -175,6 +185,47 @@
     <p id="definition-summary"></p>
     <ul id="definition-choices" class="definition-choices"></ul>
     <button id="definition-cancel" class="button">Cancel</button>
+  </dialog>
+  <dialog id="settings-dialog" class="definition-dialog settings-dialog" aria-labelledby="settings-heading">
+    <h2 id="settings-heading">Editor Settings</h2>
+    <form id="settings-form">
+      <label>Scope <select id="settings-scope"><option value="global">Global</option><option value="workspace">This workspace</option></select></label>
+      <div class="settings-fields">
+        <label>Font size <input name="fontSize" type="number" min="10" max="32" required></label>
+        <label>Font family <select name="fontFamily"><option value="default">CEVRA default</option><option value="consolas">Consolas</option><option value="courier">Courier New</option></select></label>
+        <label>Indent width <input name="indentWidth" type="number" min="1" max="8" required></label>
+        <label>Indentation <select name="indentStyle"><option value="spaces">Spaces</option><option value="tabs">Tabs</option></select></label>
+        <label>Cursor width <select name="cursor"><option value="thin">Thin</option><option value="wide">Wide</option></select></label>
+        <label>Rename shortcut <select name="renameShortcut"><option value="f2">F2</option><option value="ctrl-alt-r">Ctrl+Alt+R</option></select></label>
+        <label><input name="wrap" type="checkbox"> Wrap lines</label>
+        <label><input name="lineNumbers" type="checkbox"> Show line numbers</label>
+        <label><input name="formatOnSave" type="checkbox"> Format JavaScript and TypeScript on save</label>
+      </div>
+      <div id="settings-trust" class="settings-trust" hidden>
+        <p id="trust-status"></p>
+        <button id="trust-revoke" type="button" class="button" hidden>Revoke Trust</button>
+      </div>
+      <p id="settings-status" role="status"></p>
+      <div class="edits-actions">
+        <button id="settings-reset" type="button" class="button" hidden>Clear Workspace Overrides</button>
+        <button id="settings-close" type="button" class="button">Close</button>
+        <button id="settings-save" type="submit" class="button primary">Save Settings</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="edits-dialog" class="definition-dialog edits-dialog" aria-labelledby="edits-heading">
+    <h2 id="edits-heading"></h2>
+    <form id="rename-form" hidden>
+      <label for="rename-name">New identifier</label>
+      <input id="rename-name" required maxlength="128" spellcheck="false" autocomplete="off">
+      <button class="button" type="submit">Preview Rename</button>
+    </form>
+    <p id="edits-status" role="status"></p>
+    <div id="edits-preview" aria-label="File changes"></div>
+    <div class="edits-actions">
+      <button id="edits-cancel" class="button">Cancel</button>
+      <button id="edits-apply" class="button primary" disabled>Apply as Drafts</button>
+    </div>
   </dialog>
   <dialog id="symbols-dialog" class="definition-dialog symbols-dialog" aria-labelledby="symbols-heading">
     <header class="symbols-header">

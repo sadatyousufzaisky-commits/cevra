@@ -7,19 +7,21 @@ const errors = {
   signatureHelp: 'Could not show the function signature. ',
   definition: 'Could not find the definition. ',
   references: 'Could not find references. ',
+  rename: 'Could not preview this rename. ',
+  diagnostics: 'Could not check types. ',
 };
 
 let project;
 let projectId;
 
-parentPort.on('message', ({ id, workspace, operation, target, position, sources }) => {
+parentPort.on('message', ({ id, workspace, operation, target, position, sources, argument }) => {
   try {
     if (projectId !== workspace.id) {
       project?.dispose();
       project = createSemanticProject(workspace);
       projectId = workspace.id;
     }
-    parentPort.postMessage({ id, result: project[operation](target, position, sources) });
+    parentPort.postMessage({ id, result: project[operation](target, position, sources, argument) });
   } catch (error) {
     project?.dispose();
     project = undefined;

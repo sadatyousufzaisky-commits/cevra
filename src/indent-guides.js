@@ -29,6 +29,8 @@ function guides(view) {
 export const indentGuides = ViewPlugin.fromClass(class {
   constructor(view) { this.decorations = guides(view); }
   update(update) {
-    if (update.docChanged || update.viewportChanged) this.decorations = guides(update.view);
+    if (update.docChanged || update.viewportChanged ||
+        update.startState.facet(EditorState.tabSize) !== update.state.facet(EditorState.tabSize) ||
+        getIndentUnit(update.startState) !== getIndentUnit(update.state)) this.decorations = guides(update.view);
   }
 }, { decorations: plugin => plugin.decorations });

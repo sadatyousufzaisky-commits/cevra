@@ -22,10 +22,10 @@ const highlighting = HighlightStyle.define([
 ]);
 
 export const editorTheme = [EditorView.theme({
-  '&': { backgroundColor: 'var(--base)', color: 'var(--text)', fontSize: '14px' },
-  '.cm-scroller': { fontFamily: 'var(--mono)', lineHeight: '1.6' },
+  '&': { backgroundColor: 'var(--base)', color: 'var(--text)', fontSize: 'var(--editor-font-size, 14px)' },
+  '.cm-scroller': { fontFamily: 'var(--editor-font, var(--mono))', lineHeight: '1.6' },
   '.cm-content': { padding: '10px 0', caretColor: 'var(--mint)' },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--mint)' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--mint)', borderLeftWidth: 'var(--editor-cursor-width, 1px)' },
   '.cm-gutters': { backgroundColor: 'var(--base)', color: 'var(--muted)', borderRight: '1px solid var(--line)' },
   '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--active-line)' },
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {

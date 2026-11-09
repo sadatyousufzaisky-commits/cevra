@@ -3,10 +3,11 @@ import { closeCompletion } from '@codemirror/autocomplete';
 import { indentWithTab, isolateHistory } from '@codemirror/commands';
 import { EditorState, Text } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
-import { indentUnit } from '@codemirror/language';
 import { javascript } from '@codemirror/lang-javascript';
 import { linter, lintGutter, setDiagnostics, setDiagnosticsEffect } from '@codemirror/lint';
 import { createDefinitionNavigation } from './definition-navigation.js';
+import { createEditPreview } from './edit-preview.js';
+import { createEditorSettings, editorOptions, optionExtensions } from './editor-settings.js';
 import { colorModeExtension, editorColorMode, editorTheme } from './editor-theme.js';
 import { indentGuides } from './indent-guides.js';
 import { createNavigationHistory } from './navigation-history.js';
@@ -18,6 +19,7 @@ import { createSemanticCompletion } from './semantic-completion.js';
 import { createSignatureHelp } from './signature-help.js';
 import { createSymbolInfo } from './symbol-info.js';
 import { createSymbolPicker } from './symbol-picker.js';
+import { createTypeProblems } from './type-problems.js';
 import { createWorkspaceLayout } from './workspace-layout.js';
 import { sourceLanguage } from './source-language.cjs';
 import { normalizeSource } from './source-text.cjs';
@@ -40,7 +42,9 @@ const inspectButton = byId('inspect-symbol');
 const definitionButton = byId('go-definition');
 const symbolButton = byId('go-symbol');
 const findReferencesButton = byId('find-references');
+const renameButton = byId('rename-symbol');
 const themeChoice = byId('theme-choice');
+const settingsButton = byId('editor-settings');
 const runButton = byId('run-file');
 const testButton = byId('run-tests');
 const retryButton = byId('rerun-failures');
@@ -71,6 +75,9 @@ let retryAvailable = false;
 let outputText = '';
 let selectedTheme = themeChoice.value;
 let colorMode = 'dark';
+let stagingEdits;
+let savingAll;
+let editorSettings;
 
 const view = new EditorView({ parent: editor });
 const layout = createWorkspaceLayout();
@@ -142,7 +149,7 @@ themeChoice.onchange = async () => {
 
 function syncCommands() {
   const open = [...documents.values()];
-  const saving = open.some(tab => tab.saving);
+  const saving = savingAll || open.some(tab => tab.saving);
   const discarding = open.some(tab => tab.discarding);
   openButton.disabled = welcomeOpen.disabled = exampleButton.disabled = Boolean(run || changingProject || saving || discarding);
   saveButton.disabled = !active?.dirty || Boolean(active.saving || active.discarding || changingProject);
@@ -151,10 +158,12 @@ function syncCommands() {
   recoveryButton.disabled = !active?.dirty || Boolean(active.saving || changingProject);
   formatButton.disabled = !active?.language || Boolean(changingProject || active.formatting || active.discarding);
   inspectButton.disabled = definitionButton.disabled = findReferencesButton.disabled = !active?.language || changingProject;
+  renameButton.disabled = !active?.language || changingProject || Boolean(run || saving || discarding);
+  settingsButton.disabled = Boolean(changingProject || run || saving || discarding);
   symbolButton.disabled = !project || changingProject;
-  runButton.disabled = !active || !runnable.test(active.path) || Boolean(changingProject || run || discarding);
+  runButton.disabled = !active || !runnable.test(active.path) || Boolean(changingProject || run || discarding || savingAll);
   runButton.hidden = Boolean(run);
-  testButton.disabled = !project || Boolean(changingProject || run || discarding);
+  testButton.disabled = !project || Boolean(changingProject || run || discarding || savingAll);
   retryButton.hidden = !retryAvailable || byId('run-panel').dataset.mode !== 'tests';
   retryButton.disabled = testButton.disabled;
   stopButton.hidden = !run;
@@ -229,6 +238,38 @@ function queueDraft(tab) {
   return tab.draftTask;
 }
 
+function updateDocument(tab, before, state, changes, docChanged) {
+  tab.state = state;
+  const endingChanged = before.field(lineEnding, false) !== state.field(lineEnding);
+  if (docChanged) {
+    tab.syntaxIssues = tab.typeIssues = undefined;
+    tab.version++;
+    navigation.map(tab.id, changes, state.doc);
+  }
+  if (docChanged || endingChanged) {
+    const dirty = isDirty(tab, state);
+    if (dirty !== tab.dirty) {
+      tab.dirty = dirty;
+      if (!dirty && tab.recoveryConflict) {
+        tab.recoveryConflict = false;
+        tab.revision = tab.diskRevision;
+      }
+      syncDirty();
+    }
+    queueDraft(tab);
+    searchPanel.changed();
+  }
+  if (docChanged) {
+    problemsPanel.changed(tab);
+    semantic.changed();
+    if (tab.language) {
+      referencesPanel.changed();
+      symbolPicker.changed();
+    }
+  }
+  return endingChanged;
+}
+
 function editorState(tab, text, ending) {
   return EditorState.create({
     doc: text,
@@ -238,7 +279,7 @@ function editorState(tab, text, ending) {
       lineEndingHistory,
       editorTheme,
       editorColorMode.of(colorModeExtension(colorMode === 'dark')),
-      indentUnit.of('  '),
+      editorOptions.of(optionExtensions(editorSettings)),
       tab.language ? [
         javascript({ typescript: tab.language.typescript, jsx: tab.language.jsx }),
         keymap.of([indentWithTab]),
@@ -250,33 +291,7 @@ function editorState(tab, text, ending) {
       ] : [],
       EditorView.contentAttributes.of({ 'aria-label': 'Source editor' }),
       EditorView.updateListener.of(update => {
-        tab.state = update.state;
-        const endingChanged = update.startState.field(lineEnding, false) !== update.state.field(lineEnding);
-        if (update.docChanged) {
-          tab.version++;
-          navigation.map(tab.id, update.changes, update.state.doc);
-        }
-        if (update.docChanged || endingChanged) {
-          const dirty = isDirty(tab, update.state);
-          if (dirty !== tab.dirty) {
-            tab.dirty = dirty;
-            if (!dirty && tab.recoveryConflict) {
-              tab.recoveryConflict = false;
-              tab.revision = tab.diskRevision;
-            }
-            syncDirty();
-          }
-          queueDraft(tab);
-          searchPanel.changed();
-        }
-        if (update.docChanged) {
-          problemsPanel.changed(tab);
-          semantic.changed();
-          if (tab.language) {
-            referencesPanel.changed();
-            symbolPicker.changed();
-          }
-        }
+        const endingChanged = updateDocument(tab, update.startState, update.state, update.changes, update.docChanged);
         if (update.docChanged || (update.selectionSet && !update.startState.selection.eq(update.state.selection))) {
           definitionNavigation.invalidate();
         }
@@ -395,6 +410,7 @@ function showFile(tab) {
     symbolInfo.leave(active);
   }
   active = tab;
+  if (changed) typeProblems.refresh();
   layout.filePath(tab?.path);
   editor.hidden = !tab;
   byId('welcome').hidden = Boolean(tab);
@@ -501,10 +517,10 @@ async function removeTab(tab) {
 }
 
 async function closeFile(tab) {
-  if (changingProject || tab.saving || tab.discarding) return;
+  if (changingProject || savingAll || tab.saving || tab.discarding) return;
   const openedProject = project;
   if (tab.dirty && !await api.confirmDiscard(tab.name)) return;
-  if (project !== openedProject || documents.get(tab.path) !== tab || tab.saving || tab.discarding) return;
+  if (project !== openedProject || documents.get(tab.path) !== tab || savingAll || tab.saving || tab.discarding) return;
   editor.inert = true;
   try {
     await removeTab(tab);
@@ -526,6 +542,7 @@ async function adoptProject(next) {
   documents.clear();
   expanded.clear();
   showFile(undefined);
+  applyEditorSettings(next.settings.effective);
   renderTree();
   byId('project-title').textContent = project.name;
   byId('project-title').title = project.root;
@@ -589,11 +606,25 @@ async function saveFile(tab) {
   if (!tab?.dirty || tab.discarding) return;
   if (tab.recoveryConflict) throw new Error('The original changed or is unavailable. Save a recovery copy.');
   if (tab.saving) return tab.saving;
-  const before = tab.state;
-  tab.saving = api.save(tab.projectId, tab.path, serialize(tab, before), tab.revision);
+  const task = async () => {
+    if (tab.language && editorSettings?.formatOnSave) {
+      const { doc } = tab.state;
+      const ending = tab.state.field(lineEnding);
+      const result = await api.format(tab.projectId, tab.path, doc.toString(), ending, Boolean(tab.bom));
+      if (tab.state.doc !== doc || tab.state.field(lineEnding) !== ending) {
+        throw new Error('The document changed while preparing the save. Save again to include the latest edits.');
+      }
+      applyFormatResult(tab, ending, result);
+    }
+    const before = tab.state;
+    const revision = await api.save(tab.projectId, tab.path, serialize(tab, before), tab.revision);
+    return { before, revision };
+  };
+  tab.saving = task();
   syncCommands();
   try {
-    tab.revision = await tab.saving;
+    const { before, revision } = await tab.saving;
+    tab.revision = revision;
     tab.savedDoc = before.doc;
     tab.savedEol = before.field(lineEnding);
     tab.dirty = isDirty(tab, tab.state);
@@ -602,6 +633,7 @@ async function saveFile(tab) {
     semantic.changed();
     if (/\.json$/i.test(tab.path)) referencesPanel.changed();
     notify('Saved ' + tab.path);
+    return true;
   } catch (error) {
     if (/^This file changed on disk\./.test(errorText(error))) {
       const disk = await api.read(tab.projectId, tab.path).catch(() => null);
@@ -613,6 +645,28 @@ async function saveFile(tab) {
     tab.saving = undefined;
     syncDirty();
   }
+}
+
+function saveAll() {
+  if (changingProject || run || savingAll) return;
+  const batch = [...documents.values()].filter(tab => tab.dirty);
+  if (!batch.length) return;
+  savingAll = (async () => {
+    let saved = 0;
+    for (const tab of batch) {
+      try {
+        if (await saveFile(tab)) saved++;
+      } catch (error) {
+        notify('Save All stopped at ' + tab.path + '. Saved ' + saved + ' of ' + batch.length + ' files. ' + errorText(error), true);
+        return;
+      }
+    }
+    notify(saved ? 'Saved ' + saved + (saved === 1 ? ' file.' : ' files.') : 'No files needed saving.');
+  })().finally(() => {
+    savingAll = undefined;
+    syncCommands();
+  });
+  syncCommands();
 }
 
 async function saveRecoveredCopy(tab) {
@@ -662,15 +716,7 @@ async function formatDocument() {
       notify('No formatting changes for ' + tab.path);
       return;
     }
-    const changes = tab.state.changes(result.changes);
-    view.dispatch({
-      changes,
-      selection: tab.state.selection.map(changes, 1),
-      effects: result.eol === ending ? [] : [changeLineEnding.of(result.eol)],
-      annotations: isolateHistory.of('full'),
-      scrollIntoView: view.hasFocus,
-      userEvent: 'input.format',
-    });
+    applyFormatResult(tab, ending, result);
     notify('Formatted ' + tab.path);
   } catch (error) {
     if (stillCurrent()) report(error);
@@ -679,6 +725,21 @@ async function formatDocument() {
     tab.formatting = false;
     syncCommands();
   }
+}
+
+function applyFormatResult(tab, ending, result) {
+  if (!result.changes.length && result.eol === ending) return;
+  const changes = tab.state.changes(result.changes);
+  const transaction = tab.state.update({
+    changes,
+    selection: tab.state.selection.map(changes, 1),
+    effects: result.eol === ending ? [] : [changeLineEnding.of(result.eol)],
+    annotations: isolateHistory.of('full'),
+    scrollIntoView: tab === active && view.hasFocus,
+    userEvent: 'input.format',
+  });
+  if (tab === active) view.dispatch(transaction);
+  else updateDocument(tab, transaction.startState, transaction.state, transaction.changes, transaction.docChanged);
 }
 
 function setRunState(text, state = '') {
@@ -733,7 +794,15 @@ async function launchRun(mode, target, start) {
   setRunState('Starting', 'running');
   syncCommands();
   try {
-    await start(id);
+    const token = await api.authorizeRun(project.id);
+    if (!token) {
+      run = undefined;
+      setRunState('Canceled');
+      if (mode === 'tests') byId('test-empty').textContent = 'Execution canceled.';
+      syncCommands();
+      return;
+    }
+    await start(id, token);
     if (run?.id === id) {
       run.stage = 'running';
       setRunState('Running', 'running');
@@ -752,21 +821,21 @@ async function launchRun(mode, target, start) {
 function runFile() {
   if (runButton.disabled) return;
   const tab = active;
-  return launchRun('file', tab.path, async id => {
+  return launchRun('file', tab.path, async (id, token) => {
     await saveFile(tab);
     if (tab.dirty) throw new Error('The file changed during save. Run it again to include the latest edits.');
-    await api.start(project.id, tab.path, tab.revision, id);
+    await api.start(project.id, tab.path, tab.revision, id, token);
   });
 }
 
 function runTests(retry = false) {
   if (testButton.disabled || (retry && !retryAvailable)) return;
-  return launchRun('tests', retry ? 'Failed tests' : 'Project tests', async id => {
+  return launchRun('tests', retry ? 'Failed tests' : 'Project tests', async (id, token) => {
     for (const tab of documents.values()) await saveFile(tab);
     if ([...documents.values()].some(tab => tab.dirty)) {
       throw new Error('An open file changed during save. Run tests again to include the latest edits.');
     }
-    await api.test(project.id, retry, id);
+    await api.test(project.id, retry, id, token);
   });
 }
 
@@ -941,15 +1010,15 @@ const searchPanel = createSearchPanel({
     path: tab.path, documentId: tab.id, version: tab.version, text: tab.state.doc.toString(),
   })),
   jump: jumpToLocation,
+  previewReplace: (result, replacement) => editPreview.replace(result, replacement),
   errorText,
 });
 
 const problemsPanel = createProblemsPanel({
   api,
   apply(tab, issues) {
-    const update = setDiagnostics(tab.state, issues);
-    if (tab === active) view.dispatch(update);
-    else tab.state = tab.state.update(update).state;
+    tab.syntaxIssues = issues;
+    showDiagnostics(tab);
   },
   jump: jumpToLocation,
   report,
@@ -962,6 +1031,26 @@ const semantic = createSemanticContext({
   getActive,
   getDocuments: () => documents.values(),
   available: () => !changingProject && !document.body.inert && !editor.inert,
+  onChanged: () => typeProblems.refresh(),
+});
+function showDiagnostics(tab) {
+  if (documents.get(tab.path) !== tab) return;
+  const update = setDiagnostics(tab.state, [...(tab.syntaxIssues ?? []), ...(tab.typeIssues ?? [])]);
+  if (tab === active) view.dispatch(update);
+  else tab.state = tab.state.update(update).state;
+}
+
+const typeProblems = createTypeProblems({
+  getActive,
+  check: tab => semantic.typeCheck(tab),
+  apply(tab, issues) {
+    if (!issues.length && !tab.typeIssues?.length) return;
+    tab.typeIssues = issues;
+    showDiagnostics(tab);
+  },
+  jump: jumpToLocation,
+  report,
+  errorText,
 });
 const symbolInfo = createSymbolInfo({ semantic, getActive, notify, report });
 const semanticCompletion = createSemanticCompletion({ semantic, getActive, report });
@@ -973,6 +1062,123 @@ const referencesPanel = createReferencesPanel({
   api, semantic, getActive, show: () => showDock('references'), jump: jumpToLocation, errorText,
 });
 const symbolPicker = createSymbolPicker({ api, semantic, getProject: () => project, jump: jumpToLocation, report, errorText });
+
+function applyEditorSettings(settings) {
+  editorSettings = settings;
+  const fonts = { default: 'var(--mono)', consolas: 'Consolas, monospace', courier: '"Courier New", monospace' };
+  editor.style.setProperty('--editor-font', fonts[settings.fontFamily]);
+  editor.style.setProperty('--editor-font-size', settings.fontSize + 'px');
+  editor.style.setProperty('--editor-cursor-width', settings.cursor === 'wide' ? '3px' : '1px');
+  editor.dataset.lineNumbers = String(settings.lineNumbers);
+  renameButton.title = 'Rename Symbol (' + (settings.renameShortcut === 'f2' ? 'F2' : 'Ctrl+Alt+R') + ')';
+  const effects = editorOptions.reconfigure(optionExtensions(settings));
+  for (const tab of documents.values()) {
+    if (tab === active) view.dispatch({ effects });
+    else tab.state = tab.state.update({ effects }).state;
+  }
+}
+
+const settingsDialog = createEditorSettings({
+  api, getProject: () => project, apply: applyEditorSettings, errorText,
+});
+
+function openSettings() {
+  if (!settingsButton.disabled) void settingsDialog.show();
+}
+
+const staleEdits = path => new Error('The source changed. Refresh the preview for ' + path);
+
+const editPreview = createEditPreview({
+  errorText,
+  async prepare({ files, skipped }, replacement) {
+    if (!project || changingProject || run || files.length > 64) throw new Error('Preview at most 64 files at a time.');
+    const workspace = project;
+    const changes = [];
+    const encoder = new TextEncoder();
+    let bytes = 0;
+    for (const file of files) {
+      const tab = findDocument(file.path);
+      const doc = tab?.state.doc;
+      const version = tab?.version;
+      const ending = tab?.state.field(lineEnding);
+      const path = tab?.path ?? file.path;
+      const disk = await api.read(workspace.id, path);
+      bytes += encoder.encode(disk.text).byteLength;
+      if (bytes > 16 * 1024 * 1024) throw new Error('Narrow the preview to at most 16 MiB of source.');
+      if (project !== workspace || findDocument(path) !== tab || tab?.version !== version ||
+          tab?.state.field(lineEnding) !== ending || tab?.recoveryConflict || tab?.saving || tab?.discarding ||
+          (tab && tab.revision !== disk.revision) ||
+          (file.documentId === undefined ? file.revision !== disk.revision || tab?.dirty :
+            tab?.id !== file.documentId || version !== file.version)) throw staleEdits(path);
+      const original = doc ?? Text.of(normalizeSource(disk.text).split('\n'));
+      const eol = ending ?? detectLineEnding(disk.text);
+      if (new Set(disk.text.match(/\r\n|\r|\n/g)).size > 1) {
+        throw new Error('Normalize mixed line endings before applying a batch to ' + path);
+      }
+      const edits = file.matches.map(match => {
+        const from = match.offset ?? original.line(match.line).from + match.column - 1;
+        return { from, to: from + match.length, insert: match.replacement ?? replacement };
+      }).sort((a, b) => a.from - b.from);
+      let end = 0;
+      for (const edit of edits) {
+        if (edit.from < end || edit.to <= edit.from || edit.to > original.length || typeof edit.insert !== 'string') {
+          throw new Error('Invalid edit range in ' + path);
+        }
+        end = edit.to;
+      }
+      const changed = edits.filter(edit => original.sliceString(edit.from, edit.to) !== edit.insert);
+      if (changed.length) changes.push({ path, tab, version, eol, disk, doc: original, edits: changed });
+    }
+    return { workspace, changes, skipped };
+  },
+  stage(prepared, verify) {
+    stagingEdits = stageEdits(prepared, verify).finally(() => { stagingEdits = undefined; });
+    return stagingEdits;
+  },
+});
+
+async function stageEdits({ workspace, changes }, verify) {
+  if (project !== workspace || changingProject || run) throw new Error('The workspace is busy or has changed.');
+  ++fileRequest;
+  definitionNavigation.invalidate();
+  await verify?.();
+  await Promise.all(changes.map(({ tab }) => tab?.draftTask));
+  const staged = changes.map(file => {
+    const { path, tab, disk, doc, eol, version, edits } = file;
+    if (findDocument(path) !== tab || tab?.version !== version ||
+        (tab && (tab.state.doc !== doc || tab.state.field(lineEnding) !== eol || tab.revision !== disk.revision ||
+          tab.recoveryConflict || tab.saving || tab.discarding || tab.formatting))) throw staleEdits(path);
+    const state = tab?.state ?? EditorState.create({ doc });
+    const modified = state.changes(edits).apply(doc);
+    const bom = tab?.bom ?? (disk.text.startsWith('\uFEFF') ? '\uFEFF' : '');
+    return { path, text: bom + modified.toString().replaceAll('\n', eol), revision: disk.revision };
+  });
+  await api.stageEdits(workspace.id, staged);
+  let first;
+  for (const file of changes) {
+    const tab = file.tab ?? createTab(file.path, file.disk.text, file.disk.revision);
+    const transaction = tab.state.update({ changes: file.edits, annotations: isolateHistory.of('full') });
+    if (tab === active) view.dispatch(transaction);
+    else updateDocument(tab, transaction.startState, transaction.state, transaction.changes, true);
+    first ??= tab;
+  }
+  showFile(active ?? first);
+  notify('Created recoverable drafts in ' + changes.length + (changes.length === 1 ? ' file.' : ' files.'));
+}
+
+function renameSymbol() {
+  if (renameButton.disabled || !semantic.available()) return;
+  const tab = active;
+  const position = view.state.selection.main.head;
+  const version = tab.version;
+  editPreview.rename(async name => {
+    if (tab !== active || tab.version !== version) throw staleEdits(tab.path);
+    const query = semantic.query('rename', tab, position, name);
+    const files = await query.result;
+    if (!query.current()) throw staleEdits(tab.path);
+    return files;
+  });
+}
 
 for (const [pane, button] of Object.entries(dockButtons)) button.onclick = () => showDock(pane);
 backButton.onclick = () => travel('back').catch(report);
@@ -994,6 +1200,8 @@ findReferencesButton.onclick = () => {
   view.focus();
   void referencesPanel.find(view);
 };
+renameButton.onclick = renameSymbol;
+settingsButton.onclick = openSettings;
 recoveryButton.onclick = () => saveRecoveredCopy(active).catch(report);
 runButton.onclick = runFile;
 testButton.onclick = () => runTests();
@@ -1004,6 +1212,8 @@ diagnosticButton.onclick = () => { if (diagnostic) jumpToLocation(diagnostic).ca
 api.beforeClose(async () => {
   document.body.inert = true;
   try {
+    await stagingEdits?.catch(() => {});
+    await savingAll;
     const open = [...documents.values()];
     await Promise.allSettled(open.map(tab => tab.saving));
     await Promise.all(open.map(tab => tab.draftError ? queueDraft(tab) : tab.draftTask));
@@ -1027,6 +1237,7 @@ async function initialize() {
     applyColorMode(mode);
     const initial = await api.initial();
     if (initial.project) await adoptProject(initial.project);
+    else applyEditorSettings((await api.editorSettings()).effective);
     if (initial.unavailable) notify('A draft workspace is unavailable. Reopen it when it is accessible.', true);
     else if (initial.unreadable) notify('Some draft backups could not be read. The backups are still on disk.', true);
   } catch (error) {
@@ -1046,6 +1257,10 @@ document.addEventListener('keydown', event => {
   if (event.key === 'F5') {
     event.preventDefault();
     void runFile();
+  } else if (view.hasFocus && (editorSettings?.renameShortcut === 'ctrl-alt-r' ?
+    command && event.altKey && !event.shiftKey && key === 'r' : event.key === 'F2' && !command && !event.altKey && !event.shiftKey)) {
+    event.preventDefault();
+    if (!event.repeat) renameSymbol();
   } else if (event.key === 'F12' && view.hasFocus) {
     event.preventDefault();
     if (!event.repeat) {
@@ -1082,12 +1297,16 @@ document.addEventListener('keydown', event => {
   } else if (command && !event.altKey && !event.shiftKey && key === 'j') {
     event.preventDefault();
     if (!event.repeat) layout.toggleDock();
+  } else if (command && !event.altKey && !event.shiftKey && key === ',') {
+    event.preventDefault();
+    if (!event.repeat) openSettings();
   } else if (command && key === 'o') {
     event.preventDefault();
     openProject(api.chooseFolder).catch(report);
   } else if (command && key === 's') {
     event.preventDefault();
-    if (!changingProject) saveFile(active).catch(report);
+    if (event.shiftKey) saveAll();
+    else if (!changingProject) saveFile(active).catch(report);
   } else if (command && key === 'w' && active) {
     event.preventDefault();
     closeFile(active).catch(report);

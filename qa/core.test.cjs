@@ -53,6 +53,26 @@ test('a failed theme save keeps the committed preference and permits a later ret
   assert.equal(await createPreferences(folder).getTheme(), 'light');
 });
 
+test('editor settings inherit validated defaults and trust belongs to the original workspace directory', async t => {
+  const { folder, root, workspace } = await fixture(t);
+  const preferences = createPreferences(folder);
+  await preferences.setEditor(workspace, 'global', { fontSize: 19, wrap: true, indentWidth: 4 });
+  await preferences.setEditor(workspace, 'workspace', { indentWidth: 8, wrap: false });
+  await assert.rejects(preferences.setEditor(workspace, 'workspace', { indentWidth: 0 }), /invalid/);
+  await assert.rejects(preferences.setEditor(workspace, 'global', { fontFamily: 'arbitrary' }), /invalid/);
+  assert.equal(await preferences.isTrusted(workspace), false);
+  await preferences.setTrusted(workspace, true);
+  const reopened = createPreferences(folder);
+  assert.deepEqual((await reopened.getEditor(workspace)).overrides, { indentWidth: 8, wrap: false });
+  assert.equal((await reopened.getEditor(workspace)).effective.fontSize, 19);
+  assert.equal(await reopened.isTrusted(await createWorkspace(root)), true);
+  await reopened.setEditor(workspace, 'workspace', null);
+  assert.equal((await reopened.getEditor(workspace)).effective.indentWidth, 4);
+  await fs.rename(root, path.join(folder, 'original'));
+  await fs.mkdir(root);
+  assert.equal(await reopened.isTrusted(await createWorkspace(root)), false);
+});
+
 test('workspace operations reject traversal, absolute paths, alternate streams, and hidden directories', async t => {
   const { folder, root, workspace } = await fixture(t);
   const outside = path.join(folder, 'outside.cjs');
@@ -219,6 +239,26 @@ test('draft writes retain the last acknowledged edit and isolate damaged records
   });
   await reopened.set(root, 'one.txt', null);
   assert.deepEqual((await reopened.list()).entries.map(draft => draft.path), ['two.txt']);
+});
+
+test('a partially materialized edit journal restores every draft and replays before new writes', async t => {
+  const { folder, root } = await fixture(t);
+  const directory = path.join(folder, 'drafts');
+  const store = createDraftStore(directory);
+  const revision = 'c'.repeat(64);
+  await store.set(root, 'one.js', 'partial materialization', revision);
+  const batch = ['one.js', 'nested/café.js'].map(path => ({
+    version: 1, root, path, text: 'committed batch ' + path, revision, updated: Date.now(),
+  }));
+  await fs.writeFile(path.join(directory, 'batch.json'), JSON.stringify(batch));
+  const reopened = createDraftStore(directory);
+  assert.deepEqual((await reopened.list()).entries, batch);
+  await reopened.set(root, 'one.js', 'newer edit', revision);
+  await assert.rejects(fs.access(path.join(directory, 'batch.json')), { code: 'ENOENT' });
+  assert.deepEqual(Object.fromEntries((await createDraftStore(directory).list()).entries.map(draft => [draft.path, draft.text])), {
+    'one.js': 'newer edit',
+    'nested/café.js': 'committed batch nested/café.js',
+  });
 });
 
 test('project search reads safe text and uses unsaved versions in place of disk copies', async t => {
@@ -472,6 +512,23 @@ test('semantic queries check JavaScript and confine module reads to permitted wo
   assert.match(call.signature, /greet\(name: string\): string/);
   const arrayMethod = await semantics.quickInfo(workspace, script.path, commonJS.indexOf('map('), [script]);
   assert.match(arrayMethod.signature, /Array<string>\.map/);
+});
+
+test('type diagnostics respect JavaScript opt-in, leading pragmas, and the workspace compiler options', async t => {
+  const { root, workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const body = '/** @type {number} */\nconst count = "three";\n';
+  const check = (text, file = 'types.js') => semantics.diagnostics(workspace, file, [
+    { path: file, documentId: 1, version: 0, text },
+  ]);
+  assert.equal((await check(body)).enabled, false);
+  assert.equal((await check(body + 'const marker = `\n// @ts-check\n`;')).enabled, false);
+  assert.deepEqual((await check('// @ts-check\n' + body)).issues.map(issue => issue.source), ['TS2322']);
+  await fs.writeFile(path.join(root, 'jsconfig.json'), '{"compilerOptions":{"checkJs":true}}');
+  assert.deepEqual((await check(body)).issues.map(issue => issue.source), ['TS2322']);
+  assert.equal((await check('// @ts-nocheck\n' + body)).directive, 'nocheck');
+  assert.equal((await check('// @ts-nocheck\nconst bad: number = "three";', 'types.ts')).enabled, false);
 });
 
 test('completions use unsaved imports and preserve exact TypeScript replacement ranges', { timeout: 20_000 }, async t => {

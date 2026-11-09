@@ -17,6 +17,12 @@ function createSemanticService() {
   const symbolWorker = createWorkerService(path.join(__dirname, 'symbol-worker.cjs'), {
     name: 'symbol search', task: 'symbol search', capacity: 1, heap: 128,
   });
+  const renameWorker = createWorkerService(workerFile, {
+    name: 'symbol rename', task: 'rename preview', capacity: 1, heap: 192,
+  });
+  const diagnosticsWorker = createWorkerService(workerFile, {
+    name: 'type checking', task: 'type check', capacity: 1, heap: 192,
+  });
   let draining = false;
   let activeReferences;
   let activeSymbols;
@@ -45,7 +51,7 @@ function createSemanticService() {
     return { id, root, identity: { dev, ino } };
   }
 
-  async function query(operation, workspace, file, position, buffers, engine = worker) {
+  async function query(operation, workspace, file, position, buffers, engine = worker, argument) {
     if (!sourceLanguage(file) || !Array.isArray(buffers) || !buffers.length ||
         !Number.isSafeInteger(position) || position < 0) {
       throw new Error('Choose a JavaScript or TypeScript source position.');
@@ -54,7 +60,7 @@ function createSemanticService() {
     const sources = snapshots(workspace, buffers);
     const active = buffers.find(buffer => buffer.path === file);
     if (!active || position > active.text.length) throw new Error('The language request is outside the current document.');
-    return engine.request({ workspace: workspaceIdentity(workspace), operation, target, position, sources });
+    return engine.request({ workspace: workspaceIdentity(workspace), operation, target, position, sources, argument });
   }
 
   function stopReferences() {
@@ -91,6 +97,12 @@ function createSemanticService() {
   }
 
   return {
+    diagnostics: (workspace, file, buffers) => query('diagnostics', workspace, file, 0, buffers, diagnosticsWorker),
+    rename(workspace, file, position, buffers, name) {
+      if (typeof name !== 'string' || !name.length || name.length > 128) throw new Error('Enter a new identifier.');
+      renameWorker.stop();
+      return query('rename', workspace, file, position, buffers, renameWorker, name);
+    },
     quickInfo: (workspace, file, position, buffers) => query('quickInfo', workspace, file, position, buffers),
     definition: (workspace, file, position, buffers) => query('definition', workspace, file, position, buffers),
     complete: (workspace, file, position, buffers) => queue('complete', workspace, file, position, buffers),
@@ -132,6 +144,8 @@ function createSemanticService() {
       worker.stop();
       stopReferences();
       stopSymbols();
+      renameWorker.stop();
+      diagnosticsWorker.stop();
     },
   };
 }

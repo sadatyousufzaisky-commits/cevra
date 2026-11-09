@@ -1,4 +1,4 @@
-export function createSemanticContext({ api, getActive, getDocuments, available }) {
+export function createSemanticContext({ api, getActive, getDocuments, available, onChanged }) {
   const snapshots = new WeakMap();
   let generation = 0;
 
@@ -23,7 +23,10 @@ export function createSemanticContext({ api, getActive, getDocuments, available 
   return {
     available,
     draftSnapshots,
-    changed() { generation++; },
+    changed() { generation++; onChanged(); },
+    typeCheck(tab) {
+      return api.typeCheck(tab.projectId, tab.path, [snapshot(tab), ...draftSnapshots(tab)]);
+    },
     query(operation, tab, position, requestId) {
       const epoch = generation;
       const version = tab.version;

@@ -1,3 +1,26 @@
+export function problemRow(tab, issue, onJump) {
+  const line = tab.state.doc.lineAt(issue.from);
+  const column = issue.from - line.from + 1;
+  const row = document.createElement('li');
+  const button = document.createElement('button');
+  button.className = 'problem-row';
+  const severity = document.createElement('span');
+  severity.className = 'problem-severity';
+  severity.dataset.severity = issue.severity;
+  severity.textContent = issue.severity === 'warning' ? 'Warning' : 'Error';
+  const message = document.createElement('span');
+  message.className = 'problem-message';
+  message.textContent = (issue.source ? issue.source + ' · ' : '') + issue.message;
+  const location = document.createElement('span');
+  location.className = 'problem-location';
+  location.textContent = 'Ln ' + line.number + ', Col ' + column;
+  button.title = tab.path + ':' + line.number + ':' + column + ' — ' + issue.message;
+  button.append(severity, message, location);
+  button.onclick = () => onJump({ path: tab.path, offset: issue.from, length: issue.to - issue.from });
+  row.append(button);
+  return row;
+}
+
 export function createProblemsPanel({ api, apply, jump, report, errorText }) {
   const byId = id => document.getElementById(id);
   const pane = byId('problems-panel');
@@ -9,35 +32,6 @@ export function createProblemsPanel({ api, apply, jump, report, errorText }) {
 
   function current(entry, version) {
     return documents.get(entry.tab.id) === entry && entry.tab.version === version;
-  }
-
-  function problemRow(entry, issue) {
-    const { tab, version } = entry;
-    const line = tab.state.doc.lineAt(issue.from);
-    const column = issue.from - line.from + 1;
-    const row = document.createElement('li');
-    const button = document.createElement('button');
-    button.className = 'problem-row';
-    const severity = document.createElement('span');
-    severity.className = 'problem-severity';
-    severity.dataset.severity = issue.severity;
-    severity.textContent = issue.severity === 'warning' ? 'Warning' : 'Error';
-    const message = document.createElement('span');
-    message.className = 'problem-message';
-    message.textContent = issue.message;
-    const location = document.createElement('span');
-    location.className = 'problem-location';
-    location.textContent = 'Ln ' + line.number + ', Col ' + column;
-    button.title = tab.path + ':' + line.number + ':' + column + ' — ' + issue.message;
-    button.append(severity, message, location);
-    button.onclick = () => {
-      if (!current(entry, version)) return;
-      jump({
-        path: tab.path, offset: issue.from, length: issue.to - issue.from,
-      }, { documentId: tab.id, version, isCurrent: () => current(entry, version) }).catch(report);
-    };
-    row.append(button);
-    return row;
   }
 
   function render() {
@@ -76,7 +70,11 @@ export function createProblemsPanel({ api, apply, jump, report, errorText }) {
         group.append(explanation);
       } else {
         const rows = document.createElement('ul');
-        rows.append(...entry.issues.map(issue => problemRow(entry, issue)));
+        const { tab, version } = entry;
+        const isCurrent = () => current(entry, version);
+        rows.append(...entry.issues.map(issue => problemRow(tab, issue, location => {
+          if (isCurrent()) jump(location, { documentId: tab.id, version, isCurrent }).catch(report);
+        })));
         if (entry.omitted) {
           const note = document.createElement('li');
           note.className = 'problem-note';

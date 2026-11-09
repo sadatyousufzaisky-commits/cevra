@@ -14,11 +14,12 @@ npm start
 Choose **Open example** to try the built-in JavaScript project, or choose **Open folder** to browse an existing project. The example includes a commented-out error you can enable to try source navigation.
 
 - **Ctrl+S** saves the active file. The editor accepts UTF-8 text files up to 2 MiB.
+- **Ctrl+Shift+S** saves all open drafts. CEVRA reports where the save stopped if a file fails its revision check.
 - **F5** saves the active file and runs it from the project root. The first milestone supports `.js`, `.mjs`, and `.cjs` through Electron's bundled Node runtime. Other files on disk are read as saved.
 - **Stop** ends a running program. Its output remains visible in the run panel.
 - **Source location** takes you to the first project location CEVRA finds in a failed run's error output.
 
-The workbench uses Electron for the desktop shell and CodeMirror for the editor. CEVRA owns the project explorer, file state, and run workflow. Programs execute with your user account's permissions when you choose to run them.
+The workbench uses Electron for the desktop shell and CodeMirror for the editor. CEVRA owns the project explorer, file state, and run workflow. Before the first file or test run in an untrusted workspace, choose **Run Once**, **Trust Workspace**, or **Cancel**. CEVRA asks before saving or running code. Programs execute with your user account's permissions. Workspace trust is stored locally and can be revoked in **Settings**.
 
 ## Run project tests
 
@@ -36,11 +37,19 @@ The built-in example includes a failing test for fractional weights. In `total.c
 
 Project search shows up to 400 matches and skips binary, unreadable, or oversized files. It excludes version-control directories and common dependency caches. If a file changes on disk after the search, CEVRA checks its revision before opening the result.
 
-## Check syntax while editing
+## Preview edits across files
+
+In project search, enter a replacement and choose **Preview Replace**. The preview groups before-and-after edits by file, identifies unsaved buffers, and reports skipped entries. Narrow capped searches before previewing. An empty replacement deletes the matched text.
+
+Press **F2** on a JavaScript or TypeScript identifier, or choose **Rename Symbol** in **References**. Enter a new identifier and choose **Preview Rename**. CEVRA uses language analysis to find static references and rechecks the scope before applying. Rename requires a single readable workspace project. It refuses ambiguous edits, incomplete analysis, or a proposed name already used in the analyzed source. Runtime-computed names and external consumers are outside the analysis scope.
+
+**Apply as Drafts** checks all original revisions and records the batch as one recoverable operation. Changes open in tabs with per-file undo. Use **Ctrl+S** to save individually or **Ctrl+Shift+S** to save all. A changed or missing original blocks applying the batch. CEVRA preserves the BOM and line-ending style and asks you to normalize mixed line endings before a batch edit.
+
+## Check syntax and types while editing
 
 Open **Problems** with **Ctrl+Shift+M**. CEVRA checks open JavaScript and TypeScript buffers, including JSX and TSX, and marks syntax errors inline and in the gutter. Click a problem to select its source range. The panel clears outdated findings while it checks the latest edits. **Retry checks** is available if an analysis fails.
 
-Syntax checking runs locally on editor text. Runtime failures remain in **Run output**. The Problems view in this milestone reports syntax findings.
+**Type checking** shows a separate set of issues for the active TypeScript file, including errors that reflect unsaved imports. Enable JavaScript type checking with a leading `// @ts-check` comment or `"checkJs": true` in the nearest project configuration. Click a type problem to jump to its range. Runtime failures appear in **Run output**.
 
 ## Format a document
 
@@ -100,15 +109,23 @@ Press **Ctrl+B** to show or hide the Explorer and **Ctrl+J** to toggle the botto
 
 The editor shows the current file path and indentation guides. **Tab** and **Shift+Tab** indent and outdent JavaScript and TypeScript lines. Press **Escape** and then **Tab** to move focus out of the editor.
 
-## Change the theme
+## Customize the editor
 
 Use **Theme** in the status bar to choose **CEVRA Dark**, **CEVRA Light**, or **System**. System follows the operating system's app color mode. The theme applies to the workbench, editor, and window controls. CEVRA remembers it across projects and restarts. New profiles start with CEVRA Dark.
+
+Use **Settings** or **Ctrl+,** for font size and family, indentation, wrapping, line numbers, cursor width, format on save, and the Rename Symbol shortcut. Changes apply to open tabs. **Global** sets the defaults, and **This workspace** overrides just the fields you change. **Clear Workspace Overrides** restores inheritance. Format on save uses the project's formatter configuration.
 
 ## Verify CEVRA
 
 Run `npm test` on Windows before expanding the workbench. The core suite exercises JavaScript process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.
 
 GitHub Actions runs the same checks on Windows for every push and pull request.
+
+## Benchmark the desktop workflows
+
+Run `npm run benchmark` for five samples or `npm run benchmark -- --samples=20` for a longer run. The harness launches Electron with a fresh local profile for each sample and a generated 163-file workspace. It reports median and p95 times for opening the workspace and a file, editing, syntax feedback, project search, a failed run, and jumping from its output. It verifies the exact search, diagnostic, and runtime destinations. The folder picker and trust prompt are answered by the harness, and timings include app and automation overhead for each measured operation.
+
+For a matched VS Code comparison, generate the same workspace with `node qa/benchmark.cjs --fixture=PATH_TO_NEW_FOLDER`. On the same machine, use clean profiles, record editor versions and runtime versions, and run the same number of samples in each editor. Use `edit.ts` for opening, typing, and the syntax error `const benchmark = ;`. Search for `CEVRA_BENCHMARK_NEEDLE` and verify line 51, column 14. Run `main.cjs` and verify the jump to `fault # %.cjs` at line 3, column 9. Time the same start and end points and record the number of actions separately.
 
 ## Recover unsaved edits
 

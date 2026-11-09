@@ -2,7 +2,10 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme } = require('elec
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { createWorkspace, listFolder, readSource, saveSource, saveRecoveryCopy, workspacePath } = require('./workspace.cjs');
+const { randomUUID } = require('node:crypto');
+const { createWorkspace, listFolder, maxFileBytes, readSource, saveSource, saveRecoveryCopy,
+  resolveEntry, verifyRevision, workspacePath } = require('./workspace.cjs');
+const { sourceFileKey } = require('./source-files.cjs');
 const { startNodeRun } = require('./runner.cjs');
 const { createTestSession } = require('./project-tests.cjs');
 const { createDraftStore } = require('./drafts.cjs');
@@ -25,6 +28,8 @@ const semantics = createSemanticService();
 let window;
 let workspace;
 let activeRun;
+let runGrant;
+let authorizingRun = false;
 let activeSearch;
 let rendererReady = false;
 let closePending = false;
@@ -86,13 +91,15 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
   if (discard && workspace) await drafts.clear(workspace.root);
   const { entries, unreadable } = await readDrafts();
   const recovered = entries.filter(draft => draft.root === next.root);
+  const settings = await preferences.getEditor(next);
   activeSearch?.controller.abort();
   syntax.stop();
   formatter.stop();
   semantics.stop();
   workspace = next;
+  runGrant = undefined;
   return {
-    id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable,
+    id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable, settings,
     caseInsensitivePaths: process.platform === 'win32',
   };
 }
@@ -118,6 +125,47 @@ handle('set-theme', async choice => {
   nativeTheme.themeSource = theme;
   syncWindowAppearance();
   return { theme, mode: colorMode() };
+});
+handle('editor-settings', id => preferences.getEditor(id ? currentWorkspace(id) : undefined));
+handle('set-editor-settings', (id, scope, values) =>
+  preferences.setEditor(id ? currentWorkspace(id) : undefined, scope, values));
+handle('workspace-trust', id => preferences.isTrusted(currentWorkspace(id)));
+handle('revoke-trust', async id => {
+  const project = currentWorkspace(id);
+  runGrant = undefined;
+  await preferences.setTrusted(project, false);
+});
+
+handle('authorize-run', async id => {
+  const project = currentWorkspace(id);
+  if (authorizingRun || activeRun) throw new Error('An execution request is already active.');
+  authorizingRun = true;
+  runGrant = undefined;
+  try {
+    await resolveEntry(project, '');
+    if (!await preferences.isTrusted(project)) {
+      const { response } = await dialog.showMessageBox(window, {
+        type: 'warning',
+        title: 'Workspace execution',
+        message: 'Allow CEVRA to run code from this workspace?',
+        detail: project.root + '\n\nCode and tests run with your Windows user permissions.',
+        buttons: ['Cancel', 'Run Once', 'Trust Workspace'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      if (response !== 1 && response !== 2) return null;
+      currentWorkspace(id);
+      await resolveEntry(project, '');
+      if (response === 2) await preferences.setTrusted(project, true);
+    }
+    currentWorkspace(id);
+    const token = randomUUID();
+    runGrant = { id, token };
+    return token;
+  } finally {
+    authorizingRun = false;
+  }
 });
 
 handle('choose-folder', async discard => {
@@ -179,6 +227,9 @@ handle('references', (id, file, position, buffers, requestId) =>
 handle('cancel-references', (id, requestId) => semantics.cancelReferences(currentWorkspace(id), requestId));
 handle('symbols', (id, query, buffers, requestId) => semantics.symbols(currentWorkspace(id), query, buffers, requestId));
 handle('cancel-symbols', (id, requestId) => semantics.cancelSymbols(currentWorkspace(id), requestId));
+handle('rename', (id, file, position, buffers, name) =>
+  semantics.rename(currentWorkspace(id), file, position, buffers, name));
+handle('type-check', (id, file, buffers) => semantics.diagnostics(currentWorkspace(id), file, buffers));
 handle('search', async (id, requestId, query, caseSensitive, snapshots) => {
   const project = currentWorkspace(id);
   activeSearch?.controller.abort();
@@ -194,6 +245,27 @@ handle('cancel-search', (id, requestId) => {
   if (activeSearch?.id === id && activeSearch.requestId === requestId) activeSearch.controller.abort();
 });
 handle('save', (id, file, text, revision) => saveSource(currentWorkspace(id), file, text, revision));
+handle('stage-edits', async (id, changes) => {
+  const project = currentWorkspace(id);
+  if (!Array.isArray(changes) || !changes.length || changes.length > 64) throw new Error('Invalid edit batch.');
+  const files = new Set();
+  let bytes = 0;
+  for (const change of changes) {
+    const key = sourceFileKey(workspacePath(project, change.path));
+    if (files.has(key) || typeof change.text !== 'string' || change.text.includes('\0')) throw new Error('Invalid edit batch.');
+    const size = Buffer.byteLength(change.text);
+    bytes += size;
+    if (size > maxFileBytes || bytes > 16 * 1024 * 1024) throw new Error('The edit batch exceeds the draft size limit.');
+    files.add(key);
+    try {
+      await verifyRevision(project, change.path, change.revision);
+    } catch {
+      throw new Error('The original changed or is unavailable. Refresh the preview for ' + change.path);
+    }
+  }
+  currentWorkspace(id);
+  await drafts.setMany(project.root, changes);
+});
 handle('save-copy', (id, file, text) => saveRecoveryCopy(currentWorkspace(id), file, text));
 handle('draft', (id, file, text, revision) => {
   const project = currentWorkspace(id);
@@ -219,11 +291,22 @@ async function execute(runId, start) {
   }
 }
 
-handle('start', (id, file, revision, runId) =>
-  execute(runId, publish => startNodeRun(currentWorkspace(id), file, revision, publish)));
+function authorizedWorkspace(id, token) {
+  const project = currentWorkspace(id);
+  if (!runGrant || runGrant.id !== id || runGrant.token !== token) throw new Error('Authorize workspace execution first.');
+  runGrant = undefined;
+  return project;
+}
 
-handle('test', (id, retry, runId) =>
-  execute(runId, publish => tests.start(currentWorkspace(id), retry === true, publish)));
+handle('start', (id, file, revision, runId, token) => {
+  const project = authorizedWorkspace(id, token);
+  return execute(runId, publish => startNodeRun(project, file, revision, publish));
+});
+
+handle('test', (id, retry, runId, token) => {
+  const project = authorizedWorkspace(id, token);
+  return execute(runId, publish => tests.start(project, retry === true, publish));
+});
 
 function stopRun() {
   if (!activeRun) return;

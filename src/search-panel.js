@@ -1,4 +1,4 @@
-export function createSearchPanel({ api, getProject, getSnapshots, jump, errorText }) {
+export function createSearchPanel({ api, getProject, getSnapshots, jump, previewReplace, errorText }) {
   const byId = id => document.getElementById(id);
   const explorer = byId('explorer-content');
   const panel = byId('project-search');
@@ -9,6 +9,8 @@ export function createSearchPanel({ api, getProject, getSnapshots, jump, errorTe
   const cancel = byId('search-cancel');
   const status = byId('search-status');
   const results = byId('search-results');
+  const replacement = byId('replace-text');
+  const preview = byId('preview-replace');
   let generation = 0;
   let timer;
   let running;
@@ -20,6 +22,8 @@ export function createSearchPanel({ api, getProject, getSnapshots, jump, errorTe
     running = undefined;
     generation++;
     results.replaceChildren();
+    preview.disabled = true;
+    preview.onclick = null;
     cancel.disabled = true;
     return generation;
   }
@@ -70,6 +74,11 @@ export function createSearchPanel({ api, getProject, getSnapshots, jump, errorTe
     const count = result.limited ? 'Showing first ' + result.count : String(result.count);
     const summary = result.count === 0 ? 'No matches' : count + (result.count === 1 ? ' match' : ' matches');
     status.textContent = summary + (result.skipped ? ' · ' + result.skipped + ' skipped' : '');
+    preview.disabled = !result.count || result.limited || result.files.length > 64;
+    preview.title = preview.disabled && result.count ? 'Narrow the search to preview every match in at most 64 files.' : '';
+    preview.onclick = () => {
+      if (generation === requestId) previewReplace(result, replacement.value);
+    };
   }
 
   async function search(projectId, requestId, query, matchCase) {
@@ -151,6 +160,7 @@ export function createSearchPanel({ api, getProject, getSnapshots, jump, errorTe
     reset() {
       close();
       input.value = '';
+      replacement.value = '';
       caseSensitive.checked = false;
     },
   };

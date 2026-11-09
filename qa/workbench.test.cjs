@@ -109,7 +109,9 @@ async function openWorkbench(t, files) {
   }
   const result = await launch();
   await result.page.locator('#open-folder').click();
-  await result.page.getByRole('heading', { name: 'Choose a file to edit.' }).waitFor();
+  await result.page.getByRole('heading', { name: 'Choose a file to edit.' }).waitFor().catch(async error => {
+    throw new Error('Could not open the fixture. ' + await result.page.locator('#message').textContent(), { cause: error });
+  });
   return result;
 }
 
@@ -249,6 +251,166 @@ async function replaceEditor(workbench, text) {
   await workbench.page.keyboard.insertText(text);
   await workbench.page.locator('#draft-status[data-state="saved"]').waitFor();
 }
+
+test('project replacement rejects a changed file, then recovers the entire confirmed batch after a crash',
+  { timeout: 35_000 }, async t => {
+    const first = 'const token = "token";\n';
+    const nested = path.join('nested (# % &)', 'café.txt');
+    const original = '\uFEFFtoken\r\nuntouched\r\n';
+    const workbench = await openWorkbench(t, { 'main.js': first, [nested]: original });
+    const { page, editor, open, project } = workbench;
+    await open('main.js');
+    await replaceEditor(workbench, '// unsaved token\n' + first);
+    await editor.press('Control+Shift+f');
+    await page.locator('#search-query').fill('token');
+    await page.locator('#replace-text').fill('replacement');
+    const showPreview = page.getByRole('button', { name: 'Preview Replace' });
+    const dialog = page.getByRole('dialog', { name: 'Replace in Project' });
+    const apply = dialog.getByRole('button', { name: 'Apply as Drafts' });
+    await showPreview.click();
+    await dialog.getByText(/4 edits in 2 files/).waitFor();
+    await dialog.getByText(/main\.js · 3 edits · unsaved buffer/).waitFor();
+    await fs.writeFile(path.join(project, nested), original + 'external change\r\n');
+    await apply.click();
+    await dialog.getByText(/original changed or is unavailable/).waitFor();
+    assert.match(await editor.textContent(), /unsaved token/);
+    assert.equal(await fs.readFile(path.join(project, 'main.js'), 'utf8'), first);
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await page.locator('#search-query').press('Enter');
+    await showPreview.click();
+    await apply.click();
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(await fs.readFile(path.join(project, 'main.js'), 'utf8'), first);
+    assert.equal(await fs.readFile(path.join(project, nested), 'utf8'), original + 'external change\r\n');
+    const recovered = await workbench.restart({ crash: true });
+    await recovered.page.locator('#message').getByText('Recovered 2 unsaved files.').waitFor();
+    await recovered.page.locator('#tabs').getByRole('button', { name: 'main.js, unsaved', exact: true }).click();
+    assert.match(await recovered.editor.textContent(), /unsaved replacement/);
+    await recovered.editor.press('Control+Shift+s');
+    await recovered.page.locator('#draft-status[data-state="clear"]').waitFor({ state: 'attached' });
+    assert.equal(await fs.readFile(path.join(project, nested), 'utf8'),
+      '\uFEFFreplacement\r\nuntouched\r\nexternal change\r\n');
+  });
+
+test('Rename Symbol previews static cross-file edits, rejects collisions, and preserves per-file undo',
+  { timeout: 30_000 }, async t => {
+    const source = 'export function total(value: number) { return value; }\n// total stays in comments\n';
+    const client = 'import { total } from "./main";\nconst taken = total(3);\nconst text = "total";\n';
+    const { page, editor, open, project } = await openWorkbench(t, { 'main.ts': source, 'client.ts': client });
+    await open('main.ts');
+    await editor.press('Home');
+    for (let index = 0; index < source.indexOf('total') + 2; index++) await editor.press('ArrowRight');
+    await editor.press('F2');
+    const dialog = page.getByRole('dialog', { name: 'Rename Symbol' });
+    const field = dialog.getByRole('textbox', { name: 'New identifier' });
+    await field.fill('taken');
+    await field.press('Enter');
+    await dialog.getByText(/identifier already exists/).waitFor();
+    await field.fill('calculateTotal');
+    await field.press('Enter');
+    await dialog.locator('summary').filter({ hasText: 'client.ts' }).waitFor();
+    await dialog.locator('summary').filter({ hasText: 'main.ts' }).waitFor();
+    await fs.writeFile(path.join(project, 'outside-preview.ts'), 'export const calculateTotal = 0;\n');
+    await dialog.getByRole('button', { name: 'Apply as Drafts' }).click();
+    await dialog.getByText(/identifier already exists/).waitFor();
+    assert.match(await editor.textContent(), /function total/);
+    await fs.unlink(path.join(project, 'outside-preview.ts'));
+    await field.press('Enter');
+    await dialog.getByRole('button', { name: 'Apply as Drafts' }).click();
+    await dialog.waitFor({ state: 'hidden' }).catch(async error => {
+      throw new Error(await page.locator('#edits-status').textContent(), { cause: error });
+    });
+    assert.match(await editor.textContent(), /function calculateTotal/);
+    assert.match(await editor.textContent(), /total stays in comments/);
+    await page.locator('#tabs').getByRole('button', { name: 'client.ts, unsaved', exact: true }).click();
+    assert.match(await editor.textContent(), /import \{ calculateTotal/);
+    assert.match(await editor.textContent(), /text = "total"/);
+    await editor.press('Control+z');
+    assert.match(await editor.textContent(), /import \{ total \}/);
+    assert.equal(await fs.readFile(path.join(project, 'main.ts'), 'utf8'), source);
+    assert.equal(await fs.readFile(path.join(project, 'client.ts'), 'utf8'), client);
+  });
+
+test('type checking follows unsaved imports and jumps to the exact active-file issue', { timeout: 25_000 }, async t => {
+  const workbench = await openWorkbench(t, {
+    'source.ts': 'export const count: string = "3";\n',
+    'client.ts': 'import { count } from "./source";\nconst result: number = count;\n',
+  });
+  const { page, editor, open } = workbench;
+  await open('client.ts');
+  await editor.press('Control+Shift+m');
+  const type = page.locator('#type-list');
+  const issue = type.getByRole('button', { name: /TS2322.*string.*number/ });
+  await issue.click();
+  await page.waitForFunction(() => window.getSelection().toString() === 'result');
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'result');
+  await page.locator('#problems-status').getByText('No syntax problems.', { exact: true }).waitFor();
+  await open('source.ts');
+  await replaceEditor(workbench, 'export const count: number = 3;\n');
+  await open('client.ts');
+  await page.locator('#type-status').getByText('No type problems.', { exact: true }).waitFor();
+  assert.equal(await type.getByRole('button').count(), 0);
+});
+
+test('editor settings apply to open tabs and workspace overrides persist after restart', { timeout: 30_000 }, async t => {
+  const workbench = await openWorkbench(t, { 'source.js': 'function example(){\nreturn 1;\n}\n' });
+  const { page, open, editor, project } = workbench;
+  await open('source.js');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Editor Settings' });
+  await dialog.getByText(/override global settings/).waitFor();
+  await dialog.getByLabel('Font size').fill('21');
+  await dialog.getByLabel('Indent width').fill('4');
+  await dialog.getByLabel('Wrap lines').check();
+  await dialog.getByLabel('Show line numbers').uncheck();
+  await dialog.getByLabel('Format JavaScript and TypeScript on save').check();
+  await dialog.getByRole('button', { name: 'Save Settings' }).click();
+  await dialog.getByText('Settings saved.').waitFor();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  assert.equal(await page.locator('#editor').getAttribute('data-line-numbers'), 'false');
+  await page.locator('.cm-lineNumbers').waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('.cm-editor').evaluate(el => getComputedStyle(el).fontSize), '21px');
+  assert.match(await editor.getAttribute('class'), /cm-lineWrapping/);
+  await replaceEditor(workbench, 'function example(){return 2;}');
+  await editor.press('Control+s');
+  await page.locator('#message').getByText('Saved source.js').waitFor();
+  assert.match(await fs.readFile(path.join(project, 'source.js'), 'utf8'), /function example\(\) \{\n  return 2;/);
+  const reopened = await workbench.restart();
+  await reopened.page.locator('#open-folder').click();
+  await reopened.open('source.js');
+  assert.equal(await reopened.page.locator('.cm-editor').evaluate(el => getComputedStyle(el).fontSize), '21px');
+});
+
+test('workspace execution requires a grant and canceling leaves disk unchanged', { timeout: 30_000 }, async t => {
+  const original = 'console.log("original");\n';
+  const workbench = await openWorkbench(t, { 'source.cjs': original });
+  const { app, page, open, editor, state, output, project } = workbench;
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 0 });
+  });
+  await open('source.cjs');
+  await replaceEditor(workbench, 'console.log("confirmed");\n');
+  await editor.press('F5');
+  await state.getByText('Canceled', { exact: true }).waitFor();
+  assert.equal(await fs.readFile(path.join(project, 'source.cjs'), 'utf8'), original);
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 2 });
+  });
+  await editor.press('F5');
+  await output.getByText('confirmed', { exact: true }).waitFor();
+  await state.getByText(/^Passed/).waitFor();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Editor Settings' });
+  await settings.getByText('Workspace execution is trusted.').waitFor();
+  await settings.getByRole('button', { name: 'Revoke Trust' }).click();
+  await settings.getByText('CEVRA will ask before running workspace code.').waitFor();
+  const rejected = await page.evaluate(async () => {
+    const { project } = await window.cevra.initial();
+    const { revision } = await window.cevra.read(project.id, 'source.cjs');
+    return window.cevra.start(project.id, 'source.cjs', revision, 777).then(() => '', error => error.message);
+  });
+  assert.match(rejected, /Authorize workspace execution first/);
+});
 
 async function waitForTheme(page, choice, scheme) {
   await page.waitForFunction(({ choice, scheme }) => {
@@ -425,10 +587,11 @@ test('the desktop bridge blocks workspace escapes and rejects a Windows junction
   const errors = await page.evaluate(async () => {
     const { project } = await window.cevra.initial();
     const { revision } = await window.cevra.read(project.id, 'inside.cjs');
+    const grant = await window.cevra.authorizeRun(project.id);
     const operations = [
       window.cevra.read(project.id, '../outside/secret.cjs'),
       window.cevra.save(project.id, 'junction/secret.cjs', 'changed', revision),
-      window.cevra.start(project.id, 'junction/secret.cjs', revision, 1),
+      window.cevra.start(project.id, 'junction/secret.cjs', revision, 1, grant),
       window.cevra.read('expired-workspace', 'inside.cjs'),
     ];
     return (await Promise.allSettled(operations)).map(result => result.reason?.message);
