@@ -656,3 +656,79 @@ test('Format Document reports invalid syntax while preserving unsaved text', asy
   assert.equal((await editor.locator('.cm-line').allTextContents())[0], 'const value = ;');
   assert.equal(await fs.readFile(path.join(project, 'broken.js'), 'utf8'), original);
 });
+
+test('hover shows a cross-file signature and updates from an unsaved export', { timeout: 30_000 }, async t => {
+  const folder = 'lib (# % &)';
+  const relative = path.join(folder, 'price.ts');
+  const saved = '/** Saved signature. */\nexport function price(amount: number): string { return String(amount); }\n';
+  const workbench = await openWorkbench(t, {
+    'main.ts': 'import { price } from "@lib/price";\nconst total = price(12);\n',
+    'tsconfig.json': JSON.stringify({ compilerOptions: { paths: { '@lib/*': ['./' + folder + '/*'] } } }),
+    [relative]: saved,
+  });
+  const { page, open, editor, project, state } = workbench;
+  const symbol = editor.getByText('price', { exact: true }).last();
+  const signature = page.locator('.symbol-signature');
+  await open('main.ts');
+  await symbol.hover();
+  await signature.getByText(/price\(amount: number\): string/).waitFor();
+  await page.locator('.symbol-documentation').getByText('Saved signature.', { exact: true }).waitFor();
+  await workbench.file(folder).click();
+  await open('price.ts');
+  await replaceEditor(workbench, '/** <img src=x> draft documentation. */\n' +
+    'export function price(amount: bigint, currency: string): string { return currency + amount; }\n');
+
+  await open('main.ts');
+  await symbol.hover();
+  await signature.getByText(/price\(amount: bigint, currency: string\): string/).waitFor();
+  await page.locator('.symbol-documentation').getByText('<img src=x> draft documentation.', { exact: true }).waitFor();
+  assert.equal(await page.locator('.symbol-info img').count(), 0);
+  assert.equal(await fs.readFile(path.join(project, relative), 'utf8'), saved);
+  assert.equal(await state.textContent(), 'Ready');
+});
+
+test('symbol inspection discards stale replies and leaves editing and saving available after a worker error',
+  { timeout: 25_000 }, async t => {
+  const workbench = await openWorkbench(t, { 'entry.js': 'const current = 1;\n' });
+  const { app, page, editor, open, project } = workbench;
+  await app.evaluate(({ ipcMain }) => {
+    let requests = 0;
+    ipcMain.removeHandler('cevra:quick-info');
+    ipcMain.handle('cevra:quick-info', () => {
+      requests++;
+      if (requests === 1) {
+        return new Promise(resolve => {
+          ipcMain.releaseHeldSymbol = () => resolve({ from: 0, to: 5, signature: 'Stale signature', documentation: '' });
+          ipcMain.waitForHeldSymbol?.();
+        });
+      }
+      if (requests === 2) throw new Error('Test language service stopped.');
+      return { from: 0, to: 5, signature: 'Current signature', documentation: '' };
+    });
+  });
+  await open('entry.js');
+  await page.evaluate(() => {
+    window.sawStaleSymbol = false;
+    new MutationObserver(() => {
+      if (document.body.textContent.includes('Stale signature')) window.sawStaleSymbol = true;
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  await editor.press('Control+Alt+i');
+  await app.evaluate(({ ipcMain }) => {
+    if (ipcMain.releaseHeldSymbol) return;
+    return new Promise(resolve => { ipcMain.waitForHeldSymbol = resolve; });
+  });
+  await replaceEditor(workbench, 'const current = 2;\n');
+  await app.evaluate(({ ipcMain }) => ipcMain.releaseHeldSymbol());
+  await editor.press('Control+Alt+i');
+  await page.locator('#message').getByText('Test language service stopped.', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.sawStaleSymbol), false);
+  assert.equal(await page.locator('.symbol-info').count(), 0);
+  await editor.press('Control+s');
+  await page.locator('#message').getByText('Saved entry.js', { exact: true }).waitFor();
+  assert.equal(await fs.readFile(path.join(project, 'entry.js'), 'utf8'), 'const current = 2;\n');
+  await page.getByRole('button', { name: 'Inspect symbol', exact: true }).click();
+  await page.locator('.symbol-signature').getByText('Current signature', { exact: true }).waitFor();
+  await editor.press('Escape');
+  await page.locator('.symbol-info').waitFor({ state: 'detached' });
+});

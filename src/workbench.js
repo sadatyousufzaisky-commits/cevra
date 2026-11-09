@@ -9,6 +9,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { createNavigationHistory } from './navigation-history.js';
 import { createProblemsPanel } from './problems-panel.js';
 import { createSearchPanel } from './search-panel.js';
+import { createSymbolInfo } from './symbol-info.js';
 import { sourceLanguage } from './source-language.cjs';
 import { changeLineEnding, detectLineEnding, lineEnding, lineEndingHistory } from './line-endings.js';
 
@@ -25,6 +26,7 @@ const exampleButton = byId('open-example');
 const saveButton = byId('save-file');
 const recoveryButton = byId('save-recovery');
 const formatButton = byId('format-document');
+const inspectButton = byId('inspect-symbol');
 const runButton = byId('run-file');
 const testButton = byId('run-tests');
 const retryButton = byId('rerun-failures');
@@ -109,6 +111,7 @@ function syncCommands() {
   recoveryButton.hidden = !active?.recoveryConflict;
   recoveryButton.disabled = !active?.dirty || Boolean(active.saving || changingProject);
   formatButton.disabled = !active?.language || Boolean(changingProject || active.formatting || active.discarding);
+  inspectButton.disabled = !active?.language || changingProject;
   runButton.disabled = !active || !runnable.test(active.path) || Boolean(changingProject || run || discarding);
   runButton.hidden = Boolean(run);
   testButton.disabled = !project || Boolean(changingProject || run || discarding);
@@ -199,6 +202,7 @@ function editorState(tab, text, ending) {
       tab.language ? [
         javascript({ typescript: tab.language.typescript, jsx: tab.language.jsx }),
         syntaxDecorations,
+        symbolInfo.extension,
       ] : [],
       EditorView.contentAttributes.of({ 'aria-label': 'Source editor' }),
       EditorView.updateListener.of(update => {
@@ -221,7 +225,10 @@ function editorState(tab, text, ending) {
           queueDraft(tab);
           searchPanel.changed();
         }
-        if (update.docChanged) problemsPanel.changed(tab);
+        if (update.docChanged) {
+          problemsPanel.changed(tab);
+          symbolInfo.changed();
+        }
         if (update.docChanged || update.selectionSet || endingChanged) syncCursor();
       }),
     ],
@@ -328,7 +335,10 @@ function renderTabs() {
 
 function showFile(tab) {
   const changed = active !== tab;
-  if (changed && active) active.scroll = view.scrollSnapshot();
+  if (changed && active) {
+    active.scroll = view.scrollSnapshot();
+    symbolInfo.leave(active);
+  }
   active = tab;
   editor.hidden = !tab;
   byId('welcome').hidden = Boolean(tab);
@@ -425,6 +435,7 @@ async function removeTab(tab) {
     }
   }
   documents.delete(tab.path);
+  symbolInfo.changed();
   problemsPanel.remove(tab);
   if (tab.dirty) searchPanel.changed();
   if (tab === active) showFile([...documents.values()].at(-1));
@@ -450,6 +461,7 @@ async function adoptProject(next) {
   navigation.clear();
   searchPanel.reset();
   problemsPanel.reset();
+  symbolInfo.changed();
   project = next;
   documents.clear();
   expanded.clear();
@@ -527,6 +539,7 @@ async function saveFile(tab) {
     tab.dirty = isDirty(tab, tab.state);
     queueDraft(tab);
     searchPanel.changed();
+    symbolInfo.changed();
     notify('Saved ' + tab.path);
   } catch (error) {
     if (/^This file changed on disk\./.test(errorText(error))) {
@@ -872,12 +885,25 @@ const problemsPanel = createProblemsPanel({
   errorText,
 });
 
+const symbolInfo = createSymbolInfo({
+  api,
+  getActive: () => active,
+  getDocuments: () => documents.values(),
+  available: () => !changingProject && !document.body.inert && !editor.inert,
+  notify,
+  report,
+});
+
 backButton.onclick = () => travel('back').catch(report);
 forwardButton.onclick = () => travel('forward').catch(report);
 openButton.onclick = welcomeOpen.onclick = () => openProject(api.chooseFolder).catch(report);
 exampleButton.onclick = () => openProject(api.openExample).catch(report);
 saveButton.onclick = () => saveFile(active).catch(report);
 formatButton.onclick = formatDocument;
+inspectButton.onclick = () => {
+  view.focus();
+  void symbolInfo.inspect(view);
+};
 recoveryButton.onclick = () => saveRecoveredCopy(active).catch(report);
 runButton.onclick = runFile;
 testButton.onclick = () => runTests();
@@ -925,6 +951,11 @@ document.addEventListener('keydown', event => {
   if (event.key === 'F5') {
     event.preventDefault();
     void runFile();
+  } else if (command && event.altKey && key === 'i') {
+    event.preventDefault();
+    void symbolInfo.inspect(view);
+  } else if (event.key === 'Escape' && symbolInfo.dismiss(view)) {
+    event.preventDefault();
   } else if (!command && event.altKey && event.shiftKey && key === 'f') {
     event.preventDefault();
     void formatDocument();

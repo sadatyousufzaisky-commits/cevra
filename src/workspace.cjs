@@ -1,4 +1,5 @@
 const fs = require('node:fs/promises');
+const syncFs = require('node:fs');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { writeAtomic } = require('./atomic-file.cjs');
@@ -45,18 +46,40 @@ function sameFile(a, b) {
   return a.dev === b.dev && a.ino === b.ino;
 }
 
-async function checkedEntry(workspace, relative) {
-  const entry = workspacePath(workspace, relative);
-  const root = await fs.lstat(workspace.root, { bigint: true });
+function checkRoot(workspace, root) {
   if (!root.isDirectory() || !sameFile(root, workspace.identity)) {
     throw new Error('The workspace folder changed. Open it again.');
   }
-  const real = await fs.realpath(entry);
+}
+
+function checkEntryPath(entry, real) {
   if (path.relative(entry, real) !== '') throw new Error('Workspace links cannot be opened.');
-  const stat = await fs.lstat(real, { bigint: true });
+}
+
+function checkEntryType(stat) {
   if (stat.isSymbolicLink() || (stat.isFile() && stat.nlink !== 1n)) {
     throw new Error('Workspace links cannot be opened.');
   }
+}
+
+async function checkedEntry(workspace, relative) {
+  const entry = workspacePath(workspace, relative);
+  checkRoot(workspace, await fs.lstat(workspace.root, { bigint: true }));
+  const real = await fs.realpath(entry);
+  checkEntryPath(entry, real);
+  const stat = await fs.lstat(real, { bigint: true });
+  checkEntryType(stat);
+  return { file: real, stat };
+}
+
+// TypeScript's host reads synchronously in the language worker, using the same workspace checks.
+function checkedEntrySync(workspace, relative) {
+  const entry = workspacePath(workspace, relative);
+  checkRoot(workspace, syncFs.lstatSync(workspace.root, { bigint: true }));
+  const real = syncFs.realpathSync.native(entry);
+  checkEntryPath(entry, real);
+  const stat = syncFs.lstatSync(real, { bigint: true });
+  checkEntryType(stat);
   return { file: real, stat };
 }
 
@@ -79,36 +102,48 @@ async function listFolder(workspace, relative = '') {
       a.name.localeCompare(b.name, undefined, { numeric: true }));
 }
 
-async function readBytes(workspace, relative) {
-  const { file, stat } = await checkedEntry(workspace, relative);
+function checkSourceSize(stat) {
   if (!stat.isFile()) throw new Error('Choose a regular file.');
   if (stat.size > BigInt(maxFileBytes)) throw new Error('The editor supports files up to 2 MB.');
-  const handle = await fs.open(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+}
+
+function sourceBuffer(stat, opened) {
+  if (!opened.isFile() || opened.nlink !== 1n || !sameFile(stat, opened)) {
+    throw new Error('The file changed while opening it. Try again.');
+  }
+  checkSourceSize(opened);
+  return Buffer.allocUnsafe(Number(opened.size) + 1);
+}
+
+function checkRead(opened, current, length) {
+  if (BigInt(length) !== opened.size || current.size !== opened.size || current.mtimeNs !== opened.mtimeNs) {
+    throw new Error('The file changed while reading it. Try again.');
+  }
+}
+
+const readFlags = syncFs.constants.O_RDONLY | (syncFs.constants.O_NOFOLLOW ?? 0);
+
+async function readBytes(workspace, relative) {
+  const { file, stat } = await checkedEntry(workspace, relative);
+  checkSourceSize(stat);
+  const handle = await fs.open(file, readFlags);
   try {
     const opened = await handle.stat({ bigint: true });
-    if (!opened.isFile() || opened.nlink !== 1n || !sameFile(stat, opened)) {
-      throw new Error('The file changed while opening it. Try again.');
-    }
-    if (opened.size > BigInt(maxFileBytes)) throw new Error('The editor supports files up to 2 MB.');
-    const buffer = Buffer.allocUnsafe(Number(opened.size) + 1);
+    const buffer = sourceBuffer(stat, opened);
     let length = 0;
     while (length < buffer.length) {
       const { bytesRead } = await handle.read(buffer, length, buffer.length - length, null);
       if (!bytesRead) break;
       length += bytesRead;
     }
-    const current = await handle.stat({ bigint: true });
-    if (BigInt(length) !== opened.size || current.size !== opened.size || current.mtimeNs !== opened.mtimeNs) {
-      throw new Error('The file changed while reading it. Try again.');
-    }
+    checkRead(opened, await handle.stat({ bigint: true }), length);
     return { file, bytes: buffer.subarray(0, length), stat: opened };
   } finally {
     await handle.close();
   }
 }
 
-async function readSource(workspace, relative) {
-  const { bytes } = await readBytes(workspace, relative);
+function decodeSource(bytes) {
   let text;
   try {
     text = utf8.decode(bytes);
@@ -117,6 +152,30 @@ async function readSource(workspace, relative) {
   }
   if (text.includes('\0')) throw new Error('The editor supports UTF-8 text files.');
   return { text, revision: fingerprint(bytes) };
+}
+
+async function readSource(workspace, relative) {
+  return decodeSource((await readBytes(workspace, relative)).bytes);
+}
+
+function readSourceSync(workspace, relative) {
+  const { file, stat } = checkedEntrySync(workspace, relative);
+  checkSourceSize(stat);
+  const handle = syncFs.openSync(file, readFlags);
+  try {
+    const opened = syncFs.fstatSync(handle, { bigint: true });
+    const buffer = sourceBuffer(stat, opened);
+    let length = 0;
+    while (length < buffer.length) {
+      const bytesRead = syncFs.readSync(handle, buffer, length, buffer.length - length, null);
+      if (!bytesRead) break;
+      length += bytesRead;
+    }
+    checkRead(opened, syncFs.fstatSync(handle, { bigint: true }), length);
+    return decodeSource(buffer.subarray(0, length));
+  } finally {
+    syncFs.closeSync(handle);
+  }
 }
 
 async function verifyRevision(workspace, relative, revision) {
@@ -183,6 +242,6 @@ async function saveRecoveryCopy(workspace, relative, text) {
 }
 
 module.exports = {
-  createWorkspace, inside, listFolder, maxFileBytes, readSource, resolveEntry, saveSource, saveRecoveryCopy,
+  checkedEntrySync, createWorkspace, inside, listFolder, maxFileBytes, readSource, readSourceSync, resolveEntry, saveSource, saveRecoveryCopy,
   verifyRevision, workspacePath,
 };

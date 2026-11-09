@@ -60,6 +60,12 @@ Put a `.cevra-format.json` file in the workspace or a subfolder to set formattin
 
 Use `"tabs"` for tab indentation. Set `lineEnding` to `"lf"`, `"crlf"`, or `"cr"` to change the document's line endings as part of formatting. The formatter preserves existing punctuation, comments, and literal contents, including the contents of JSX and templates.
 
+## Inspect a symbol
+
+Hover over a JavaScript or TypeScript name, or place the cursor on it and press **Ctrl+Alt+I**. CEVRA shows the symbol's type or signature and any available documentation. It follows workspace imports on demand and gives unsaved buffers priority over disk copies.
+
+The bridge uses selected compiler options from the nearest `tsconfig.json` or `jsconfig.json`, including workspace-local import aliases. This first slice follows the active file's import graph within the workspace and uses bundled TypeScript library declarations. It skips dependency directories, configuration inheritance, project references, and language-service plugins.
+
 ## Verify CEVRA
 
 Run `npm test` on Windows before expanding the workbench. The core suite exercises JavaScript process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.

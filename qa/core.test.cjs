@@ -10,6 +10,7 @@ const { writeAtomic } = require('../src/atomic-file.cjs');
 const { searchProject } = require('../src/project-search.cjs');
 const { createSyntaxService } = require('../src/syntax-service.cjs');
 const { createFormatService } = require('../src/format-service.cjs');
+const { createSemanticService } = require('../src/semantic-service.cjs');
 
 async function fixture(t) {
   const folder = await temporaryFolder(t, 'cevra-core-');
@@ -355,4 +356,86 @@ test('formatting uses the nearest scoped CEVRA settings and rejects unsafe or in
   await fs.writeFile(path.join(outside, '.cevra-format.json'), '{"indentWidth":8}');
   await fs.symlink(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
   await assert.rejects(formatter.format(workspace, 'linked/source.ts', source, '\n'), /Workspace links cannot be opened/);
+});
+
+test('semantic queries follow project aliases and prefer unsaved versions across files', { timeout: 20_000 }, async t => {
+  const { root, workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const folder = 'lib (# % &)';
+  const helper = path.join(folder, 'price.ts');
+  const importer = 'main.ts';
+  await fs.mkdir(path.join(root, folder));
+  await fs.writeFile(path.join(root, 'tsconfig.json'), JSON.stringify({
+    compilerOptions: { paths: { '@lib/*': ['./' + folder + '/*'] } },
+  }));
+  const saved = '/** From disk. */\nexport function price(amount: number): string { return String(amount); }\n';
+  await fs.writeFile(path.join(root, helper), saved);
+  const text = 'import { price } from "@lib/price";\nconst result = price(12);\n';
+  const main = { path: importer, documentId: 1, version: 0, text };
+  const position = text.lastIndexOf('price(') + 2;
+  const disk = await semantics.quickInfo(workspace, importer, position, [main]);
+  assert.match(disk.signature, /price\(amount: number\): string/);
+  assert.match(disk.documentation, /From disk/);
+  assert.equal(text.slice(disk.from, disk.to), 'price');
+  const draft = {
+    path: helper, documentId: 2, version: 1,
+    text: '/** From the unsaved editor. */\nexport function price(amount: bigint, currency: string): string { return currency + amount; }\n',
+  };
+  const updated = await semantics.quickInfo(workspace, importer, position, [main, draft]);
+  assert.match(updated.signature, /price\(amount: bigint, currency: string\): string/);
+  assert.match(updated.documentation, /From the unsaved editor/);
+  assert.equal(await fs.readFile(path.join(root, helper), 'utf8'), saved);
+
+  await fs.writeFile(path.join(root, helper), 'export function price(amount: boolean): boolean { return amount; }\n');
+  const refreshed = await semantics.quickInfo(workspace, importer, position, [main]);
+  assert.match(refreshed.signature, /price\(amount: boolean\): boolean/);
+
+  await fs.unlink(path.join(root, helper));
+  await fs.rmdir(path.join(root, folder));
+  const recovered = await semantics.quickInfo(workspace, importer, position, [main, draft]);
+  assert.match(recovered.signature, /price\(amount: bigint, currency: string\): string/);
+});
+
+test('semantic queries check JavaScript and confine module reads to permitted workspace files', { timeout: 20_000 }, async t => {
+  const { folder, root, workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const outside = path.join(folder, 'outside');
+  await fs.mkdir(outside);
+  await fs.writeFile(path.join(outside, 'secret.js'), 'export function reveal() { return "outside private"; }\n');
+  await fs.symlink(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+  await fs.mkdir(path.join(root, 'node_modules'));
+  await fs.writeFile(path.join(root, 'node_modules', 'hidden.js'), 'export function reveal() { return "dependency private"; }\n');
+  await fs.writeFile(path.join(root, 'greet.js'),
+    '/** @param {string} name */\nexport function greet(name) { return "Hello " + name; }\n');
+  const valid = 'import { greet } from "./greet.js";\ngreet("World");\n';
+  const source = { path: 'index.js', documentId: 1, version: 0, text: valid };
+  const info = await semantics.quickInfo(workspace, source.path, valid.lastIndexOf('greet('), [source]);
+  assert.match(info.signature, /greet\(name: string\): string/);
+  for (const [index, module] of ['../outside/secret.js', './linked/secret.js', './node_modules/hidden.js'].entries()) {
+    const text = 'import { reveal } from ' + JSON.stringify(module) + ';\nreveal();\n';
+    const inaccessible = await semantics.quickInfo(workspace, source.path, text.lastIndexOf('reveal('),
+      [{ ...source, version: index + 1, text }]);
+    assert.equal(inaccessible, null);
+  }
+  await assert.rejects(semantics.quickInfo(workspace, source.path, 0, [
+    source, { path: '../outside/secret.js', documentId: 2, version: 0, text: valid },
+  ]), /outside the workspace/);
+  const config = path.join(root, 'jsconfig.json');
+  await fs.writeFile(config, '{"compilerOptions":');
+  await assert.rejects(semantics.quickInfo(workspace, source.path, valid.lastIndexOf('greet('), [source]),
+    /Check the JSON in jsconfig\.json/);
+  await fs.writeFile(config, '{}');
+  const restored = await semantics.quickInfo(workspace, source.path, valid.lastIndexOf('greet('), [source]);
+  assert.match(restored.signature, /greet\(name: string\): string/);
+
+  await fs.writeFile(path.join(root, 'greet.cjs'),
+    '/** @param {string} name */\nfunction greet(name) { return "Hello " + name; }\nmodule.exports = { greet };\n');
+  const commonJS = 'const { greet } = require("./greet.cjs");\nconst names = ["world"];\nnames.map(greet);\ngreet("world");\n';
+  const script = { path: 'index.cjs', documentId: 2, version: 0, text: commonJS };
+  const call = await semantics.quickInfo(workspace, script.path, commonJS.lastIndexOf('greet('), [script]);
+  assert.match(call.signature, /greet\(name: string\): string/);
+  const arrayMethod = await semantics.quickInfo(workspace, script.path, commonJS.indexOf('map('), [script]);
+  assert.match(arrayMethod.signature, /Array<string>\.map/);
 });
