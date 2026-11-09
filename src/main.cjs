@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -10,6 +10,7 @@ const { searchProject } = require('./project-search.cjs');
 const { createSyntaxService } = require('./syntax-service.cjs');
 const { createFormatService } = require('./format-service.cjs');
 const { createSemanticService } = require('./semantic-service.cjs');
+const { createPreferences } = require('./preferences.cjs');
 
 app.setName('CEVRA');
 
@@ -17,6 +18,7 @@ const page = path.join(__dirname, 'index.html');
 const pageURL = pathToFileURL(page).href;
 const tests = createTestSession(app.getPath('temp'));
 const drafts = createDraftStore(path.join(app.getPath('userData'), 'drafts'));
+const preferences = createPreferences(app.getPath('userData'));
 const syntax = createSyntaxService();
 const formatter = createFormatService();
 const semantics = createSemanticService();
@@ -28,6 +30,29 @@ let rendererReady = false;
 let closePending = false;
 let allowClose = false;
 let lastRendererCrash = 0;
+
+function colorMode() {
+  return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+}
+
+function windowAppearance(mode) {
+  const dark = mode === 'dark';
+  return {
+    backgroundColor: dark ? '#101417' : '#fcfdfb',
+    titleBarOverlay: { color: dark ? '#14191d' : '#eff4ef', symbolColor: dark ? '#e3ebea' : '#182b29', height: 51 },
+  };
+}
+
+function syncWindowAppearance() {
+  if (!window || window.isDestroyed()) return;
+  const mode = colorMode();
+  const { backgroundColor, titleBarOverlay } = windowAppearance(mode);
+  window.setBackgroundColor(backgroundColor);
+  if (process.platform === 'win32' || process.platform === 'linux') window.setTitleBarOverlay(titleBarOverlay);
+  if (!window.webContents.isDestroyed()) window.webContents.send('cevra:color-mode', mode);
+}
+
+nativeTheme.on('updated', syncWindowAppearance);
 
 function isWorkbench(event) {
   return window && event.sender === window.webContents &&
@@ -85,6 +110,14 @@ handle('initial', async () => {
     }
   }
   return { unavailable, unreadable };
+});
+
+handle('appearance', () => ({ theme: nativeTheme.themeSource, mode: colorMode() }));
+handle('set-theme', async choice => {
+  const theme = await preferences.setTheme(choice);
+  nativeTheme.themeSource = theme;
+  syncWindowAppearance();
+  return { theme, mode: colorMode() };
 });
 
 handle('choose-folder', async discard => {
@@ -202,7 +235,8 @@ ipcMain.on('cevra:ready', event => {
   if (isWorkbench(event)) rendererReady = true;
 });
 
-handle('close-ready', (hasDrafts, backupFailed) => {
+handle('close-ready', async (hasDrafts, backupFailed) => {
+  await preferences.getTheme();
   if (!closePending) return;
   const stay = backupFailed ? dialog.showMessageBoxSync(window, {
     type: 'error',
@@ -229,6 +263,7 @@ handle('close-ready', (hasDrafts, backupFailed) => {
 });
 
 async function launch() {
+  nativeTheme.themeSource = await preferences.getTheme();
   const previous = window;
   const bounds = previous?.getBounds();
   const maximized = previous?.isMaximized();
@@ -239,9 +274,8 @@ async function launch() {
     ...bounds,
     minWidth: 740,
     minHeight: 560,
-    backgroundColor: '#101417',
+    ...windowAppearance(colorMode()),
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#14191d', symbolColor: '#e3ebea', height: 51 },
     icon: path.join(__dirname, '..', 'cevra-icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

@@ -2,6 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('cevra', {
   initial: () => ipcRenderer.invoke('cevra:initial'),
+  appearance: () => ipcRenderer.invoke('cevra:appearance'),
+  setTheme: choice => ipcRenderer.invoke('cevra:set-theme', choice),
+  onColorMode: callback => ipcRenderer.on('cevra:color-mode', (_event, mode) => callback(mode)),
   chooseFolder: discard => ipcRenderer.invoke('cevra:choose-folder', discard),
   openExample: discard => ipcRenderer.invoke('cevra:open-example', discard),
   confirmDiscard: name => ipcRenderer.invoke('cevra:discard', name),

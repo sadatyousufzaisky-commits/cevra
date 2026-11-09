@@ -6,8 +6,8 @@ import { EditorView } from '@codemirror/view';
 import { indentUnit } from '@codemirror/language';
 import { javascript } from '@codemirror/lang-javascript';
 import { linter, lintGutter, setDiagnostics, setDiagnosticsEffect } from '@codemirror/lint';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { createDefinitionNavigation } from './definition-navigation.js';
+import { colorModeExtension, editorColorMode, editorTheme } from './editor-theme.js';
 import { createNavigationHistory } from './navigation-history.js';
 import { createProblemsPanel } from './problems-panel.js';
 import { createReferencesPanel } from './references-panel.js';
@@ -36,6 +36,7 @@ const formatButton = byId('format-document');
 const inspectButton = byId('inspect-symbol');
 const definitionButton = byId('go-definition');
 const findReferencesButton = byId('find-references');
+const themeChoice = byId('theme-choice');
 const runButton = byId('run-file');
 const testButton = byId('run-tests');
 const retryButton = byId('rerun-failures');
@@ -64,16 +65,10 @@ let run;
 let diagnostic;
 let retryAvailable = false;
 let outputText = '';
+let selectedTheme = themeChoice.value;
+let colorMode = 'dark';
 
 const view = new EditorView({ parent: editor });
-const editorTheme = EditorView.theme({
-  '&': { backgroundColor: '#101417', color: '#e3ebea', fontSize: '14px' },
-  '.cm-scroller': { fontFamily: 'var(--mono)', lineHeight: '1.6' },
-  '.cm-content': { padding: '10px 0' },
-  '.cm-gutters': { backgroundColor: '#101417', color: '#9ca9af', borderRight: '1px solid #20292d' },
-  '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: '#1c272a' },
-  '.cm-cursor': { borderLeftColor: '#39edaa' },
-}, { dark: true });
 const syntaxDecorations = [
   linter(null),
   lintGutter(),
@@ -111,6 +106,34 @@ function errorText(error) {
 function report(error) {
   notify(errorText(error), true);
 }
+
+function applyColorMode(mode) {
+  if (mode === colorMode) return;
+  colorMode = mode;
+  document.documentElement.dataset.colorMode = mode;
+  const effects = editorColorMode.reconfigure(colorModeExtension(mode === 'dark'));
+  for (const tab of documents.values()) {
+    if (tab === active) view.dispatch({ effects });
+    else tab.state = tab.state.update({ effects }).state;
+  }
+}
+
+api.onColorMode(applyColorMode);
+
+themeChoice.onchange = async () => {
+  themeChoice.disabled = true;
+  try {
+    const { theme, mode } = await api.setTheme(themeChoice.value);
+    selectedTheme = theme;
+    applyColorMode(mode);
+    notify('Theme saved.');
+  } catch (error) {
+    report(error);
+  } finally {
+    themeChoice.value = selectedTheme;
+    themeChoice.disabled = false;
+  }
+};
 
 function syncCommands() {
   const open = [...documents.values()];
@@ -207,8 +230,8 @@ function editorState(tab, text, ending) {
       basicSetup,
       lineEnding.init(() => ending),
       lineEndingHistory,
-      oneDark,
       editorTheme,
+      editorColorMode.of(colorModeExtension(colorMode === 'dark')),
       indentUnit.of('  '),
       tab.language ? [
         javascript({ typescript: tab.language.typescript, jsx: tab.language.jsx }),
@@ -980,6 +1003,9 @@ api.onCloseCanceled(() => {
 async function initialize() {
   syncCommands();
   try {
+    const { theme, mode } = await api.appearance();
+    themeChoice.value = selectedTheme = theme;
+    applyColorMode(mode);
     const initial = await api.initial();
     if (initial.project) await adoptProject(initial.project);
     if (initial.unavailable) notify('A draft workspace is unavailable. Reopen it when it is accessible.', true);
@@ -988,6 +1014,7 @@ async function initialize() {
     report(error);
   } finally {
     changingProject = false;
+    themeChoice.disabled = false;
     api.ready();
     syncCommands();
   }

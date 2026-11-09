@@ -90,6 +90,10 @@ Press **Shift+F12** on a JavaScript or TypeScript symbol, or choose **Find Refer
 
 Discovery starts in the nearest `tsconfig.json` or `jsconfig.json` folder, or at the workspace root when there is no config. It skips separately configured subtrees, dependency caches, and links, and follows supported imports through the language bridge. The panel reports when the 256-file discovery or 400-result limit is reached.
 
+## Change the theme
+
+Use **Theme** in the status bar to choose **CEVRA Dark**, **CEVRA Light**, or **System**. System follows the operating system's app color mode. The theme applies to the workbench, editor, and window controls. CEVRA remembers it across projects and restarts. New profiles start with CEVRA Dark.
+
 ## Verify CEVRA
 
 Run `npm test` on Windows before expanding the workbench. The core suite exercises JavaScript process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.

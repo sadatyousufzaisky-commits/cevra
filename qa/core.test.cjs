@@ -11,6 +11,7 @@ const { searchProject } = require('../src/project-search.cjs');
 const { createSyntaxService } = require('../src/syntax-service.cjs');
 const { createFormatService } = require('../src/format-service.cjs');
 const { createSemanticService } = require('../src/semantic-service.cjs');
+const { createPreferences } = require('../src/preferences.cjs');
 
 async function fixture(t) {
   const folder = await temporaryFolder(t, 'cevra-core-');
@@ -18,6 +19,39 @@ async function fixture(t) {
   await fs.mkdir(root);
   return { folder, root, workspace: await createWorkspace(root) };
 }
+
+test('theme preferences default safely and persist concurrent changes in order', async t => {
+  const folder = await temporaryFolder(t, 'cevra-theme-');
+  const file = path.join(folder, 'preferences.json');
+  assert.equal(await createPreferences(folder).getTheme(), 'dark');
+  await fs.writeFile(file, '{ broken JSON');
+  assert.equal(await createPreferences(folder).getTheme(), 'dark');
+  assert.equal(await fs.readFile(file, 'utf8'), '{ broken JSON');
+
+  await fs.writeFile(file, JSON.stringify({ theme: 'unknown', fontSize: 16 }));
+  const preferences = createPreferences(folder);
+  assert.equal(await preferences.getTheme(), 'dark');
+  await assert.rejects(preferences.setTheme({ theme: 'light' }), /Choose Dark, Light, or System/);
+  const light = preferences.setTheme('light');
+  const system = preferences.setTheme('system');
+  assert.deepEqual(await Promise.all([light, system, preferences.getTheme()]), ['light', 'system', 'system']);
+  assert.deepEqual(JSON.parse(await fs.readFile(file, 'utf8')), { theme: 'system', fontSize: 16 });
+  assert.equal(await createPreferences(folder).getTheme(), 'system');
+});
+
+test('a failed theme save keeps the committed preference and permits a later retry', async t => {
+  const folder = await temporaryFolder(t, 'cevra-theme-');
+  const file = path.join(folder, 'preferences.json');
+  const preferences = createPreferences(folder);
+  assert.equal(await preferences.getTheme(), 'dark');
+  await fs.mkdir(file);
+  await assert.rejects(preferences.setTheme('light'));
+  assert.equal(await preferences.getTheme(), 'dark');
+  assert.deepEqual(await fs.readdir(folder), ['preferences.json']);
+  await fs.rmdir(file);
+  assert.equal(await preferences.setTheme('light'), 'light');
+  assert.equal(await createPreferences(folder).getTheme(), 'light');
+});
 
 test('workspace operations reject traversal, absolute paths, alternate streams, and hidden directories', async t => {
   const { folder, root, workspace } = await fixture(t);

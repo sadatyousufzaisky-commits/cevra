@@ -250,6 +250,94 @@ async function replaceEditor(workbench, text) {
   await workbench.page.locator('#draft-status[data-state="saved"]').waitFor();
 }
 
+async function waitForTheme(page, choice, scheme) {
+  await page.waitForFunction(({ choice, scheme }) => {
+    const select = document.getElementById('theme-choice');
+    return !select.disabled && select.value === choice && getComputedStyle(document.documentElement).colorScheme === scheme;
+  }, { choice, scheme });
+}
+
+test('switching themes updates the window and editor and preserves drafts and undo across tabs',
+  { timeout: 35_000 }, async t => {
+  const first = 'const first = 1;\n';
+  const second = 'const second = "original";\n';
+  let workbench = await openWorkbench(t, { 'first.ts': first, 'second.js': second });
+  const { app, page, editor, open, project } = workbench;
+  const theme = page.getByRole('combobox', { name: 'Theme' });
+  await waitForTheme(page, 'dark', 'dark');
+  await open('first.ts');
+  await replaceEditor(workbench, 'const first = 42;\n');
+  await open('second.js');
+  const draft = 'const second = "draft";\n';
+  await replaceEditor(workbench, draft);
+  await editor.press('Control+Home');
+  await editor.press('Shift+End');
+  const cursor = await page.locator('#cursor').textContent();
+  const keyword = editor.getByText('const', { exact: true });
+  assert.equal(await keyword.evaluate(element => getComputedStyle(element).color), 'rgb(217, 173, 251)');
+
+  await theme.selectOption('light');
+  await waitForTheme(page, 'light', 'light');
+  assert.equal(await keyword.evaluate(element => getComputedStyle(element).color), 'rgb(102, 51, 140)');
+  assert.deepEqual(await page.evaluate(() => ['.titlebar', '.cm-editor', '.run-panel'].map(selector =>
+    getComputedStyle(document.querySelector(selector)).backgroundColor)), [
+    'rgb(239, 244, 239)', 'rgb(252, 253, 251)', 'rgb(243, 247, 242)',
+  ]);
+  assert.deepEqual(await app.evaluate(({ BrowserWindow, nativeTheme }) => ({
+    mode: nativeTheme.themeSource, background: BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase(),
+  })), { mode: 'light', background: '#fcfdfb' });
+  assert.equal(await page.locator('#cursor').textContent(), cursor);
+  assert.match(await editor.textContent(), /second = "draft"/);
+
+  await open('first.ts');
+  assert.match(await editor.textContent(), /first = 42/);
+  assert.equal(await editor.getByText('const', { exact: true }).evaluate(element => getComputedStyle(element).color),
+    'rgb(102, 51, 140)');
+  await editor.press('Control+z');
+  assert.deepEqual(await editor.locator('.cm-line').allTextContents(), ['const first = 1;', '']);
+  assert.equal(await fs.readFile(path.join(project, 'second.js'), 'utf8'), second);
+
+  workbench = await workbench.restart();
+  await waitForTheme(workbench.page, 'light', 'light');
+  await workbench.selected('second.js').waitFor();
+  assert.match(await workbench.editor.textContent(), /second = "draft"/);
+});
+
+test('System theme follows native color changes and a failed theme save rolls back the control',
+  { timeout: 30_000 }, async t => {
+  const { app, page, profile, open } = await openWorkbench(t, { 'entry.js': 'const ready = true;' });
+  const theme = page.getByRole('combobox', { name: 'Theme' });
+  const preference = path.join(profile, 'preferences.json');
+  await open('entry.js');
+  await waitForTheme(page, 'dark', 'dark');
+  await fs.mkdir(preference);
+  await theme.selectOption('light');
+  await page.locator('#message[data-error="true"]').waitFor();
+  await waitForTheme(page, 'dark', 'dark');
+  assert.equal(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource), 'dark');
+
+  await fs.rmdir(preference);
+  await theme.selectOption('system');
+  await page.locator('#message').getByText('Theme saved.', { exact: true }).waitFor();
+  await page.waitForFunction(() => {
+    const select = document.getElementById('theme-choice');
+    return !select.disabled && select.value === 'system';
+  });
+  const native = await app.evaluate(({ nativeTheme }) => ({ theme: nativeTheme.themeSource, dark: nativeTheme.shouldUseDarkColors }));
+  assert.equal(native.theme, 'system');
+  await waitForTheme(page, 'system', native.dark ? 'dark' : 'light');
+  assert.deepEqual(JSON.parse(await fs.readFile(preference, 'utf8')), { theme: 'system' });
+
+  const opposite = native.dark ? 'light' : 'dark';
+  // Emit a native theme change within this Electron process without altering Windows settings.
+  await app.evaluate(({ nativeTheme }, mode) => { nativeTheme.themeSource = mode; }, opposite);
+  await waitForTheme(page, 'system', opposite);
+  assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase()),
+    opposite === 'dark' ? '#101417' : '#fcfdfb');
+  await app.evaluate(({ nativeTheme }) => { nativeTheme.themeSource = 'system'; });
+  await waitForTheme(page, 'system', native.dark ? 'dark' : 'light');
+});
+
 test('keeps drafts across a regular quit and clears them on confirmed discard', { timeout: 35_000 }, async t => {
   let workbench = await openWorkbench(t, { 'note.txt': 'original\n' });
   await workbench.open('note.txt');
