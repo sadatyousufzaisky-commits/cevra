@@ -209,7 +209,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .dock-view:hover { background: var(--raised); color: var(--text); }
 .dock-view[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--mint); }
 .problems-count { border-radius: 8px; padding: 0 5px; background: var(--raised); color: var(--danger); font-size: 11px; }
-.run-panel:is([data-pane="problems"], [data-pane="references"]) :is(#run-state, #run-target, #test-totals, #rerun-failures, .run-diagnostic, .run-body) { display: none; }
+.run-panel:is([data-pane="problems"], [data-pane="references"]) :is(#run-state, #run-target, #test-totals, #rerun-failures, .test-evidence, .run-diagnostic, .run-body) { display: none; }
 .problems-panel { min-height: 0; flex: 1; overflow: auto; }
 .problem-list, .problem-list ul { list-style: none; margin: 0; padding: 0; }
 .problem-file { margin: 0; padding: 7px 15px; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--text); font: 12px var(--mono); overflow-wrap: anywhere; }
@@ -233,6 +233,10 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .run-state[data-state="ok"], .run-state[data-state="running"] { color: var(--mint); }
 .run-state[data-state="error"] { color: var(--danger); }
 .run-target { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font: 12px var(--mono); }
+.test-evidence { flex: none; display: flex; align-items: center; gap: 8px; padding: 5px 13px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.test-evidence input { width: min(30%, 220px); min-width: 5ch; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--base); color: var(--text); font: inherit; }
+.test-evidence .button { flex: none; min-height: 24px; padding: 2px 7px; font-size: 12px; }
+#test-revision[data-freshness="historical"] { color: var(--warning); }
 .rerun-button { margin-left: auto; flex: none; min-height: 27px; padding: 3px 8px; font-size: 12px; }
 .run-diagnostic { display: flex; align-items: center; gap: 9px; min-height: 37px; padding: 3px 13px; background: var(--error-surface); border-bottom: 1px solid var(--error-border); color: var(--danger); font-size: 12px; }
 .run-diagnostic > span:first-child { flex: none; }

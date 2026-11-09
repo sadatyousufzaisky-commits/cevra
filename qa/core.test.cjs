@@ -12,6 +12,8 @@ const { createSyntaxService } = require('../src/syntax-service.cjs');
 const { createFormatService } = require('../src/format-service.cjs');
 const { createSemanticService } = require('../src/semantic-service.cjs');
 const { createPreferences } = require('../src/preferences.cjs');
+const { captureInputs, inputFreshness, sourceAnchor } = require('../src/continuum/revisions.cjs');
+const { createTestWorkstream } = require('../src/continuum/workstream.cjs');
 
 async function fixture(t) {
   const folder = await temporaryFolder(t, 'cevra-core-');
@@ -19,6 +21,84 @@ async function fixture(t) {
   await fs.mkdir(root);
   return { folder, root, workspace: await createWorkspace(root) };
 }
+
+test('workspace observations cover configuration and binary inputs and reject unsafe anchors', async t => {
+  const { root, workspace } = await fixture(t);
+  await fs.writeFile(path.join(root, 'entry.cjs'), 'throw new Error();\n');
+  await fs.writeFile(path.join(root, 'config.json'), '{}\n');
+  await fs.writeFile(path.join(root, 'sample.bin'), Buffer.from([0, 255]));
+  const before = await captureInputs(workspace);
+  assert.equal(before.files.size, 3);
+  assert.match(before.revision, /^[0-9a-f]{64}$/);
+  const location = { path: 'entry.cjs', line: 1, column: 7 };
+  const anchor = sourceAnchor(workspace, location, before, before);
+  assert.deepEqual(anchor, { ...location, revision: (await readSource(workspace, 'entry.cjs')).revision });
+  for (const path of ['C:outside.js', 'entry.cjs:stream', '../entry.cjs']) {
+    assert.equal(sourceAnchor(workspace, { ...location, path }, before, before), null);
+  }
+
+  await fs.writeFile(path.join(root, 'config.json'), '{"changed":true}\n');
+  const configChanged = await captureInputs(workspace);
+  assert.equal(inputFreshness(before, configChanged), 'historical');
+  assert.deepEqual(sourceAnchor(workspace, location, before, configChanged), anchor);
+  await fs.utimes(path.join(root, 'entry.cjs'), new Date(), new Date(1_700_000_000_000));
+  const touched = await captureInputs(workspace);
+  assert.equal(touched.revision, configChanged.revision);
+  assert.equal(inputFreshness(configChanged, touched), 'historical');
+  assert.equal(sourceAnchor(workspace, location, configChanged, touched), null);
+
+  await fs.writeFile(path.join(root, 'oversized.bin'), Buffer.alloc(2 * 1024 * 1024 + 1));
+  assert.equal(inputFreshness(touched, await captureInputs(workspace)), 'unavailable');
+});
+
+test('workstream evidence stays tied to its attempt and cancellation wins over a late pass', async t => {
+  const { root, workspace } = await fixture(t);
+  await fs.writeFile(path.join(root, 'fixture.cjs'), 'const count = 1;\n');
+  let publishTest;
+  let stopping = false;
+  const workstream = createTestWorkstream(workspace, async (_workspace, _retry, publish) => {
+    publishTest = publish;
+  });
+  async function attempt(retry, event, beforeExit = () => {}) {
+    let publish;
+    const finished = new Promise(resolve => { publish = resolve; });
+    await workstream.start(retry, 'Check totals', publish, () => stopping);
+    await beforeExit();
+    publishTest({ type: 'exit', elapsed: 17, counts: { tests: 1 }, ...event });
+    return finished;
+  }
+
+  const failure = await attempt(false, { code: 1 }, () => {
+    publishTest({
+      type: 'test-failure', name: 'totals', message: 'unexpected count',
+      location: { path: 'fixture.cjs', line: 1, column: 7 },
+    });
+  });
+  assert.equal(failure.evidence.goal, 'Check totals');
+  assert.equal(failure.evidence.workspaceId, workspace.id);
+  assert.equal(failure.evidence.outcome, 'failed');
+  assert.equal(failure.evidence.freshness, 'observed');
+  assert.equal(failure.failures[0].anchor.revision, (await readSource(workspace, 'fixture.cjs')).revision);
+  await fs.writeFile(path.join(root, 'fixture.cjs'), 'const count = 2;\n');
+  const checks = await Promise.all([workstream.recheck(failure.evidence.id), workstream.recheck(failure.evidence.id)]);
+  assert.equal(checks[0], checks[1]);
+  assert.equal(checks[0].freshness, 'historical');
+
+  const changed = await attempt(true, { code: 1 }, async () => {
+    publishTest({ type: 'test-failure', location: { path: 'fixture.cjs', line: 1, column: 7 } });
+    await fs.writeFile(path.join(root, 'fixture.cjs'), 'const count = 3;\n');
+  });
+  assert.equal(changed.evidence.freshness, 'historical');
+  assert.equal(changed.failures[0].anchor, null);
+  assert.equal(changed.evidence.workstreamId, failure.evidence.workstreamId);
+  assert.notEqual(changed.evidence.id, failure.evidence.id);
+  assert.equal(await workstream.recheck(failure.evidence.id), null);
+
+  const cancelled = await attempt(true, { code: 0 }, () => { stopping = true; });
+  assert.equal(cancelled.stopped, true);
+  assert.equal(cancelled.evidence.outcome, 'cancelled');
+  assert.equal(cancelled.evidence.freshness, 'unavailable');
+});
 
 test('theme preferences default safely and persist concurrent changes in order', async t => {
   const folder = await temporaryFolder(t, 'cevra-theme-');

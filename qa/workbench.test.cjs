@@ -252,6 +252,47 @@ async function replaceEditor(workbench, text) {
   await workbench.page.locator('#draft-status[data-state="saved"]').waitFor();
 }
 
+test('a named test workstream links an exact failure and marks edited or external inputs historical',
+  { timeout: 30_000 }, async t => {
+    const folder = 'nested (# % &) café';
+    const source = path.join(folder, 'total.cjs');
+    const workbench = await openWorkbench(t, {
+      [source]: 'module.exports = function total() {\n  const value = 1;\n  throw new Error("incorrect total");\n};\n',
+      'config.json': '{"round":false}\n',
+      'totals.test.cjs': "const { test } = require('node:test');\n" +
+        "const total = require(" + JSON.stringify('./' + folder + '/total.cjs') + ");\n" +
+        "test('invoice total', () => total());\n",
+    });
+    const { page, project, editor, selected, state } = workbench;
+    const run = page.getByRole('button', { name: 'Run tests', exact: true });
+    const status = page.locator('#test-revision');
+    await page.getByRole('button', { name: 'Run output', exact: true }).click();
+    const goal = page.getByRole('textbox', { name: 'Workstream' });
+    await goal.fill('Repair the invoice total');
+    await run.click();
+    await state.getByText(/^Failed/).waitFor();
+    await status.getByText(/^Workspace inputs observed · [a-f0-9]{10}$/).waitFor();
+    assert.match(await status.getAttribute('title'), /^Repair the invoice total/);
+    const failure = page.getByRole('button', { name: /invoice total.*total\.cjs:3:9/ });
+    await failure.click();
+    await selected('total.cjs').waitFor();
+    await page.locator('#cursor').getByText('Ln 3, Col 9', { exact: true }).waitFor();
+
+    await replaceEditor(workbench, 'module.exports = () => 1;\n');
+    await status.getByText(/^Historical · workspace inputs changed/).waitFor();
+    await failure.click();
+    await page.locator('#message').getByText(/recorded test source changed/).waitFor();
+    assert.match(await editor.textContent(), /module.exports = \(\) => 1/);
+
+    await run.click();
+    await state.getByText(/^Passed/).waitFor();
+    await status.getByText(/^Workspace inputs observed/).waitFor();
+    assert.equal(await goal.inputValue(), 'Repair the invoice total');
+    await fs.writeFile(path.join(project, 'config.json'), '{"round":true}\n');
+    await page.getByRole('button', { name: 'Check inputs' }).click();
+    await status.getByText(/^Historical · workspace inputs changed/).waitFor();
+  });
+
 test('project replacement rejects a changed file, then recovers the entire confirmed batch after a crash',
   { timeout: 35_000 }, async t => {
     const first = 'const token = "token";\n';

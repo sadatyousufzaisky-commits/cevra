@@ -19,6 +19,7 @@ import { createSemanticCompletion } from './semantic-completion.js';
 import { createSignatureHelp } from './signature-help.js';
 import { createSymbolInfo } from './symbol-info.js';
 import { createSymbolPicker } from './symbol-picker.js';
+import { createTestEvidence } from './test-evidence.js';
 import { createTypeProblems } from './type-problems.js';
 import { createWorkspaceLayout } from './workspace-layout.js';
 import { sourceLanguage } from './source-language.cjs';
@@ -26,6 +27,7 @@ import { normalizeSource } from './source-text.cjs';
 import { changeLineEnding, detectLineEnding, lineEnding, lineEndingHistory } from './line-endings.js';
 
 const api = window.cevra;
+const testEvidence = createTestEvidence(api);
 const byId = id => document.getElementById(id);
 const tabs = byId('tabs');
 const editor = byId('editor');
@@ -151,6 +153,7 @@ function syncCommands() {
   const open = [...documents.values()];
   const saving = savingAll || open.some(tab => tab.saving);
   const discarding = open.some(tab => tab.discarding);
+  testEvidence.setBusy(Boolean(run || changingProject));
   openButton.disabled = welcomeOpen.disabled = exampleButton.disabled = Boolean(run || changingProject || saving || discarding);
   saveButton.disabled = !active?.dirty || Boolean(active.saving || active.discarding || changingProject);
   saveButton.hidden = Boolean(active?.recoveryConflict);
@@ -247,6 +250,7 @@ function updateDocument(tab, before, state, changes, docChanged) {
     navigation.map(tab.id, changes, state.doc);
   }
   if (docChanged || endingChanged) {
+    testEvidence.changed();
     const dirty = isDirty(tab, state);
     if (dirty !== tab.dirty) {
       tab.dirty = dirty;
@@ -487,6 +491,7 @@ async function openFile(path, expected) {
     }
     tab ??= createTab(path, disk.text, disk.revision);
   }
+  if (expected?.validate && !expected.validate(tab.state.doc)) throw stale();
   showFile(tab);
   notify(tab.recoveryConflict ? 'The original changed or is unavailable. Save a recovery copy.' : tab.path,
     tab.recoveryConflict);
@@ -539,6 +544,7 @@ async function adoptProject(next) {
   symbolPicker.close();
   semantic.changed();
   project = next;
+  testEvidence.reset(next);
   documents.clear();
   expanded.clear();
   showFile(undefined);
@@ -759,6 +765,7 @@ function showDock(name, focus = false) {
 }
 
 function resetOutput(target = '', mode = 'file') {
+  testEvidence.clear();
   const testing = mode === 'tests';
   dock.dataset.mode = mode;
   byId('run-heading').textContent = testing ? 'Test results' : 'Run output';
@@ -830,12 +837,14 @@ function runFile() {
 
 function runTests(retry = false) {
   if (testButton.disabled || (retry && !retryAvailable)) return;
+  const goal = testEvidence.goal;
   return launchRun('tests', retry ? 'Failed tests' : 'Project tests', async (id, token) => {
     for (const tab of documents.values()) await saveFile(tab);
     if ([...documents.values()].some(tab => tab.dirty)) {
       throw new Error('An open file changed during save. Run tests again to include the latest edits.');
     }
-    await api.test(project.id, retry, id, token);
+    run.sourceVersion = testEvidence.version;
+    await api.test(project.id, retry, id, token, goal);
   });
 }
 
@@ -851,10 +860,10 @@ function locationLabel({ path, line, column }) {
   return `${path}:${line}:${column}`;
 }
 
-function appendFailure({ name, message, location }) {
+function appendFailure({ name, message, location, anchor }, evidenceId) {
   byId('test-empty').hidden = true;
   const item = document.createElement('li');
-  const row = document.createElement(location ? 'button' : 'div');
+  const row = document.createElement(anchor ? 'button' : 'div');
   row.className = 'test-result';
   const title = label(name);
   const detail = label(message);
@@ -862,11 +871,23 @@ function appendFailure({ name, message, location }) {
   detail.title = message;
   row.append(title, detail);
   if (location) {
-    const source = label(locationLabel(location));
+    const source = label(locationLabel(location) + (anchor ? '' : ' · Source revision unavailable'));
     source.className = 'test-source';
     source.title = source.textContent;
     row.append(source);
-    row.onclick = () => jumpToLocation(location).catch(report);
+  }
+  if (anchor) {
+    const isCurrent = () => testEvidence.isCurrent(evidenceId);
+    const staleMessage = 'The recorded test source changed or is unavailable. Run tests again to refresh this location.';
+    row.onclick = () => jumpToLocation(anchor, {
+      revision: anchor.revision, isCurrent, staleMessage, changedMessage: staleMessage,
+      validate: doc => anchor.line <= doc.lines && anchor.column <= doc.line(anchor.line).length + 1,
+    }).catch(error => {
+      if (isCurrent()) {
+        report(error);
+        void testEvidence.recheck();
+      }
+    });
   }
   item.append(row);
   failureList.append(item);
@@ -913,19 +934,18 @@ function finishTests(event, elapsed) {
 }
 
 api.onRun(event => {
-  if (event.runId !== run?.id) return;
+  if (event.workspaceId !== project?.id || event.runId !== run?.id) return;
   if (event.type === 'output') {
     appendOutput(event.text);
     return;
   }
-  if (event.type === 'test-failure') {
-    appendFailure(event);
-    return;
-  }
-  const { mode } = run;
+  if (event.type !== 'exit') return;
+  const { mode, sourceVersion } = run;
   run = undefined;
   const elapsed = event.elapsed < 1000 ? `${event.elapsed} ms` : `${(event.elapsed / 1000).toFixed(1)} s`;
   if (mode === 'tests') {
+    testEvidence.finish(event.evidence, sourceVersion);
+    for (const failure of event.failures ?? []) appendFailure(failure, event.evidence?.id);
     finishTests(event, elapsed);
     syncCommands();
     return;

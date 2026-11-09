@@ -126,6 +126,12 @@
           <button id="toggle-dock" class="sidebar-action dock-toggle" aria-label="Show bottom panel" aria-controls="dock-content" aria-expanded="false" title="Show bottom panel (Ctrl+J)"><svg aria-hidden="true"><use href="#panel-layout"></use></svg></button>
         </header>
         <div id="dock-content" class="dock-content" hidden>
+          <section id="test-evidence" class="test-evidence" aria-label="Test workstream" hidden>
+            <label for="workstream-goal">Workstream</label>
+            <input id="workstream-goal" maxlength="120" placeholder="Project tests" autocomplete="off">
+            <span id="test-revision" class="run-target" role="status"></span>
+            <button id="test-recheck" class="button" hidden>Check inputs</button>
+          </section>
           <div id="run-diagnostic" class="run-diagnostic" hidden>
             <span>Source location</span>
             <button id="jump-to-error" class="diagnostic-link">

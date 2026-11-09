@@ -29,6 +29,12 @@ After a failure, **Rerun failures** saves edits and retries tests that have yet 
 
 The built-in example includes a failing test for fractional weights. In `total.cjs`, replace `Math.floor(weight)` with `weight` and choose **Rerun failures** to check the fix.
 
+### Track a test workstream
+
+Expand **Run output** and enter a **Workstream** goal, then choose **Run tests**. The result records the goal, a unique attempt ID, the observed workspace revision, and the outcome. A failure opens its recorded line only if the source revision still matches. Editing a buffer marks the result **Historical** immediately. **Check inputs** and returning focus to CEVRA recheck the workspace on disk.
+
+This foundation keeps the latest attempt in memory for the open workspace. CEVRA compares snapshots of supported workspace files before and after the run. The scan includes source, configuration, and binary files and is bounded to 256 files and 16 MiB, with a 2 MiB per-file limit. It excludes dependency and cache directories and version-control data. Unreadable inputs, unsafe links, and scan limits make the workspace revision unavailable. The observation covers those snapshots. The runner still executes against the live workspace, where code can also read external inputs. A retry records the new attempt and keeps previously passed tests separate in the totals.
+
 ## Search and navigate
 
 - **Ctrl+F** finds and replaces text in the current file. Use the case, whole-word, and regular-expression options to narrow a search. Replacements can be undone in the editor.

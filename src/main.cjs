@@ -14,6 +14,7 @@ const { createSyntaxService } = require('./syntax-service.cjs');
 const { createFormatService } = require('./format-service.cjs');
 const { createSemanticService } = require('./semantic-service.cjs');
 const { createPreferences } = require('./preferences.cjs');
+const { createTestWorkstream } = require('./continuum/workstream.cjs');
 
 app.setName('CEVRA');
 
@@ -27,6 +28,7 @@ const formatter = createFormatService();
 const semantics = createSemanticService();
 let window;
 let workspace;
+let workstream;
 let activeRun;
 let runGrant;
 let authorizingRun = false;
@@ -97,6 +99,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
   formatter.stop();
   semantics.stop();
   workspace = next;
+  workstream = createTestWorkstream(next, tests.start);
   runGrant = undefined;
   return {
     id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable, settings,
@@ -273,20 +276,20 @@ handle('draft', (id, file, text, revision) => {
   return drafts.set(project.root, file, text, revision);
 });
 
-async function execute(runId, start) {
+async function execute(project, runId, start) {
   if (activeRun) throw new Error('A program is already running.');
   const run = { stopRequested: false };
   activeRun = run;
   try {
     run.controller = await start(event => {
       if (activeRun === run && event.type === 'exit') activeRun = undefined;
-      if (rendererReady && window && !window.isDestroyed()) {
-        window.webContents.send('cevra:run-event', { ...event, runId });
+      if (workspace === project && rendererReady && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.send('cevra:run-event', { ...event, runId, workspaceId: project.id });
       }
-    });
-    if (run.stopRequested) run.controller.stop();
+    }, () => run.stopRequested || workspace !== project);
+    if (run.stopRequested) run.controller?.stop();
   } catch (error) {
-    activeRun = undefined;
+    if (activeRun === run) activeRun = undefined;
     throw error;
   }
 }
@@ -300,12 +303,17 @@ function authorizedWorkspace(id, token) {
 
 handle('start', (id, file, revision, runId, token) => {
   const project = authorizedWorkspace(id, token);
-  return execute(runId, publish => startNodeRun(project, file, revision, publish));
+  return execute(project, runId, publish => startNodeRun(project, file, revision, publish));
 });
 
-handle('test', (id, retry, runId, token) => {
+handle('test', (id, retry, runId, token, goal) => {
   const project = authorizedWorkspace(id, token);
-  return execute(runId, publish => tests.start(project, retry === true, publish));
+  const current = workstream;
+  return execute(project, runId, (publish, isStopping) => current.start(retry === true, goal, publish, isStopping));
+});
+handle('test-evidence', (id, evidenceId) => {
+  currentWorkspace(id);
+  return workstream.recheck(evidenceId);
 });
 
 function stopRun() {
