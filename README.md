@@ -42,6 +42,24 @@ Open **Problems** with **Ctrl+Shift+M**. CEVRA checks open JavaScript and TypeSc
 
 Syntax checking runs locally on editor text. Runtime failures remain in **Run output**. The Problems view in this milestone reports syntax findings.
 
+## Format a document
+
+Press **Shift+Alt+F** or select **Format document** to format the active JavaScript or TypeScript buffer, including JSX and TSX. CEVRA applies its own indentation, spacing, and block layout rules and checks that the edited source parses to the same structure. Formatting is one undo step. Save when you want to write the result to disk.
+
+Put a `.cevra-format.json` file in the workspace or a subfolder to set formatting rules. CEVRA uses the nearest configuration within the workspace. Omitted keys use these defaults.
+
+```json
+{
+  "indentStyle": "spaces",
+  "indentWidth": 2,
+  "bracketSpacing": true,
+  "finalNewline": true,
+  "lineEnding": "preserve"
+}
+```
+
+Use `"tabs"` for tab indentation. Set `lineEnding` to `"lf"`, `"crlf"`, or `"cr"` to change the document's line endings as part of formatting. The formatter preserves existing punctuation, comments, and literal contents, including the contents of JSX and templates.
+
 ## Verify CEVRA
 
 Run `npm test` on Windows before expanding the workbench. The core suite exercises JavaScript process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.

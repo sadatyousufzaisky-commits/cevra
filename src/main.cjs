@@ -8,6 +8,7 @@ const { createTestSession } = require('./project-tests.cjs');
 const { createDraftStore } = require('./drafts.cjs');
 const { searchProject } = require('./project-search.cjs');
 const { createSyntaxService } = require('./syntax-service.cjs');
+const { createFormatService } = require('./format-service.cjs');
 
 app.setName('CEVRA');
 
@@ -16,6 +17,7 @@ const pageURL = pathToFileURL(page).href;
 const tests = createTestSession(app.getPath('temp'));
 const drafts = createDraftStore(path.join(app.getPath('userData'), 'drafts'));
 const syntax = createSyntaxService();
+const formatter = createFormatService();
 let window;
 let workspace;
 let activeRun;
@@ -59,6 +61,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
   const recovered = entries.filter(draft => draft.root === next.root);
   activeSearch?.controller.abort();
   syntax.stop();
+  formatter.stop();
   workspace = next;
   return {
     id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable,
@@ -126,6 +129,7 @@ handle('syntax', (id, file, text) => {
   if (path.relative(project.root, workspacePath(project, file)) === '') throw new Error('Choose a source file.');
   return syntax.analyze(file, text);
 });
+handle('format', (id, file, text, eol, bom) => formatter.format(currentWorkspace(id), file, text, eol, bom));
 handle('search', async (id, requestId, query, caseSensitive, snapshots) => {
   const project = currentWorkspace(id);
   activeSearch?.controller.abort();
@@ -242,6 +246,7 @@ async function launch() {
     closePending = false;
     activeSearch?.controller.abort();
     syntax.stop();
+    formatter.stop();
     stopRun();
     const now = Date.now();
     const repeated = now - lastRendererCrash < 2_000;
@@ -289,3 +294,4 @@ if (app.requestSingleInstanceLock()) {
 app.on('window-all-closed', () => app.quit());
 app.on('will-quit', tests.dispose);
 app.on('will-quit', syntax.stop);
+app.on('will-quit', formatter.stop);

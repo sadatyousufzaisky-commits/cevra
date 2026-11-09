@@ -9,6 +9,7 @@ const { createDraftStore } = require('../src/drafts.cjs');
 const { writeAtomic } = require('../src/atomic-file.cjs');
 const { searchProject } = require('../src/project-search.cjs');
 const { createSyntaxService } = require('../src/syntax-service.cjs');
+const { createFormatService } = require('../src/format-service.cjs');
 
 async function fixture(t) {
   const folder = await temporaryFolder(t, 'cevra-core-');
@@ -284,4 +285,74 @@ test('syntax worker exits reject outstanding checks and a later request starts a
     assert.match(check.reason.message, /analyzer stopped/);
   }
   assert.deepEqual(await syntax.analyze('second.ts', 'valid'), { issues: [], omitted: 0 });
+});
+
+function applyFormat(source, changes) {
+  for (const { from, to, insert } of [...changes].reverse()) {
+    source = source.slice(0, from) + insert + source.slice(to);
+  }
+  return source;
+}
+
+test('the CEVRA formatter edits whitespace, preserves literal content and ASI, and is idempotent', { timeout: 15_000 }, async t => {
+  const { workspace } = await fixture(t);
+  const formatter = createFormatService();
+  t.after(formatter.stop);
+  const template = 'const raw=' + String.fromCharCode(96) + 'a  ' + '$' + '{1+  2}' + String.fromCharCode(96) + ';';
+  const source = [
+    '#!/usr/bin/env node',
+    'const text="  a  ";const pattern=/a  b/;',
+    template,
+    'function run(n){',
+    '// preserve spacing  here',
+    'return',
+    '{ value:n+1 }',
+    '}',
+    'const property=1 .toString();',
+    'const double=a+ +b;',
+  ].join('\n');
+  const { changes, eol } = await formatter.format(workspace, 'entry.cjs', source, '\r\n');
+  for (const { from, to, insert } of changes) {
+    assert.match(source.slice(from, to), /^\s*$/);
+    assert.match(insert, /^\s*$/);
+  }
+  const formatted = applyFormat(source, changes);
+  assert.match(formatted, /^#!\/usr\/bin\/env node\nconst text = "  a  ";\nconst pattern = \/a  b\/;/);
+  assert.ok(formatted.includes(template.replace('raw=', 'raw = ')));
+  assert.match(formatted, /function run\(n\) \{\n  \/\/ preserve spacing  here\n  return\n  \{\n    value: n \+ 1\n  \}\n\}/);
+  assert.match(formatted, /const property = 1 \.toString\(\);\nconst double = a \+ \+b;\n$/);
+  assert.equal(eol, '\r\n');
+  assert.deepEqual(await formatter.format(workspace, 'entry.cjs', formatted, eol), { changes: [], eol });
+
+  const jsx = 'const view=<main>exact  text {a+  b}</main>;';
+  assert.equal(applyFormat(jsx, (await formatter.format(workspace, 'view.tsx', jsx, '\n')).changes),
+    'const view = <main>exact  text {a+  b}</main>;\n');
+});
+
+test('formatting uses the nearest scoped CEVRA settings and rejects unsafe or invalid inputs', { timeout: 15_000 }, async t => {
+  const { folder, root, workspace } = await fixture(t);
+  const formatter = createFormatService();
+  t.after(formatter.stop);
+  const nested = 'nested (# % &)';
+  await fs.mkdir(path.join(root, nested));
+  await fs.writeFile(path.join(root, '.cevra-format.json'), '{"indentWidth":4}');
+  await fs.writeFile(path.join(root, nested, '.cevra-format.json'),
+    '{"indentStyle":"tabs","bracketSpacing":false,"finalNewline":false,"lineEnding":"crlf"}');
+  const source = 'export function next(a:number){return {a:a+1}}';
+  const outer = await formatter.format(workspace, 'plain.ts', source, '\n');
+  assert.equal(applyFormat(source, outer.changes), 'export function next(a: number) {\n    return { a: a + 1 }\n}\n');
+  assert.equal(outer.eol, '\n');
+  const inner = await formatter.format(workspace, path.join(nested, 'next.ts'), source, '\n');
+  assert.equal(applyFormat(source, inner.changes), 'export function next(a: number) {\n\treturn {a: a + 1}\n}');
+  assert.equal(inner.eol, '\r\n');
+  await assert.rejects(formatter.format(workspace, 'broken.js', 'const x = ;', '\n'), /Fix the syntax error first/);
+  await assert.rejects(formatter.format(workspace, '../outside.js', source, '\n'), /outside the workspace/);
+  await fs.writeFile(path.join(root, nested, '.cevra-format.json'), '{"indentWidth":-1}');
+  await assert.rejects(formatter.format(workspace, path.join(nested, 'next.ts'), source, '\n'), /invalid formatting option/);
+
+  const outside = path.join(folder, 'outside');
+  await fs.mkdir(outside);
+  await fs.writeFile(path.join(outside, '.cevra-format.json'), '{"indentWidth":8}');
+  await fs.symlink(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(formatter.format(workspace, 'linked/source.ts', source, '\n'), /Workspace links cannot be opened/);
 });

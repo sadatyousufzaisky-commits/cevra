@@ -22,6 +22,7 @@
     <symbol id="back" viewBox="0 0 24 24"><path d="M20 12H4m6-6-6 6 6 6"/></symbol>
     <symbol id="forward" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
     <symbol id="search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></symbol>
+    <symbol id="format" viewBox="0 0 24 24"><path d="M4 5h16M8 10h12M8 14h12M4 19h16"/></symbol>
   </svg>
   <header class="titlebar">
     <div class="brand">
@@ -38,6 +39,9 @@
         <svg aria-hidden="true"><use href="#save"></use></svg>
       </button>
       <button id="save-recovery" class="button" hidden>Save recovery copy</button>
+      <button id="format-document" class="button icon-button" aria-label="Format document" title="Format document (Shift+Alt+F)" disabled>
+        <svg aria-hidden="true"><use href="#format"></use></svg>
+      </button>
       <button id="run-tests" class="button" title="Save open files and run tests (Ctrl+Alt+T)" disabled>
         <svg aria-hidden="true"><use href="#flask"></use></svg> Run tests
       </button>
@@ -130,6 +134,7 @@
     <span id="message" class="message" role="status">Ready to open a project</span>
     <span id="draft-status" class="status-field" data-state="clear" hidden></span>
     <span id="language" class="status-field"></span>
+    <span id="line-ending" class="status-field"></span>
     <span id="cursor" class="status-field"></span>
   </footer>
 </body>

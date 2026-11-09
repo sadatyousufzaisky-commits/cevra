@@ -16,6 +16,7 @@
     "playwright": "1.65.0"
   },
   "dependencies": {
+    "@codemirror/commands": "6.11.1",
     "@codemirror/lang-javascript": "6.2.5",
     "@codemirror/language": "6.13.1",
     "@codemirror/lint": "6.9.7",

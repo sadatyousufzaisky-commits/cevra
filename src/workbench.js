@@ -1,4 +1,5 @@
 import { basicSetup } from 'codemirror';
+import { isolateHistory } from '@codemirror/commands';
 import { EditorState, Text } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { indentUnit } from '@codemirror/language';
@@ -9,6 +10,7 @@ import { createNavigationHistory } from './navigation-history.js';
 import { createProblemsPanel } from './problems-panel.js';
 import { createSearchPanel } from './search-panel.js';
 import { sourceLanguage } from './source-language.cjs';
+import { changeLineEnding, detectLineEnding, lineEnding, lineEndingHistory } from './line-endings.js';
 
 const api = window.cevra;
 const byId = id => document.getElementById(id);
@@ -22,6 +24,7 @@ const welcomeOpen = byId('welcome-open');
 const exampleButton = byId('open-example');
 const saveButton = byId('save-file');
 const recoveryButton = byId('save-recovery');
+const formatButton = byId('format-document');
 const runButton = byId('run-file');
 const testButton = byId('run-tests');
 const retryButton = byId('rerun-failures');
@@ -105,6 +108,7 @@ function syncCommands() {
   saveButton.hidden = Boolean(active?.recoveryConflict);
   recoveryButton.hidden = !active?.recoveryConflict;
   recoveryButton.disabled = !active?.dirty || Boolean(active.saving || changingProject);
+  formatButton.disabled = !active?.language || Boolean(changingProject || active.formatting || active.discarding);
   runButton.disabled = !active || !runnable.test(active.path) || Boolean(changingProject || run || discarding);
   runButton.hidden = Boolean(run);
   testButton.disabled = !project || Boolean(changingProject || run || discarding);
@@ -120,12 +124,15 @@ function syncCommands() {
 function syncCursor() {
   if (!active) {
     byId('language').textContent = '';
+    byId('line-ending').textContent = '';
     byId('cursor').textContent = '';
     return;
   }
   const position = view.state.selection.main.head;
   const line = view.state.doc.lineAt(position);
   byId('language').textContent = active.language?.name ?? 'Plain text';
+  const ending = view.state.field(lineEnding);
+  byId('line-ending').textContent = ending === '\r\n' ? 'CRLF' : ending === '\r' ? 'CR' : 'LF';
   byId('cursor').textContent = `Ln ${line.number}, Col ${position - line.from + 1}`;
 }
 
@@ -147,8 +154,13 @@ function syncDraftStatus() {
   status.title = all.find(tab => tab.draftError)?.draftError?.message ?? '';
 }
 
-function serialize(tab, doc = tab.state.doc) {
-  return tab.bom + doc.toString().replaceAll('\n', tab.eol);
+function serialize(tab, state = tab.state) {
+  return tab.bom + state.doc.toString().replaceAll('\n', state.field(lineEnding));
+}
+
+function isDirty(tab, state) {
+  return !tab.savedDoc || !state.doc.eq(tab.savedDoc) ||
+    (state.doc.lines > 1 && state.field(lineEnding) !== tab.savedEol);
 }
 
 function queueDraft(tab) {
@@ -174,11 +186,13 @@ function queueDraft(tab) {
   return tab.draftTask;
 }
 
-function editorState(tab, text) {
+function editorState(tab, text, ending) {
   return EditorState.create({
     doc: text,
     extensions: [
       basicSetup,
+      lineEnding.init(() => ending),
+      lineEndingHistory,
       oneDark,
       editorTheme,
       indentUnit.of('  '),
@@ -189,10 +203,13 @@ function editorState(tab, text) {
       EditorView.contentAttributes.of({ 'aria-label': 'Source editor' }),
       EditorView.updateListener.of(update => {
         tab.state = update.state;
+        const endingChanged = update.startState.field(lineEnding, false) !== update.state.field(lineEnding);
         if (update.docChanged) {
           tab.version++;
           navigation.map(tab.id, update.changes, update.state.doc);
-          const dirty = !tab.savedDoc || !update.state.doc.eq(tab.savedDoc);
+        }
+        if (update.docChanged || endingChanged) {
+          const dirty = isDirty(tab, update.state);
           if (dirty !== tab.dirty) {
             tab.dirty = dirty;
             if (!dirty && tab.recoveryConflict) {
@@ -203,9 +220,9 @@ function editorState(tab, text) {
           }
           queueDraft(tab);
           searchPanel.changed();
-          problemsPanel.changed(tab);
         }
-        if (update.docChanged || update.selectionSet) syncCursor();
+        if (update.docChanged) problemsPanel.changed(tab);
+        if (update.docChanged || update.selectionSet || endingChanged) syncCursor();
       }),
     ],
   });
@@ -353,10 +370,10 @@ function createTab(path, text, revision) {
     language: sourceLanguage(path),
     revision,
     bom: text.startsWith('\uFEFF') ? '\uFEFF' : '',
-    eol: text.includes('\r\n') ? '\r\n' : text.includes('\n') ? '\n' : text.includes('\r') ? '\r' : '\n',
+    savedEol: detectLineEnding(text),
     dirty: false,
   };
-  tab.state = editorState(tab, normalized(text));
+  tab.state = editorState(tab, normalized(text), tab.savedEol);
   tab.savedDoc = tab.state.doc;
   documents.set(path, tab);
   problemsPanel.track(tab);
@@ -453,9 +470,8 @@ async function adoptProject(next) {
       continue;
     }
     const tab = createTab(draft.path, draft.text, draft.revision);
-    tab.savedDoc = disk ? Text.of(normalized(disk.text).split('\n')) : null;
+    setDiskBaseline(tab, disk);
     tab.dirty = true;
-    tab.diskRevision = disk?.revision;
     tab.recoveryConflict = draft.revision !== disk?.revision;
     restored ??= tab;
   }
@@ -491,25 +507,31 @@ async function openProject(picker) {
   }
 }
 
+function setDiskBaseline(tab, disk) {
+  tab.savedDoc = disk ? Text.of(normalized(disk.text).split('\n')) : null;
+  tab.savedEol = disk ? detectLineEnding(disk.text) : undefined;
+  tab.diskRevision = disk?.revision;
+}
+
 async function saveFile(tab) {
   if (!tab?.dirty || tab.discarding) return;
   if (tab.recoveryConflict) throw new Error('The original changed or is unavailable. Save a recovery copy.');
   if (tab.saving) return tab.saving;
-  const doc = tab.state.doc;
-  tab.saving = api.save(tab.projectId, tab.path, serialize(tab, doc), tab.revision);
+  const before = tab.state;
+  tab.saving = api.save(tab.projectId, tab.path, serialize(tab, before), tab.revision);
   syncCommands();
   try {
     tab.revision = await tab.saving;
-    tab.savedDoc = doc;
-    tab.dirty = !tab.state.doc.eq(doc);
+    tab.savedDoc = before.doc;
+    tab.savedEol = before.field(lineEnding);
+    tab.dirty = isDirty(tab, tab.state);
     queueDraft(tab);
     searchPanel.changed();
     notify('Saved ' + tab.path);
   } catch (error) {
     if (/^This file changed on disk\./.test(errorText(error))) {
       const disk = await api.read(tab.projectId, tab.path).catch(() => null);
-      tab.diskRevision = disk?.revision;
-      tab.savedDoc = disk ? Text.of(normalized(disk.text).split('\n')) : null;
+      setDiskBaseline(tab, disk);
       tab.recoveryConflict = true;
     }
     throw error;
@@ -521,14 +543,14 @@ async function saveFile(tab) {
 
 async function saveRecoveredCopy(tab) {
   if (recoveryButton.disabled || !tab?.recoveryConflict) return;
-  const doc = tab.state.doc;
-  tab.saving = api.saveCopy(tab.projectId, tab.path, serialize(tab, doc));
+  const before = tab.state;
+  tab.saving = api.saveCopy(tab.projectId, tab.path, serialize(tab, before));
   syncCommands();
   try {
     const name = await tab.saving;
     project.files = await api.list(project.id, '');
     renderTree();
-    if (doc.eq(tab.state.doc)) {
+    if (before.doc.eq(tab.state.doc) && before.field(lineEnding) === tab.state.field(lineEnding)) {
       editor.inert = true;
       try {
         await removeTab(tab);
@@ -540,6 +562,47 @@ async function saveRecoveredCopy(tab) {
     notify('Saved recovery copy ' + name);
   } finally {
     tab.saving = undefined;
+    syncCommands();
+  }
+}
+
+async function formatDocument() {
+  if (formatButton.disabled) return;
+  const tab = active;
+  const version = tab.version;
+  const ending = tab.state.field(lineEnding);
+  const stillEditing = () => active === tab && !changingProject && !tab.discarding &&
+    !document.body.inert && !editor.inert && documents.get(tab.path) === tab;
+  const stillCurrent = () => stillEditing() && tab.version === version && tab.state.field(lineEnding) === ending;
+  if (document.activeElement === formatButton) view.focus();
+  tab.formatting = true;
+  syncCommands();
+  notify('Formatting ' + tab.path + '…');
+  try {
+    const result = await api.format(tab.projectId, tab.path, tab.state.doc.toString(), ending, Boolean(tab.bom));
+    if (!stillCurrent()) {
+      if (stillEditing()) notify('Formatting skipped because the document changed.');
+      return;
+    }
+    if (!result.changes.length && result.eol === ending) {
+      notify('No formatting changes for ' + tab.path);
+      return;
+    }
+    const changes = tab.state.changes(result.changes);
+    view.dispatch({
+      changes,
+      selection: tab.state.selection.map(changes, 1),
+      effects: result.eol === ending ? [] : [changeLineEnding.of(result.eol)],
+      annotations: isolateHistory.of('full'),
+      scrollIntoView: view.hasFocus,
+      userEvent: 'input.format',
+    });
+    notify('Formatted ' + tab.path);
+  } catch (error) {
+    if (stillCurrent()) report(error);
+    else if (stillEditing()) notify('Formatting skipped because the document changed.');
+  } finally {
+    tab.formatting = false;
     syncCommands();
   }
 }
@@ -814,6 +877,7 @@ forwardButton.onclick = () => travel('forward').catch(report);
 openButton.onclick = welcomeOpen.onclick = () => openProject(api.chooseFolder).catch(report);
 exampleButton.onclick = () => openProject(api.openExample).catch(report);
 saveButton.onclick = () => saveFile(active).catch(report);
+formatButton.onclick = formatDocument;
 recoveryButton.onclick = () => saveRecoveredCopy(active).catch(report);
 runButton.onclick = runFile;
 testButton.onclick = () => runTests();
@@ -861,6 +925,9 @@ document.addEventListener('keydown', event => {
   if (event.key === 'F5') {
     event.preventDefault();
     void runFile();
+  } else if (!command && event.altKey && event.shiftKey && key === 'f') {
+    event.preventDefault();
+    void formatDocument();
   } else if (command && event.shiftKey && key === 'f') {
     event.preventDefault();
     searchPanel.show();

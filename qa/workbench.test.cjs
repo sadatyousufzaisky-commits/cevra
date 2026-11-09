@@ -569,3 +569,90 @@ test('late syntax replies stay hidden and unavailable checks can be retried', { 
   await status.getByText('No syntax problems.', { exact: true }).waitFor();
   assert.match(await editor.textContent(), /const n = 3;/);
 });
+
+test('Format Document uses the unsaved buffer, keeps selection, and forms one undo step', async t => {
+  const name = 'format (# %).cjs';
+  const source = 'const total=(a,b)=>{return a+b};\n';
+  const original = '\uFEFFconst initial = 0;\n';
+  const workbench = await openWorkbench(t, {
+    [name]: original,
+    'ending.cjs': 'const value = 1;\n',
+    '.cevra-format.json': '{"indentWidth":4,"lineEnding":"crlf"}',
+  });
+  const { page, editor, project, open } = workbench;
+  const ending = page.locator('#line-ending');
+  await open(name);
+  await replaceEditor(workbench, source);
+  await editor.press('Control+Home');
+  for (let i = 0; i < source.indexOf('return'); i++) await page.keyboard.press('ArrowRight');
+  for (let i = 0; i < 'return'.length; i++) await page.keyboard.press('Shift+ArrowRight');
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'return');
+
+  await editor.press('Shift+Alt+f');
+  await page.locator('#message').getByText('Formatted ' + name, { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'return');
+  const lines = ['const total = (a, b) => {', '    return a + b', '};'];
+  assert.deepEqual((await editor.locator('.cm-line').allTextContents()).slice(0, 3), lines);
+  assert.equal(await ending.textContent(), 'CRLF');
+  assert.equal(await fs.readFile(path.join(project, name), 'utf8'), original);
+  await page.locator('#draft-status[data-state="saved"]').waitFor();
+
+  await editor.press('Control+z');
+  assert.equal((await editor.locator('.cm-line').allTextContents())[0], source.trimEnd());
+  assert.equal(await ending.textContent(), 'LF');
+  await editor.press('Control+y');
+  assert.deepEqual((await editor.locator('.cm-line').allTextContents()).slice(0, 3), lines);
+  assert.equal(await ending.textContent(), 'CRLF');
+  await editor.press('Control+s');
+  await page.locator('#message').getByText('Saved ' + name, { exact: true }).waitFor();
+  assert.equal(await fs.readFile(path.join(project, name), 'utf8'), '\uFEFF' + lines.join('\r\n') + '\r\n');
+
+  await open('ending.cjs');
+  await page.getByRole('button', { name: 'Format document', exact: true }).click();
+  await page.locator('#message').getByText('Formatted ending.cjs', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'ending.cjs, unsaved', exact: true }).waitFor();
+  assert.equal(await ending.textContent(), 'CRLF');
+  await editor.press('Control+z');
+  assert.equal(await ending.textContent(), 'LF');
+  await page.locator('#tabs').getByRole('button', { name: 'ending.cjs', exact: true }).waitFor();
+  assert.equal(await fs.readFile(path.join(project, 'ending.cjs'), 'utf8'), 'const value = 1;\n');
+});
+
+test('a late format result cannot replace a newer editor version', { timeout: 25_000 }, async t => {
+  const original = 'const before=1;\n';
+  const workbench = await openWorkbench(t, { 'current.cjs': original });
+  const { app, page, editor, open, project } = workbench;
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('cevra:format');
+    ipcMain.handle('cevra:format', (_event, _workspace, _file, text, eol) => new Promise(resolve => {
+      ipcMain.releaseHeldFormat = () => resolve({
+        changes: [{ from: 0, to: text.length, insert: 'const oldResult = 1;\n' }],
+        eol,
+      });
+      ipcMain.waitForHeldFormat?.();
+    }));
+  });
+  await open('current.cjs');
+  await page.getByRole('button', { name: 'Format document', exact: true }).click();
+  await app.evaluate(({ ipcMain }) => {
+    if (ipcMain.releaseHeldFormat) return;
+    return new Promise(resolve => { ipcMain.waitForHeldFormat = resolve; });
+  });
+  await replaceEditor(workbench, 'const newerEdit=2;\n');
+  await app.evaluate(({ ipcMain }) => ipcMain.releaseHeldFormat());
+  await page.locator('#message').getByText('Formatting skipped because the document changed.', { exact: true }).waitFor();
+  assert.equal((await editor.locator('.cm-line').allTextContents())[0], 'const newerEdit=2;');
+  assert.equal(await fs.readFile(path.join(project, 'current.cjs'), 'utf8'), original);
+});
+
+test('Format Document reports invalid syntax while preserving unsaved text', async t => {
+  const original = 'const value=1;\n';
+  const workbench = await openWorkbench(t, { 'broken.js': original });
+  const { page, editor, open, project } = workbench;
+  await open('broken.js');
+  await replaceEditor(workbench, 'const value = ;\n');
+  await page.getByRole('button', { name: 'Format document', exact: true }).click();
+  await page.locator('#message').getByText(/Fix the syntax error first/).waitFor();
+  assert.equal((await editor.locator('.cm-line').allTextContents())[0], 'const value = ;');
+  assert.equal(await fs.readFile(path.join(project, 'broken.js'), 'utf8'), original);
+});
