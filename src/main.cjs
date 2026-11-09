@@ -177,6 +177,8 @@ handle('definition', (id, file, position, buffers) =>
 handle('references', (id, file, position, buffers, requestId) =>
   semantics.references(currentWorkspace(id), file, position, buffers, requestId));
 handle('cancel-references', (id, requestId) => semantics.cancelReferences(currentWorkspace(id), requestId));
+handle('symbols', (id, query, buffers, requestId) => semantics.symbols(currentWorkspace(id), query, buffers, requestId));
+handle('cancel-symbols', (id, requestId) => semantics.cancelSymbols(currentWorkspace(id), requestId));
 handle('search', async (id, requestId, query, caseSensitive, snapshots) => {
   const project = currentWorkspace(id);
   activeSearch?.controller.abort();

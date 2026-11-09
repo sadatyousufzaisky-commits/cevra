@@ -1294,3 +1294,153 @@ test('Find References cancels searches and ignores replies after canceling or ed
   await pane.getByRole('button', { name: /currentUsage/ }).waitFor();
   assert.equal(await page.evaluate(() => window.sawStaleReference), false);
 });
+
+test('Go to Symbol searches closed declarations, picks by keyboard, and reads unsaved symbols',
+  { timeout: 30_000 }, async t => {
+  const folder = 'packages (QA) & café [#%]';
+  const relative = path.join(folder, 'client.ts');
+  const initial = 'export function dispatch() {}\n';
+  const workbench = await openWorkbench(t, {
+    'first.ts': initial,
+    [relative]: '\uFEFFexport class Client {\r\n  dispatch() { return 1; }\r\n}\r\n',
+  });
+  const { page, editor, open, selected, project } = workbench;
+  const picker = page.getByRole('dialog', { name: 'Go to Symbol' });
+  const query = picker.getByRole('combobox', { name: 'Search symbols' });
+  await page.getByRole('button', { name: 'Go to Symbol', exact: true }).click();
+  await query.fill('dispatch');
+  await picker.getByRole('option', { name: /dispatch function first\.ts/ }).waitFor();
+  const method = picker.getByRole('option', { name: /Client\.dispatch method .*client\.ts/ });
+  await method.waitFor();
+  await query.press('ArrowDown');
+  assert.equal(await method.getAttribute('aria-selected'), 'true');
+  await query.press('Enter');
+  await picker.waitFor({ state: 'hidden' });
+  await selected('client.ts').waitFor();
+  await page.locator('#cursor').getByText('Ln 2, Col 3', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'dispatch');
+  await page.getByRole('group', { name: 'Current file path' }).getByText(`${folder} › client.ts`, { exact: true }).waitFor();
+
+  await open('first.ts');
+  await replaceEditor(workbench, 'export type DraftDispatch = string;\n' + initial);
+  await page.locator('#tabs').getByRole('button', { name: 'client.ts', exact: true }).click();
+  await selected('client.ts').waitFor();
+  const origin = await page.locator('#cursor').textContent();
+  await editor.press('Control+t');
+  await query.fill('DraftDispatch');
+  await picker.getByRole('option', { name: /DraftDispatch type first\.ts/ }).waitFor();
+  await query.press('Enter');
+  await selected('first.ts').waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'DraftDispatch');
+  assert.equal(await fs.readFile(path.join(project, 'first.ts'), 'utf8'), initial);
+  await editor.press('Alt+ArrowLeft');
+  await selected('client.ts').waitFor();
+  await page.locator('#cursor').getByText(origin, { exact: true }).waitFor();
+});
+
+test('Go to Symbol ignores a superseded query and refuses a changed destination', { timeout: 30_000 }, async t => {
+  const initial = 'export function target() {}\n';
+  const { app, page, editor, open, selected, project } = await openWorkbench(t, {
+    'main.js': 'const source = 1;\n', 'target.js': initial,
+  });
+  const target = {
+    name: 'target', kind: 'function', path: 'target.js', offset: 16, length: 6, line: 1, column: 17,
+    revision: createHash('sha256').update(initial).digest('hex'),
+  };
+  await app.evaluate(({ ipcMain }, item) => {
+    ipcMain.removeHandler('cevra:symbols');
+    ipcMain.handle('cevra:symbols', (_event, _workspace, query) => {
+      if (query === 'target') return { items: [item] };
+      return new Promise(resolve => {
+        ipcMain.releaseSymbols = () => resolve({ items: [{ ...item, name: 'staleSymbol' }] });
+        ipcMain.waitForSymbols?.();
+      });
+    });
+  }, target);
+  await open('main.js');
+  await page.evaluate(() => {
+    window.sawStaleSymbolResult = false;
+    new MutationObserver(records => {
+      if (records.some(record => [...record.addedNodes].some(node => node.textContent.includes('staleSymbol')))) {
+        window.sawStaleSymbolResult = true;
+      }
+    }).observe(document.getElementById('symbol-results'), { childList: true, subtree: true });
+  });
+  const picker = page.getByRole('dialog', { name: 'Go to Symbol' });
+  const query = picker.getByRole('combobox', { name: 'Search symbols' });
+  await editor.press('Control+t');
+  await query.fill('old');
+  await app.evaluate(({ ipcMain }) => {
+    if (ipcMain.releaseSymbols) return;
+    return new Promise(resolve => { ipcMain.waitForSymbols = resolve; });
+  });
+  await query.fill('target');
+  await picker.getByRole('option', { name: /target function target\.js/ }).waitFor();
+  await app.evaluate(({ ipcMain }) => ipcMain.releaseSymbols());
+  assert.equal(await picker.getByRole('option', { name: /staleSymbol/ }).count(), 0);
+  await fs.writeFile(path.join(project, 'target.js'), '// external change\n' + initial);
+  await query.press('Enter');
+  await page.locator('#message').getByText(/symbol changed before it could be opened/).waitFor();
+  assert.equal(await selected('target.js').count(), 0);
+  assert.equal(await page.evaluate(() => window.sawStaleSymbolResult), false);
+});
+
+test('the compact workbench gives the editor space and keeps layout controls and indentation usable',
+  { timeout: 30_000 }, async t => {
+  const folder = 'code (nested)';
+  const name = 'entry.js';
+  const content = 'function outer() {\n  if (true) {\n    return "room";\n  }\n}\nconsole.log(outer());\n';
+  const workbench = await openWorkbench(t, { [path.join(folder, name)]: content });
+  const { app, page, editor, open, file, output } = workbench;
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(740, 560));
+  await file(folder).click();
+  await open(name);
+  const viewport = page.locator('#editor');
+  const dock = page.locator('#run-panel');
+  assert.ok((await viewport.boundingBox()).height > 340);
+  const sidebar = await page.locator('#workspace-sidebar').boundingBox();
+  const searchToggle = await page.locator('#search-toggle').boundingBox();
+  assert.ok(searchToggle.x + searchToggle.width <= sidebar.x + sidebar.width);
+  await page.getByRole('button', { name: 'Show bottom panel', exact: true }).waitFor();
+  await output.waitFor({ state: 'hidden' });
+  await page.getByRole('group', { name: 'Current file path' }).getByText(`${folder} › ${name}`, { exact: true }).waitFor();
+  assert.equal(await editor.locator('.cm-indent-guides').filter({ hasText: 'return' }).evaluate(element =>
+    element.style.getPropertyValue('--guide-width')), '4ch');
+
+  await editor.press('Control+Home');
+  await editor.press('ArrowDown');
+  await editor.press('Tab');
+  assert.equal((await editor.locator('.cm-line').allTextContents())[1], '    if (true) {');
+  await editor.press('Shift+Tab');
+  assert.equal((await editor.locator('.cm-line').allTextContents())[1], '  if (true) {');
+  await editor.press('Escape');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => Boolean(document.activeElement.closest('#editor'))), false);
+  const cursor = await page.locator('#cursor').textContent();
+  const originalWidth = (await viewport.boundingBox()).width;
+  await editor.press('Control+b');
+  assert.ok((await viewport.boundingBox()).width >= originalWidth + 150);
+  assert.equal(await page.locator('#cursor').textContent(), cursor);
+  await editor.press('Control+Shift+f');
+  const search = page.getByRole('searchbox', { name: 'Search project' });
+  await search.waitFor();
+  await search.press('Escape');
+
+  await editor.press('Control+j');
+  await output.waitFor();
+  const handle = page.getByRole('separator', { name: 'Resize bottom panel' });
+  const originalHeight = (await dock.boundingBox()).height;
+  await handle.press('ArrowUp');
+  assert.ok((await dock.boundingBox()).height >= originalHeight + 14);
+  const beforeDrag = (await dock.boundingBox()).height;
+  const bar = await handle.boundingBox();
+  await page.mouse.move(bar.x + bar.width / 2, bar.y + bar.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bar.x + bar.width / 2, bar.y + bar.height / 2 - 22);
+  await page.mouse.up();
+  assert.ok((await dock.boundingBox()).height >= beforeDrag + 18);
+  await editor.press('Control+j');
+  await output.waitFor({ state: 'hidden' });
+  await editor.press('F5');
+  await output.getByText('room', { exact: true }).waitFor();
+});

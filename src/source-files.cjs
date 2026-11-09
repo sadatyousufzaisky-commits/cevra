@@ -8,12 +8,15 @@ const maxDirectories = 512;
 const maxEntries = 12_000;
 const configNames = ['tsconfig.json', 'jsconfig.json'];
 
-function fileKey(file) {
-  return process.platform === 'win32' ? file.toLowerCase() : file;
+function sourceFileKey(file) {
+  const normalized = path.normalize(file);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
-function collectReferenceFiles(workspace, scope, target, overlays) {
-  const files = new Map([[fileKey(target), target]]);
+function collectSourceFiles(workspace, { scope = workspace.root, target, overlays, skipNestedProjects = false }) {
+  const files = new Map();
+  if (target) files.set(sourceFileKey(target), target);
+  const scopeKey = sourceFileKey(scope);
   const boundaries = new Map();
   let separateProjects = 0;
   let scannedEntries = 0;
@@ -22,8 +25,8 @@ function collectReferenceFiles(workspace, scope, target, overlays) {
   let limited = false;
 
   function startsProject(folder) {
-    const id = fileKey(folder);
-    if (id === fileKey(scope)) return false;
+    const id = sourceFileKey(folder);
+    if (!skipNestedProjects || id === scopeKey) return false;
     if (!boundaries.has(id)) {
       const relative = path.relative(workspace.root, folder);
       const configured = configNames.some(name => {
@@ -42,10 +45,10 @@ function collectReferenceFiles(workspace, scope, target, overlays) {
   for (const { file } of overlays) {
     if (!inside(scope, file)) continue;
     let folder = path.dirname(file);
-    while (fileKey(folder) !== fileKey(scope) && isSourceDirectory(path.basename(folder)) && !startsProject(folder)) {
+    while (sourceFileKey(folder) !== scopeKey && isSourceDirectory(path.basename(folder)) && !startsProject(folder)) {
       folder = path.dirname(folder);
     }
-    if (fileKey(folder) === fileKey(scope)) files.set(fileKey(file), file);
+    if (sourceFileKey(folder) === scopeKey) files.set(sourceFileKey(file), file);
   }
 
   const pending = [scope];
@@ -72,9 +75,9 @@ function collectReferenceFiles(workspace, scope, target, overlays) {
         const absolute = path.join(folder, entry.name);
         if (entry.isDirectory() && isSourceDirectory(entry.name)) {
           pending.push(absolute);
-        } else if (entry.isFile() && sourceLanguage(entry.name) && !files.has(fileKey(absolute))) {
+        } else if (entry.isFile() && sourceLanguage(entry.name) && !files.has(sourceFileKey(absolute))) {
           if (files.size === maxFiles) limited = true;
-          else files.set(fileKey(absolute), absolute);
+          else files.set(sourceFileKey(absolute), absolute);
         }
       }
     } catch {
@@ -86,4 +89,4 @@ function collectReferenceFiles(workspace, scope, target, overlays) {
   return { files: [...files.values()], separateProjects, skipped, limited };
 }
 
-module.exports = { collectReferenceFiles };
+module.exports = { collectSourceFiles, sourceFileKey };

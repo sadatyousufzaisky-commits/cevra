@@ -23,6 +23,9 @@
     <symbol id="forward" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
     <symbol id="search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></symbol>
     <symbol id="format" viewBox="0 0 24 24"><path d="M4 5h16M8 10h12M8 14h12M4 19h16"/></symbol>
+    <symbol id="sidebar-layout" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 5v14"/></symbol>
+    <symbol id="panel-layout" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/></symbol>
+    <symbol id="find-symbol" viewBox="0 0 24 24"><path d="m10 3 7 7-7 7-7-7Z M15 15l5 5"/></symbol>
   </svg>
   <header class="titlebar">
     <div class="brand">
@@ -32,8 +35,14 @@
     <span class="title-divider" aria-hidden="true"></span>
     <span id="project-title" class="project-title">Workbench</span>
     <div class="title-actions">
-      <button id="open-folder" class="button" title="Open folder (Ctrl+O)">
-        <svg aria-hidden="true"><use href="#folder"></use></svg> Open folder
+      <button id="toggle-sidebar" class="button icon-button" aria-label="Hide Explorer" aria-controls="workspace-sidebar" aria-expanded="true" title="Hide Explorer (Ctrl+B)">
+        <svg aria-hidden="true"><use href="#sidebar-layout"></use></svg>
+      </button>
+      <button id="go-symbol" class="button icon-button" aria-label="Go to Symbol" title="Go to Symbol (Ctrl+T)" disabled>
+        <svg aria-hidden="true"><use href="#find-symbol"></use></svg>
+      </button>
+      <button id="open-folder" class="button" aria-label="Open folder" title="Open folder (Ctrl+O)">
+        <svg aria-hidden="true"><use href="#folder"></use></svg> <span>Open folder</span>
       </button>
       <button id="save-file" class="button icon-button" aria-label="Save file" title="Save file (Ctrl+S)" disabled>
         <svg aria-hidden="true"><use href="#save"></use></svg>
@@ -42,8 +51,8 @@
       <button id="format-document" class="button icon-button" aria-label="Format document" title="Format document (Shift+Alt+F)" disabled>
         <svg aria-hidden="true"><use href="#format"></use></svg>
       </button>
-      <button id="run-tests" class="button" title="Save open files and run tests (Ctrl+Alt+T)" disabled>
-        <svg aria-hidden="true"><use href="#flask"></use></svg> Run tests
+      <button id="run-tests" class="button" aria-label="Run tests" title="Save open files and run tests (Ctrl+Alt+T)" disabled>
+        <svg aria-hidden="true"><use href="#flask"></use></svg> <span>Run tests</span>
       </button>
       <button id="run-file" class="button primary" title="Run file (F5)" disabled>
         <svg aria-hidden="true"><use href="#play"></use></svg> <span>Run file</span><kbd>F5</kbd>
@@ -53,8 +62,8 @@
       </button>
     </div>
   </header>
-  <main class="workbench">
-    <aside class="explorer" aria-label="Project explorer">
+  <main id="workbench" class="workbench">
+    <aside id="workspace-sidebar" class="explorer" aria-label="Project explorer">
       <header class="sidebar-header">
         <h2 id="sidebar-heading" class="section-label">Explorer</h2>
         <div class="sidebar-actions">
@@ -83,8 +92,9 @@
       </section>
       <div class="explorer-footer"><span class="status-dot"></span> Local workspace</div>
     </aside>
-    <section class="studio" aria-label="Editor and execution">
+    <section id="studio" class="studio" aria-label="Editor and execution">
       <div id="tabs" class="tabs" aria-label="Open files" hidden></div>
+      <div id="file-breadcrumbs" class="file-breadcrumbs" role="group" aria-label="Current file path" hidden></div>
       <div id="editor" class="editor" hidden></div>
       <section id="welcome" class="welcome">
         <div class="welcome-content">
@@ -97,7 +107,8 @@
           </div>
         </div>
       </section>
-      <section id="run-panel" class="run-panel" aria-label="Workbench panel">
+      <section id="run-panel" class="run-panel" aria-label="Workbench panel" data-collapsed="true">
+        <div id="dock-resizer" class="dock-resizer" role="separator" aria-label="Resize bottom panel" aria-controls="dock-content" aria-orientation="horizontal" aria-valuemin="126" tabindex="0" hidden></div>
         <header class="run-header">
           <div class="dock-views" role="group" aria-label="Workbench views">
             <button id="show-output" class="dock-view" aria-pressed="true"><span id="run-heading">Run output</span></button>
@@ -110,33 +121,36 @@
           <button id="rerun-failures" class="button rerun-button" title="Save open files and rerun failures" hidden>Rerun failures</button>
           <span id="problems-status" class="run-target" role="status" hidden></span>
           <button id="problems-retry" class="button rerun-button" hidden>Retry checks</button>
+          <button id="toggle-dock" class="sidebar-action dock-toggle" aria-label="Show bottom panel" aria-controls="dock-content" aria-expanded="false" title="Show bottom panel (Ctrl+J)"><svg aria-hidden="true"><use href="#panel-layout"></use></svg></button>
         </header>
-        <div id="run-diagnostic" class="run-diagnostic" hidden>
-          <span>Source location</span>
-          <button id="jump-to-error" class="diagnostic-link">
-            <span></span><svg aria-hidden="true"><use href="#return"></use></svg>
-          </button>
-          <span id="run-error-summary" class="run-error-summary"></span>
-        </div>
-        <div class="run-body">
-          <section id="test-results" class="test-results" aria-label="Test failures" hidden>
-            <p id="test-empty" class="test-empty"></p>
-            <ul id="test-failures" class="test-failures"></ul>
-          </section>
-          <pre id="run-output" class="run-output" tabindex="0" aria-label="Program output">Run a JavaScript file to see its output here.</pre>
-        </div>
-        <section id="problems-panel" class="problems-panel" aria-label="Syntax problems" hidden>
-          <ul id="problem-list" class="problem-list"></ul>
-        </section>
-        <section id="references-panel" class="references-panel" aria-label="Symbol references" hidden>
-          <div class="references-tools">
-            <p id="references-status" role="status"></p>
-            <button id="find-references" class="button" title="Find References (Shift+F12)" disabled>Find References</button>
-            <button id="references-cancel" class="button" hidden>Cancel</button>
+        <div id="dock-content" class="dock-content" hidden>
+          <div id="run-diagnostic" class="run-diagnostic" hidden>
+            <span>Source location</span>
+            <button id="jump-to-error" class="diagnostic-link">
+              <span></span><svg aria-hidden="true"><use href="#return"></use></svg>
+            </button>
+            <span id="run-error-summary" class="run-error-summary"></span>
           </div>
-          <p id="references-scope" class="references-scope"></p>
-          <ul id="reference-results" class="problem-list" aria-label="Reference locations"></ul>
-        </section>
+          <div class="run-body">
+            <section id="test-results" class="test-results" aria-label="Test failures" hidden>
+              <p id="test-empty" class="test-empty"></p>
+              <ul id="test-failures" class="test-failures"></ul>
+            </section>
+            <pre id="run-output" class="run-output" tabindex="0" aria-label="Program output">Run a JavaScript file to see its output here.</pre>
+          </div>
+          <section id="problems-panel" class="problems-panel" aria-label="Syntax problems" hidden>
+            <ul id="problem-list" class="problem-list"></ul>
+          </section>
+          <section id="references-panel" class="references-panel" aria-label="Symbol references" hidden>
+            <div class="references-tools">
+              <p id="references-status" role="status"></p>
+              <button id="find-references" class="button" title="Find References (Shift+F12)" disabled>Find References</button>
+              <button id="references-cancel" class="button" hidden>Cancel</button>
+            </div>
+            <p id="references-scope" class="references-scope"></p>
+            <ul id="reference-results" class="problem-list" aria-label="Reference locations"></ul>
+          </section>
+        </div>
       </section>
     </section>
   </main>
@@ -161,6 +175,15 @@
     <p id="definition-summary"></p>
     <ul id="definition-choices" class="definition-choices"></ul>
     <button id="definition-cancel" class="button">Cancel</button>
+  </dialog>
+  <dialog id="symbols-dialog" class="definition-dialog symbols-dialog" aria-labelledby="symbols-heading">
+    <header class="symbols-header">
+      <h2 id="symbols-heading">Go to Symbol</h2>
+      <button id="symbol-cancel" class="sidebar-action" aria-label="Close symbol search" title="Close (Escape)"><svg aria-hidden="true"><use href="#close"></use></svg></button>
+    </header>
+    <input id="symbol-query" type="search" role="combobox" aria-label="Search symbols" aria-autocomplete="list" aria-controls="symbol-results" aria-expanded="false" placeholder="Search functions, classes, methods, and types" maxlength="128" autocomplete="off" spellcheck="false">
+    <p id="symbol-status" role="status"></p>
+    <ul id="symbol-results" class="definition-choices symbol-results" role="listbox" aria-label="Workspace symbols"></ul>
   </dialog>
 </body>
 </html>

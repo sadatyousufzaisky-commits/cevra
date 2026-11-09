@@ -5,7 +5,7 @@ const ts = require('typescript');
 const { checkedEntrySync, inside, readSourceSync, workspacePath } = require('./workspace.cjs');
 const { sourceLanguage } = require('./source-language.cjs');
 const { normalizeSource, sourceLocation } = require('./source-text.cjs');
-const { collectReferenceFiles } = require('./reference-files.cjs');
+const { collectSourceFiles } = require('./source-files.cjs');
 const { collectCommonJsReferences } = require('./commonjs-references.cjs');
 
 const libraryDirectory = path.dirname(require.resolve('typescript'));
@@ -397,7 +397,7 @@ function createSemanticProject(workspace) {
 
   function references(target, position, sources) {
     return query(target, sources, (file, _text, scope) => {
-      const scan = collectReferenceFiles(workspace, scope, target, request.overlays.values());
+      const scan = collectSourceFiles(workspace, { scope, target, overlays: request.overlays.values(), skipNestedProjects: true });
       request.roots = scan.files.map(compilerPath);
       const origin = service.getDefinitionAndBoundSpan(file, position);
       const groups = referenceGroups(file, position, origin);

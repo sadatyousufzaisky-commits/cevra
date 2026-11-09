@@ -847,3 +847,65 @@ test('canceling references stops only the matching search and leaves other langu
   assert.equal(result.count, 2);
   assert.match(info.signature, /const value/);
 });
+
+test('workspace symbol search finds named declarations in closed files and replaces disk symbols with drafts',
+  { timeout: 20_000 }, async t => {
+  const { folder, root, workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const nested = 'package (QA) # % & café';
+  const file = path.join(nested, 'shipping.ts');
+  const saved = '\uFEFF// Windows source\r\nexport class Shipment {\r\n  track() { return 1; }\r\n}\r\n';
+  await fs.mkdir(path.join(root, nested));
+  await fs.mkdir(path.join(root, '.cache'));
+  const outside = path.join(folder, 'outside');
+  await fs.mkdir(outside);
+  await fs.symlink(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+  await Promise.all([
+    fs.writeFile(path.join(root, nested, 'tsconfig.json'), '{}'),
+    fs.writeFile(path.join(root, file), saved),
+    fs.writeFile(path.join(root, 'other.js'), 'export function track() {}\nimport { track as trackAlias } from "./shipping";'),
+    fs.writeFile(path.join(root, '.cache', 'hidden.ts'), 'export function track() {}'),
+    fs.writeFile(path.join(outside, 'linked.ts'), 'export function track() {}'),
+  ]);
+  const disk = await semantics.symbols(workspace, 'track', [], 1);
+  assert.deepEqual(disk.items.map(({ name, kind, container, path }) => [name, kind, container, path]), [
+    ['track', 'function', '', 'other.js'], ['track', 'method', 'Shipment', file],
+  ]);
+  const method = disk.items[1];
+  assert.equal(method.offset, saved.slice(1).replaceAll('\r\n', '\n').indexOf('track'));
+  assert.equal(method.line, 3);
+  assert.equal(method.column, 3);
+  assert.equal(method.revision, (await readSource(workspace, file)).revision);
+  const drafts = [{ path: file, documentId: 7, version: 3, text: 'export type DraftTrack = string;\n' }];
+  const updated = await semantics.symbols(workspace, 'track', drafts, 2);
+  assert.deepEqual(updated.items.map(({ name }) => name), ['track', 'DraftTrack']);
+  assert.deepEqual(updated.items[1], {
+    name: 'DraftTrack', kind: 'type', container: '', path: file, offset: 12, length: 10, line: 1, column: 13,
+    documentId: 7, version: 3,
+  });
+  assert.equal(await fs.readFile(path.join(root, file), 'utf8'), saved);
+  await fs.writeFile(path.join(root, 'other.js'), 'export function refreshedTrack() {}');
+  const refreshed = await semantics.symbols(workspace, 'refreshed', drafts, 3);
+  assert.deepEqual(refreshed.items.map(({ name }) => name), ['refreshedTrack']);
+  await assert.rejects(semantics.symbols(workspace, 'track', [{ ...drafts[0], path: '../outside/linked.ts' }], 4),
+    /outside the workspace/);
+});
+
+test('workspace symbol search bounds results and cancels only the matching request', { timeout: 20_000 }, async t => {
+  const { workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const text = Array.from({ length: 100 }, (_, index) => `export const named${index} = ${index};`).join('\n');
+  const drafts = [{ path: 'unsaved.ts', documentId: 1, version: 0, text }];
+  const stopped = assert.rejects(semantics.symbols(workspace, 'named', drafts, 1), /symbol search was canceled/);
+  semantics.cancelSymbols(workspace, 1);
+  await stopped;
+  const current = semantics.symbols(workspace, 'named', drafts, 2);
+  semantics.cancelSymbols(workspace, 1);
+  const result = await current;
+  assert.equal(result.items.length, 80);
+  assert.equal(result.more, true);
+  const exact = await semantics.symbols(workspace, 'named9', drafts, 3);
+  assert.equal(exact.items[0].name, 'named9');
+});

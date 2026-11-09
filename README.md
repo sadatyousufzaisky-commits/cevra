@@ -90,6 +90,16 @@ Press **Shift+F12** on a JavaScript or TypeScript symbol, or choose **Find Refer
 
 Discovery starts in the nearest `tsconfig.json` or `jsconfig.json` folder, or at the workspace root when there is no config. It skips separately configured subtrees, dependency caches, and links, and follows supported imports through the language bridge. The panel reports when the 256-file discovery or 400-result limit is reached.
 
+## Go to a symbol
+
+Press **Ctrl+T** or use **Go to Symbol** in the title bar. Search for a JavaScript or TypeScript declaration by name, then use the arrow keys and **Enter** to jump to it. Each result shows its kind, containing declaration when available, and file. The search includes closed files and open drafts across the workspace, and checks the target before opening it. It searches up to 256 source files and displays the first 80 matches.
+
+## Make room to edit
+
+Press **Ctrl+B** to show or hide the Explorer and **Ctrl+J** to toggle the bottom panel. The bottom panel starts collapsed and opens when you run code or open a tool such as Problems. Drag its top edge or focus the resize handle and use **Up** or **Down** to adjust its height.
+
+The editor shows the current file path and indentation guides. **Tab** and **Shift+Tab** indent and outdent JavaScript and TypeScript lines. Press **Escape** and then **Tab** to move focus out of the editor.
+
 ## Change the theme
 
 Use **Theme** in the status bar to choose **CEVRA Dark**, **CEVRA Light**, or **System**. System follows the operating system's app color mode. The theme applies to the workbench, editor, and window controls. CEVRA remembers it across projects and restarts. New profiles start with CEVRA Dark.

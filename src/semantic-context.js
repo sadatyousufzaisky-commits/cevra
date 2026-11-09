@@ -12,16 +12,22 @@ export function createSemanticContext({ api, getActive, getDocuments, available 
     return { path: tab.path, documentId: tab.id, version: tab.version, text: cached.text };
   }
 
+  function draftSnapshots(exclude) {
+    const buffers = [];
+    for (const tab of getDocuments()) {
+      if (tab !== exclude && tab.language && tab.dirty) buffers.push(snapshot(tab));
+    }
+    return buffers;
+  }
+
   return {
     available,
+    draftSnapshots,
     changed() { generation++; },
     query(operation, tab, position, requestId) {
       const epoch = generation;
       const version = tab.version;
-      const buffers = [snapshot(tab)];
-      for (const other of getDocuments()) {
-        if (other !== tab && other.language && other.dirty) buffers.push(snapshot(other));
-      }
+      const buffers = [snapshot(tab), ...draftSnapshots(tab)];
       return {
         result: api[operation](tab.projectId, tab.path, position, buffers, requestId),
         current: () => epoch === generation && tab.version === version && available() && getActive() === tab,

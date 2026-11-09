@@ -1,13 +1,14 @@
 import { basicSetup } from 'codemirror';
 import { closeCompletion } from '@codemirror/autocomplete';
-import { isolateHistory } from '@codemirror/commands';
+import { indentWithTab, isolateHistory } from '@codemirror/commands';
 import { EditorState, Text } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
+import { EditorView, keymap } from '@codemirror/view';
 import { indentUnit } from '@codemirror/language';
 import { javascript } from '@codemirror/lang-javascript';
 import { linter, lintGutter, setDiagnostics, setDiagnosticsEffect } from '@codemirror/lint';
 import { createDefinitionNavigation } from './definition-navigation.js';
 import { colorModeExtension, editorColorMode, editorTheme } from './editor-theme.js';
+import { indentGuides } from './indent-guides.js';
 import { createNavigationHistory } from './navigation-history.js';
 import { createProblemsPanel } from './problems-panel.js';
 import { createReferencesPanel } from './references-panel.js';
@@ -16,6 +17,8 @@ import { createSemanticContext } from './semantic-context.js';
 import { createSemanticCompletion } from './semantic-completion.js';
 import { createSignatureHelp } from './signature-help.js';
 import { createSymbolInfo } from './symbol-info.js';
+import { createSymbolPicker } from './symbol-picker.js';
+import { createWorkspaceLayout } from './workspace-layout.js';
 import { sourceLanguage } from './source-language.cjs';
 import { normalizeSource } from './source-text.cjs';
 import { changeLineEnding, detectLineEnding, lineEnding, lineEndingHistory } from './line-endings.js';
@@ -35,6 +38,7 @@ const recoveryButton = byId('save-recovery');
 const formatButton = byId('format-document');
 const inspectButton = byId('inspect-symbol');
 const definitionButton = byId('go-definition');
+const symbolButton = byId('go-symbol');
 const findReferencesButton = byId('find-references');
 const themeChoice = byId('theme-choice');
 const runButton = byId('run-file');
@@ -69,6 +73,7 @@ let selectedTheme = themeChoice.value;
 let colorMode = 'dark';
 
 const view = new EditorView({ parent: editor });
+const layout = createWorkspaceLayout();
 const syntaxDecorations = [
   linter(null),
   lintGutter(),
@@ -146,6 +151,7 @@ function syncCommands() {
   recoveryButton.disabled = !active?.dirty || Boolean(active.saving || changingProject);
   formatButton.disabled = !active?.language || Boolean(changingProject || active.formatting || active.discarding);
   inspectButton.disabled = definitionButton.disabled = findReferencesButton.disabled = !active?.language || changingProject;
+  symbolButton.disabled = !project || changingProject;
   runButton.disabled = !active || !runnable.test(active.path) || Boolean(changingProject || run || discarding);
   runButton.hidden = Boolean(run);
   testButton.disabled = !project || Boolean(changingProject || run || discarding);
@@ -235,6 +241,8 @@ function editorState(tab, text, ending) {
       indentUnit.of('  '),
       tab.language ? [
         javascript({ typescript: tab.language.typescript, jsx: tab.language.jsx }),
+        keymap.of([indentWithTab]),
+        indentGuides,
         syntaxDecorations,
         symbolInfo.extension,
         semanticCompletion,
@@ -264,7 +272,10 @@ function editorState(tab, text, ending) {
         if (update.docChanged) {
           problemsPanel.changed(tab);
           semantic.changed();
-          if (tab.language) referencesPanel.changed();
+          if (tab.language) {
+            referencesPanel.changed();
+            symbolPicker.changed();
+          }
         }
         if (update.docChanged || (update.selectionSet && !update.startState.selection.eq(update.state.selection))) {
           definitionNavigation.invalidate();
@@ -384,6 +395,7 @@ function showFile(tab) {
     symbolInfo.leave(active);
   }
   active = tab;
+  layout.filePath(tab?.path);
   editor.hidden = !tab;
   byId('welcome').hidden = Boolean(tab);
   if (tab) {
@@ -479,7 +491,10 @@ async function removeTab(tab) {
   documents.delete(tab.path);
   semantic.changed();
   problemsPanel.remove(tab);
-  if (tab.language) referencesPanel.changed();
+  if (tab.language) {
+    referencesPanel.changed();
+    symbolPicker.changed();
+  }
   if (tab.dirty) searchPanel.changed();
   if (tab === active) showFile([...documents.values()].at(-1));
   syncDirty();
@@ -505,6 +520,7 @@ async function adoptProject(next) {
   searchPanel.reset();
   problemsPanel.reset();
   referencesPanel.reset();
+  symbolPicker.close();
   semantic.changed();
   project = next;
   documents.clear();
@@ -676,6 +692,7 @@ function showDock(name, focus = false) {
   for (const [pane, button] of Object.entries(dockButtons)) button.setAttribute('aria-pressed', String(pane === name));
   byId('problems-panel').hidden = byId('problems-status').hidden = name !== 'problems';
   byId('references-panel').hidden = name !== 'references';
+  layout.expandDock();
   problemsPanel.render();
   if (focus) dockButtons[name].focus();
 }
@@ -955,6 +972,7 @@ const definitionNavigation = createDefinitionNavigation({
 const referencesPanel = createReferencesPanel({
   api, semantic, getActive, show: () => showDock('references'), jump: jumpToLocation, errorText,
 });
+const symbolPicker = createSymbolPicker({ api, semantic, getProject: () => project, jump: jumpToLocation, report, errorText });
 
 for (const [pane, button] of Object.entries(dockButtons)) button.onclick = () => showDock(pane);
 backButton.onclick = () => travel('back').catch(report);
@@ -971,6 +989,7 @@ definitionButton.onclick = () => {
   view.focus();
   void definitionNavigation.go(view);
 };
+symbolButton.onclick = symbolPicker.open;
 findReferencesButton.onclick = () => {
   view.focus();
   void referencesPanel.find(view);
@@ -1021,6 +1040,7 @@ async function initialize() {
 }
 
 document.addEventListener('keydown', event => {
+  if (document.querySelector('dialog[open]')) return;
   const command = event.ctrlKey || event.metaKey;
   const key = event.key.toLowerCase();
   if (event.key === 'F5') {
@@ -1042,6 +1062,7 @@ document.addEventListener('keydown', event => {
     void formatDocument();
   } else if (command && event.shiftKey && key === 'f') {
     event.preventDefault();
+    layout.showSidebar();
     searchPanel.show();
   } else if (command && event.shiftKey && key === 'm') {
     event.preventDefault();
@@ -1052,6 +1073,15 @@ document.addEventListener('keydown', event => {
   } else if (command && event.altKey && key === 't') {
     event.preventDefault();
     void runTests();
+  } else if (command && !event.altKey && !event.shiftKey && key === 't') {
+    event.preventDefault();
+    if (!event.repeat) symbolPicker.open();
+  } else if (command && !event.altKey && !event.shiftKey && key === 'b') {
+    event.preventDefault();
+    if (!event.repeat) layout.toggleSidebar();
+  } else if (command && !event.altKey && !event.shiftKey && key === 'j') {
+    event.preventDefault();
+    if (!event.repeat) layout.toggleDock();
   } else if (command && key === 'o') {
     event.preventDefault();
     openProject(api.chooseFolder).catch(report);
