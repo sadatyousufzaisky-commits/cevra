@@ -21,13 +21,16 @@ jobs:
       - run: npm ci
       - name: Prepare Electron for desktop tests
         run: |
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            node -e "require('electron')"
-            if ($LASTEXITCODE -eq 0) { exit 0 }
-            if ($attempt -lt 3) {
-              Write-Warning "Electron setup attempt $attempt failed. Retrying."
-              Start-Sleep -Seconds (2 * $attempt)
+          node -e "require('electron')"
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          for ($attempt = 1; $attempt -le 2; $attempt++) {
+            Write-Warning "Preparing Electron through the GitHub release-assets API (attempt $attempt)."
+            node qa/cache-electron-release.cjs
+            if ($LASTEXITCODE -eq 0) {
+              node -e "require('electron')"
+              if ($LASTEXITCODE -eq 0) { exit 0 }
             }
+            if ($attempt -lt 2) { Start-Sleep -Seconds 2 }
           }
           exit 1
       - run: npm test
