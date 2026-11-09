@@ -861,3 +861,129 @@ test('autocomplete ignores late replies after typing or switching tabs and recov
   await list.getByRole('option', { name: /restartedOption/ }).waitFor();
   assert.equal(await page.evaluate(() => window.sawStaleCompletion), false);
 });
+
+test('signature help follows nested calls and shows documentation from unsaved imports', { timeout: 30_000 }, async t => {
+  const folder = 'lib (# % &)';
+  const relative = path.join(folder, 'pricing.js');
+  const saved = '/**\n * @param {number} amount Numeric amount.\n * @param {string} unit Saved unit.\n */\n' +
+    'export function price(amount, unit) { return amount + unit; }\n' +
+    '/** @param {string} label Label to count. */\nexport function count(label) { return label.length; }\n';
+  const entry = 'import { price, count } from "./' + folder + '/pricing.js";\nprice';
+  const workbench = await openWorkbench(t, { 'main.js': entry, [relative]: saved });
+  const { page, editor, open, project } = workbench;
+  const tooltip = page.locator('.signature-help');
+  const active = tooltip.locator('.signature-parameter[aria-current="true"]');
+  const docs = tooltip.locator('.signature-documentation');
+  await open('main.js');
+  await editor.press('Control+End');
+  await page.keyboard.type('(');
+  await active.getByText('amount: number', { exact: true }).waitFor();
+  await docs.getByText('Numeric amount.', { exact: true }).waitFor();
+  assert.equal(await editor.getAttribute('aria-describedby'), 'cevra-signature-help');
+
+  await page.keyboard.type('count(');
+  await active.getByText('label: string', { exact: true }).waitFor();
+  await docs.getByText('Label to count.', { exact: true }).waitFor();
+  await page.keyboard.insertText('"abc"');
+  await editor.press('ArrowRight');
+  await page.keyboard.type(', ');
+  await active.getByText('unit: string', { exact: true }).waitFor();
+  await docs.getByText('Saved unit.', { exact: true }).waitFor();
+
+  await workbench.file(folder).click();
+  await open('pricing.js');
+  await tooltip.waitFor({ state: 'detached' });
+  await replaceEditor(workbench, saved.replaceAll('unit', 'currency')
+    .replace('Saved currency.', '<img src=x> Draft currency.'));
+  await open('main.js');
+  await active.getByText('currency: string', { exact: true }).waitFor();
+  await docs.getByText('<img src=x> Draft currency.', { exact: true }).waitFor();
+  assert.equal(await tooltip.locator('img').count(), 0);
+  assert.equal(await fs.readFile(path.join(project, relative), 'utf8'), saved);
+  assert.equal(await fs.readFile(path.join(project, 'main.js'), 'utf8'), entry);
+  await editor.press('End');
+  await tooltip.waitFor({ state: 'detached' });
+  assert.equal(await editor.getAttribute('aria-describedby'), null);
+});
+
+test('signature help selects the TypeScript overload and can be dismissed or requested with the keyboard',
+  { timeout: 30_000 }, async t => {
+  const text = 'function render(value: number, digits: number): string;\n' +
+    'function render(value: string, suffix: string): string;\n' +
+    'function render(value: unknown, other: unknown) { return String(value) + String(other); }\n' +
+    'render(5, 2);\nrender("x", "");';
+  const { page, editor, open } = await openWorkbench(t, { 'main.ts': text });
+  const tooltip = page.locator('.signature-help');
+  const active = tooltip.locator('.signature-parameter');
+  await open('main.ts');
+  await editor.press('Control+End');
+  for (let index = 0; index < 4; index++) await editor.press('ArrowLeft');
+  await active.getByText('suffix: string', { exact: true }).waitFor();
+  await tooltip.getByText('Overload 2 of 2', { exact: true }).waitFor();
+  await editor.press('Escape');
+  await tooltip.waitFor({ state: 'detached' });
+  await editor.press('Control+Shift+Space');
+  await active.getByText('suffix: string', { exact: true }).waitFor();
+
+  await editor.press('ArrowUp');
+  await editor.press('End');
+  for (let index = 0; index < 3; index++) await editor.press('ArrowLeft');
+  await active.getByText('digits: number', { exact: true }).waitFor();
+  await tooltip.getByText('Overload 1 of 2', { exact: true }).waitFor();
+});
+
+test('signature help discards replies after the caret moves and recovers from a failed request',
+  { timeout: 30_000 }, async t => {
+  const entry = 'price(12, 34)\nconst elsewhere = 0;\n';
+  const { app, page, editor, open, project } = await openWorkbench(t, { 'main.js': entry });
+  await app.evaluate(({ ipcMain }, heldPosition) => {
+    ipcMain.removeHandler('cevra:signature-help');
+    ipcMain.handle('cevra:signature-help', (_event, _workspace, _file, position) => {
+      const result = parameter => ({ before: 'price(', parameter, after: ')', documentation: '', overloadCount: 1 });
+      if (ipcMain.failSignature) throw new Error('Test signature service stopped.');
+      if (position === heldPosition) {
+        return new Promise(resolve => {
+          ipcMain.releaseSignature = () => resolve(result('staleParameter'));
+          ipcMain.waitForSignature?.();
+        });
+      }
+      return result('currentParameter');
+    });
+  }, entry.indexOf(')'));
+  await open('main.js');
+  const tooltip = page.locator('.signature-help');
+  await page.evaluate(() => {
+    window.sawStaleSignature = false;
+    new MutationObserver(records => {
+      if (records.some(record => [...record.addedNodes].some(node => node.textContent.includes('staleParameter')))) {
+        window.sawStaleSignature = true;
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  await editor.press('Control+Home');
+  await editor.press('End');
+  await editor.press('ArrowLeft');
+  await app.evaluate(({ ipcMain }) => {
+    if (ipcMain.releaseSignature) return;
+    return new Promise(resolve => { ipcMain.waitForSignature = resolve; });
+  });
+  await editor.press('ArrowLeft');
+  await tooltip.getByText('currentParameter', { exact: true }).waitFor();
+  await app.evaluate(({ ipcMain }) => ipcMain.releaseSignature());
+  await editor.press('Escape');
+  await app.evaluate(({ ipcMain }) => { ipcMain.failSignature = true; });
+  await editor.press('Control+Shift+Space');
+  await page.locator('#message').getByText('Test signature service stopped.', { exact: true }).waitFor();
+  assert.equal(await tooltip.count(), 0);
+  assert.equal(await page.evaluate(() => window.sawStaleSignature), false);
+  await app.evaluate(({ ipcMain }) => { ipcMain.failSignature = false; });
+  await editor.press('Control+Shift+Space');
+  await tooltip.getByText('currentParameter', { exact: true }).waitFor();
+
+  await editor.press('Control+End');
+  await tooltip.waitFor({ state: 'detached' });
+  await page.keyboard.insertText('// edited after the failure\n');
+  await editor.press('Control+s');
+  await page.locator('#message').getByText('Saved main.js', { exact: true }).waitFor();
+  assert.equal(await fs.readFile(path.join(project, 'main.js'), 'utf8'), entry + '// edited after the failure\n');
+});

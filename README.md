@@ -72,6 +72,12 @@ Type after `object.` or press **Ctrl+Space** to request suggestions at the curso
 
 Use **Up** and **Down** to select an option, **Enter** to accept it, or **Escape** to dismiss the list. Accepting a symbol completion edits the active buffer in one undo step. Suggestions use the same local import graph as symbol inspection.
 
+## See function parameters as you type
+
+Type `(` after a JavaScript or TypeScript function name, or move the cursor inside an existing call. Signature help highlights the current parameter and shows its documentation when available. It follows nested calls, selects the overload that matches the current arguments, and uses unsaved changes in imported workspace files.
+
+Press **Ctrl+Shift+Space** to request signature help at the cursor or **Escape** to dismiss it.
+
 ## Verify CEVRA
 
 Run `npm test` on Windows before expanding the workbench. The core suite exercises JavaScript process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.

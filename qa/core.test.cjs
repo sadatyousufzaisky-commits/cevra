@@ -537,3 +537,92 @@ test('completion bursts keep the newest queued request and cancel queued work on
   const restarted = await suggest('restarted', 5);
   assert.deepEqual(restarted.options.map(item => item.label), ['restarted']);
 });
+
+test('signature help uses parameter documentation from unsaved JavaScript imports', { timeout: 20_000 }, async t => {
+  const { root, workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const saved = '/**\n * @param {number} amount Price amount.\n * @param {string} unit Saved unit.\n */\n' +
+    'export function price(amount, unit) { return amount + unit; }\n';
+  await fs.writeFile(path.join(root, 'price.js'), saved);
+  const text = 'import { price } from "./price.js";\nprice(12, );';
+  const source = { path: 'main.js', documentId: 1, version: 0, text };
+  const position = text.lastIndexOf(')');
+  const disk = await semantics.signatureHelp(workspace, source.path, position, [source]);
+  assert.equal(disk.before, 'price(amount: number, ');
+  assert.equal(disk.parameter, 'unit: string');
+  assert.equal(disk.after, '): string');
+  assert.equal(disk.documentation, 'Saved unit.');
+
+  const draft = {
+    path: 'price.js', documentId: 2, version: 1,
+    text: saved.replaceAll('unit', 'currency').replace('Saved currency.', 'Draft currency.'),
+  };
+  const unsaved = await semantics.signatureHelp(workspace, source.path, position, [source, draft]);
+  assert.equal(unsaved.parameter, 'currency: string');
+  assert.equal(unsaved.documentation, 'Draft currency.');
+  assert.equal(await fs.readFile(path.join(root, 'price.js'), 'utf8'), saved);
+  assert.equal(await semantics.signatureHelp(workspace, source.path, position + 1, [source]), null);
+});
+
+test('signature help follows nested calls, selects overloads, and handles rest and missing parameters',
+  { timeout: 20_000 }, async t => {
+  const { workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const declarations = 'function outer(count: number, label: string) {}\n' +
+    'function inner(text: string): number { return text.length; }\n' +
+    'function over(value: number, flag: boolean): void;\n' +
+    'function over(value: string, name: string): void;\n' +
+    'function over(value: unknown, second: unknown) {}\n' +
+    'function sum(label: string, ...values: number[]) {}\n' +
+    'function none() {}\n';
+  let version = 0;
+  function help(marked) {
+    const text = declarations + marked.replace('|', '');
+    return semantics.signatureHelp(workspace, 'calls.ts', declarations.length + marked.indexOf('|'), [
+      { path: 'calls.ts', documentId: 1, version: version++, text },
+    ]);
+  }
+  const inner = await help('outer(inner(|), "x");');
+  assert.equal(inner.before, 'inner(');
+  assert.equal(inner.parameter, 'text: string');
+  const outer = await help('outer(inner("x"), |);');
+  assert.equal(outer.before, 'outer(count: number, ');
+  assert.equal(outer.parameter, 'label: string');
+  const first = await help('over(1, |);');
+  assert.deepEqual([first.overload, first.overloadCount, first.parameter], [1, 2, 'flag: boolean']);
+  const second = await help('over("x", |);');
+  assert.deepEqual([second.overload, second.overloadCount, second.parameter], [2, 2, 'name: string']);
+  assert.equal((await help('sum("x", 1, 2, |);')).parameter, '...values: number[]');
+  assert.equal((await help('none(|);')).parameter, '');
+  assert.equal((await help('inner("x", |);')).parameter, '');
+  assert.equal(await help('missing(|);'), null);
+});
+
+test('signature help and autocomplete keep separate latest requests during a typing burst',
+  { timeout: 20_000 }, async t => {
+  const { workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  function complete(label, version) {
+    const text = `const value = { ${label}: 1 };\nvalue.`;
+    return semantics.complete(workspace, 'object.ts', text.length, [
+      { path: 'object.ts', documentId: 1, version, text },
+    ]);
+  }
+  function help(parameter, version) {
+    const text = `function call(${parameter}: number) {}\ncall()`;
+    return semantics.signatureHelp(workspace, 'call.ts', text.length - 1, [
+      { path: 'call.ts', documentId: 2, version, text },
+    ]);
+  }
+  const results = await Promise.all([
+    complete('first', 0), help('discarded', 0), complete('discarded', 1), help('current', 1), complete('current', 2),
+  ]);
+  assert.equal(results[0].options[0].label, 'first');
+  assert.equal(results[1], null);
+  assert.equal(results[2], null);
+  assert.equal(results[3].parameter, 'current: number');
+  assert.equal(results[4].options[0].label, 'current');
+});

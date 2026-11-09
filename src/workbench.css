@@ -181,6 +181,9 @@ button.test-result:hover { background: var(--raised); }
 .status-field { white-space: nowrap; }
 .status-action { padding: 2px 5px; border: 0; border-radius: 3px; background: transparent; color: var(--muted); font-size: inherit; white-space: nowrap; }
 .status-action:hover:not(:disabled) { background: var(--raised); color: var(--mint); }
-.symbol-info { max-width: min(500px, 75vw); max-height: min(220px, 40vh); overflow: auto; padding: 8px 10px; background: var(--panel); color: var(--text); }
-.symbol-signature { margin: 0; color: var(--mint); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-.symbol-documentation { margin: 6px 0 0; color: var(--muted); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.symbol-info, .signature-help { max-width: min(500px, 75vw); max-height: min(220px, 40vh); overflow: auto; padding: 8px 10px; background: var(--panel); color: var(--text); }
+.symbol-signature, .signature-label { margin: 0; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.symbol-signature, .signature-parameter { color: var(--mint); }
+.signature-parameter { background: var(--selected); }
+.symbol-documentation, .signature-documentation { margin: 6px 0 0; color: var(--muted); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.signature-overload { margin-top: 5px; color: var(--muted); font-size: 11px; }

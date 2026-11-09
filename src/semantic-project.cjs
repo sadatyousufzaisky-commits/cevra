@@ -66,6 +66,36 @@ function completionOptions(info, position, text) {
   return { ...range, global: info.isGlobalCompletion, options: [...options.values()] };
 }
 
+function shorten(text, limit) {
+  return text.length > limit ? text.slice(0, limit - 1) + '…' : text;
+}
+
+function activeSignature(info, position) {
+  if (!info) return null;
+  const { applicableSpan, selectedItemIndex, argumentIndex, items } = info;
+  const item = items[selectedItemIndex];
+  if (!item || position < applicableSpan.start || position > applicableSpan.start + applicableSpan.length) return null;
+
+  const display = ts.displayPartsToString;
+  const prefix = display(item.prefixDisplayParts);
+  const suffix = display(item.suffixDisplayParts);
+  const separator = display(item.separatorDisplayParts);
+  const labels = item.parameters.map(parameter => display(parameter.displayParts));
+  const index = item.isVariadic ? Math.min(argumentIndex, labels.length - 1) : argumentIndex;
+  const parameter = item.parameters[index];
+  const before = parameter ? prefix + labels.slice(0, index).join(separator) + (index ? separator : '') :
+    prefix + labels.join(separator) + suffix;
+  const after = parameter ? (index + 1 < labels.length ? separator + labels.slice(index + 1).join(separator) : '') + suffix : '';
+  return {
+    before: shorten(before, 1_000),
+    parameter: shorten(labels[index] ?? '', 500),
+    after: shorten(after, 1_000),
+    documentation: shorten(display(parameter?.documentation) || display(item.documentation), 1_000),
+    overload: selectedItemIndex + 1,
+    overloadCount: items.length,
+  };
+}
+
 function projectOptions(workspace, target, readFile) {
   let directory = path.dirname(target);
   for (;;) {
@@ -269,7 +299,13 @@ function createSemanticProject(workspace) {
     });
   }
 
-  return { quickInfo, complete, dispose: () => service.dispose() };
+  function signatureHelp(target, position, sources) {
+    return query(target, sources, file => activeSignature(service.getSignatureHelpItems(file, position, {
+      triggerReason: { kind: 'invoked' },
+    }), position));
+  }
+
+  return { quickInfo, complete, signatureHelp, dispose: () => service.dispose() };
 }
 
 module.exports = { createSemanticProject };

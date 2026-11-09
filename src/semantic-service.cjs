@@ -10,8 +10,8 @@ function createSemanticService() {
   const worker = createWorkerService(path.join(__dirname, 'semantic-worker.cjs'), {
     name: 'language service', task: 'language request', capacity: 6, heap: 192,
   });
-  let completing = false;
-  let pendingCompletion;
+  let draining = false;
+  const pending = new Map();
 
   async function query(operation, workspace, file, position, buffers) {
     if (!sourceLanguage(file) || !Array.isArray(buffers) || !buffers.length ||
@@ -43,33 +43,36 @@ function createSemanticService() {
     });
   }
 
-  async function drainCompletions() {
-    completing = true;
-    while (pendingCompletion) {
-      const { workspace, file, position, buffers, resolve, reject } = pendingCompletion;
-      pendingCompletion = undefined;
+  async function drain() {
+    draining = true;
+    while (pending.size) {
+      const [operation, { workspace, file, position, buffers, resolve, reject }] = pending.entries().next().value;
+      pending.delete(operation);
       try {
-        resolve(await query('complete', workspace, file, position, buffers));
+        resolve(await query(operation, workspace, file, position, buffers));
       } catch (error) {
         reject(error);
       }
     }
-    completing = false;
+    draining = false;
+  }
+
+  function queue(operation, workspace, file, position, buffers) {
+    return new Promise((resolve, reject) => {
+      // Keep the latest queued request for each typing aid, in arrival order between aids.
+      pending.get(operation)?.resolve(null);
+      pending.set(operation, { workspace, file, position, buffers, resolve, reject });
+      if (!draining) void drain();
+    });
   }
 
   return {
     quickInfo: (workspace, file, position, buffers) => query('quickInfo', workspace, file, position, buffers),
-    complete(workspace, file, position, buffers) {
-      return new Promise((resolve, reject) => {
-        // A typing burst only needs the newest request that has yet to reach the worker.
-        pendingCompletion?.resolve(null);
-        pendingCompletion = { workspace, file, position, buffers, resolve, reject };
-        if (!completing) void drainCompletions();
-      });
-    },
+    complete: (workspace, file, position, buffers) => queue('complete', workspace, file, position, buffers),
+    signatureHelp: (workspace, file, position, buffers) => queue('signatureHelp', workspace, file, position, buffers),
     stop() {
-      pendingCompletion?.resolve(null);
-      pendingCompletion = undefined;
+      for (const job of pending.values()) job.resolve(null);
+      pending.clear();
       worker.stop();
     },
   };

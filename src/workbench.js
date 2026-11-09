@@ -12,6 +12,7 @@ import { createProblemsPanel } from './problems-panel.js';
 import { createSearchPanel } from './search-panel.js';
 import { createSemanticContext } from './semantic-context.js';
 import { createSemanticCompletion } from './semantic-completion.js';
+import { createSignatureHelp } from './signature-help.js';
 import { createSymbolInfo } from './symbol-info.js';
 import { sourceLanguage } from './source-language.cjs';
 import { changeLineEnding, detectLineEnding, lineEnding, lineEndingHistory } from './line-endings.js';
@@ -207,6 +208,7 @@ function editorState(tab, text, ending) {
         syntaxDecorations,
         symbolInfo.extension,
         semanticCompletion,
+        signatureHelp.extension,
       ] : [],
       EditorView.contentAttributes.of({ 'aria-label': 'Source editor' }),
       EditorView.updateListener.of(update => {
@@ -343,6 +345,7 @@ function showFile(tab) {
     active.scroll = view.scrollSnapshot();
     semantic.changed();
     closeCompletion(view);
+    signatureHelp.dismiss(view);
     symbolInfo.leave(active);
   }
   active = tab;
@@ -900,6 +903,7 @@ const semantic = createSemanticContext({
 });
 const symbolInfo = createSymbolInfo({ semantic, getActive, notify, report });
 const semanticCompletion = createSemanticCompletion({ semantic, getActive, report });
+const signatureHelp = createSignatureHelp({ semantic, getActive, notify, report });
 
 backButton.onclick = () => travel('back').catch(report);
 forwardButton.onclick = () => travel('forward').catch(report);

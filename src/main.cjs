@@ -137,6 +137,8 @@ handle('quick-info', (id, file, position, buffers) =>
   semantics.quickInfo(currentWorkspace(id), file, position, buffers));
 handle('complete', (id, file, position, buffers) =>
   semantics.complete(currentWorkspace(id), file, position, buffers));
+handle('signature-help', (id, file, position, buffers) =>
+  semantics.signatureHelp(currentWorkspace(id), file, position, buffers));
 handle('search', async (id, requestId, query, caseSensitive, snapshots) => {
   const project = currentWorkspace(id);
   activeSearch?.controller.abort();
