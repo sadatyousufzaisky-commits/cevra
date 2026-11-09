@@ -5,6 +5,7 @@ const errors = {
   quickInfo: 'Could not inspect this symbol. ',
   complete: 'Could not suggest completions. ',
   signatureHelp: 'Could not show the function signature. ',
+  definition: 'Could not find the definition. ',
 };
 
 let project;

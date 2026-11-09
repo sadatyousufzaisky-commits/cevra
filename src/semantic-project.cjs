@@ -2,12 +2,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const ts = require('typescript');
-const { checkedEntrySync, inside, readSourceSync } = require('./workspace.cjs');
+const { checkedEntrySync, inside, readSourceSync, workspacePath } = require('./workspace.cjs');
 const { sourceLanguage } = require('./source-language.cjs');
+const { normalizeSource, sourceLocation } = require('./source-text.cjs');
 
 const libraryDirectory = path.dirname(require.resolve('typescript'));
 const maxProbes = 2_048;
 const maxProjectBytes = 16 * 1024 * 1024;
+const maxDefinitions = 40;
 const windows = process.platform === 'win32';
 const supportedOptions = new Set([
   'target', 'module', 'moduleResolution', 'jsx', 'strict', 'strictNullChecks', 'noImplicitAny', 'paths',
@@ -187,10 +189,12 @@ function createSemanticProject(workspace) {
       try {
         const disk = readSourceSync(workspace, path.relative(workspace.root, file));
         request.bytes += Buffer.byteLength(disk.text);
-        source = { text: disk.text, revision: 'disk:' + disk.revision };
         if (request.bytes > maxProjectBytes) {
           request.limited = true;
-          source = undefined;
+        } else {
+          const revision = 'disk:' + disk.revision;
+          const previous = scripts.get(id);
+          source = previous?.revision === revision ? previous : { text: normalizeSource(disk.text), revision };
         }
       } catch {
         source = undefined;
@@ -305,7 +309,46 @@ function createSemanticProject(workspace) {
     }), position));
   }
 
-  return { quickInfo, complete, signatureHelp, dispose: () => service.dispose() };
+  function definition(target, position, sources) {
+    return query(target, sources, file => {
+      const definitions = service.getDefinitionAtPosition(file, position) ?? [];
+      const destinations = [];
+      const seen = new Set();
+      let limited = false;
+      for (const entry of definitions) {
+        // TypeScript may return the local import binding when it cannot resolve the declaration.
+        if (entry.unverified || entry.kind === ts.ScriptElementKind.alias) continue;
+        const relative = path.relative(workspace.root, entry.fileName);
+        if (!sourceLanguage(relative)) continue;
+        try {
+          workspacePath(workspace, relative);
+        } catch {
+          continue;
+        }
+        const source = record(entry.fileName);
+        const { start: offset, length } = entry.textSpan;
+        if (!source || offset < 0 || length < 0 || offset + length > source.text.length) continue;
+        const id = key(entry.fileName);
+        const span = `${id}\0${offset}\0${length}`;
+        if (seen.has(span)) continue;
+        if (destinations.length === maxDefinitions) {
+          limited = true;
+          break;
+        }
+        const overlay = request.overlays.get(id);
+        const revision = overlay ? { documentId: overlay.documentId, version: overlay.version } :
+          { revision: source.revision.slice('disk:'.length) };
+        seen.add(span);
+        destinations.push({
+          path: relative, offset, length, ...sourceLocation(source.text, offset),
+          name: shorten(entry.name, 160), ...revision,
+        });
+      }
+      return { destinations, limited };
+    });
+  }
+
+  return { quickInfo, complete, signatureHelp, definition, dispose: () => service.dispose() };
 }
 
 module.exports = { createSemanticProject };

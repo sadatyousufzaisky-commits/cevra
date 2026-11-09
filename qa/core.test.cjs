@@ -626,3 +626,77 @@ test('signature help and autocomplete keep separate latest requests during a typ
   assert.equal(results[3].parameter, 'current: number');
   assert.equal(results[4].options[0].label, 'current');
 });
+
+test('definition lookup follows aliases and re-exports with exact disk and draft coordinates',
+  { timeout: 20_000 }, async t => {
+  const { root, workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const folder = 'nested (QA) # % & café';
+  const definition = path.join(folder, 'math.ts');
+  const saved = '\uFEFF// BOM and Windows line endings\r\nexport function total(input: number) { return input; }\r\n';
+  await fs.mkdir(path.join(root, folder));
+  await fs.writeFile(path.join(root, definition), saved);
+  await fs.writeFile(path.join(root, 'barrel.ts'), 'export { total as sum } from "./' + folder + '/math";');
+  await fs.writeFile(path.join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { '@math': ['./barrel'] } } }));
+  const text = 'import { sum as calculate } from "@math";\ncalculate(2);';
+  const source = { path: 'main.ts', documentId: 1, version: 0, text };
+  const position = text.lastIndexOf('calculate') + 3;
+  const disk = await semantics.definition(workspace, source.path, position, [source]);
+  const { revision } = await readSource(workspace, definition);
+  const normalized = saved.slice(1).replaceAll('\r\n', '\n');
+  assert.deepEqual(disk, { limited: false, destinations: [{
+    path: definition, offset: normalized.indexOf('total'), length: 5, line: 2, column: 17, name: 'total', revision,
+  }] });
+
+  const draft = { path: definition, documentId: 2, version: 3, text: '// draft\n\n' + normalized };
+  const updated = await semantics.definition(workspace, source.path, position, [source, draft]);
+  assert.deepEqual(updated.destinations, [{
+    path: definition, offset: draft.text.indexOf('total'), length: 5, line: 4, column: 17, name: 'total',
+    documentId: 2, version: 3,
+  }]);
+  assert.equal(await fs.readFile(path.join(root, definition), 'utf8'), saved);
+
+  const script = path.join(folder, 'math.cjs');
+  const module = 'function total(value) { return value; }\nmodule.exports = { total };\n';
+  await fs.writeFile(path.join(root, script), module);
+  const call = 'const { total } = require("./' + folder + '/math.cjs");\ntotal(4);';
+  const commonJS = { path: 'main.cjs', documentId: 3, version: 0, text: call };
+  const js = await semantics.definition(workspace, commonJS.path, call.lastIndexOf('total') + 2, [commonJS]);
+  assert.deepEqual(js.destinations.map(({ path, offset, length }) => [path, offset, length]), [[script, 9, 5]]);
+});
+
+test('definition lookup returns distinct choices and rejects unresolved or non-workspace destinations',
+  { timeout: 20_000 }, async t => {
+  const { folder, root, workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const outside = path.join(folder, 'outside');
+  await fs.mkdir(outside);
+  await fs.writeFile(path.join(outside, 'private.js'), 'export const hidden = 1;');
+  await fs.symlink(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+  await fs.mkdir(path.join(root, 'node_modules'));
+  await fs.writeFile(path.join(root, 'node_modules', 'hidden.js'), 'export const hidden = 2;');
+  let version = 0;
+  function lookup(marked) {
+    const text = marked.replace('|', '');
+    return semantics.definition(workspace, 'main.ts', marked.indexOf('|'), [
+      { path: 'main.ts', documentId: 1, version: version++, text },
+    ]);
+  }
+  const interfaces = Array.from({ length: 42 }, (_, index) => `interface Shape { field${index}: number }`);
+  const multiple = await lookup(interfaces.join('\n') + '\nlet value: Sh|ape;');
+  assert.equal(multiple.limited, true);
+  assert.equal(multiple.destinations.length, 40);
+  assert.equal(new Set(multiple.destinations.map(target => target.offset)).size, 40);
+  assert.ok(multiple.destinations.every(target => target.path === 'main.ts' && target.documentId === 1 && target.version === 0));
+  for (const marked of [
+    '[1].ma|p(value => value);',
+    'import { hidden } from "./missing.js";\nhi|dden;',
+    'import { hidden } from "../outside/private.js";\nhi|dden;',
+    'import { hidden } from "./linked/private.js";\nhi|dden;',
+    'import { hidden } from "./node_modules/hidden.js";\nhi|dden;',
+  ]) {
+    assert.deepEqual(await lookup(marked), { destinations: [], limited: false });
+  }
+});

@@ -134,9 +134,16 @@
     <span id="message" class="message" role="status">Ready to open a project</span>
     <span id="draft-status" class="status-field" data-state="clear" hidden></span>
     <button id="inspect-symbol" class="status-action" title="Inspect symbol (Ctrl+Alt+I)" disabled>Inspect symbol</button>
+    <button id="go-definition" class="status-action" title="Go to Definition (F12)" disabled>Go to Definition</button>
     <span id="language" class="status-field"></span>
     <span id="line-ending" class="status-field"></span>
     <span id="cursor" class="status-field"></span>
   </footer>
+  <dialog id="definition-dialog" class="definition-dialog" aria-labelledby="definition-heading" aria-describedby="definition-summary">
+    <h2 id="definition-heading">Choose a definition</h2>
+    <p id="definition-summary"></p>
+    <ul id="definition-choices" class="definition-choices"></ul>
+    <button id="definition-cancel" class="button">Cancel</button>
+  </dialog>
 </body>
 </html>

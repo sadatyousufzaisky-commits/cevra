@@ -7,6 +7,7 @@ import { indentUnit } from '@codemirror/language';
 import { javascript } from '@codemirror/lang-javascript';
 import { linter, lintGutter, setDiagnostics, setDiagnosticsEffect } from '@codemirror/lint';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { createDefinitionNavigation } from './definition-navigation.js';
 import { createNavigationHistory } from './navigation-history.js';
 import { createProblemsPanel } from './problems-panel.js';
 import { createSearchPanel } from './search-panel.js';
@@ -15,6 +16,7 @@ import { createSemanticCompletion } from './semantic-completion.js';
 import { createSignatureHelp } from './signature-help.js';
 import { createSymbolInfo } from './symbol-info.js';
 import { sourceLanguage } from './source-language.cjs';
+import { normalizeSource } from './source-text.cjs';
 import { changeLineEnding, detectLineEnding, lineEnding, lineEndingHistory } from './line-endings.js';
 
 const api = window.cevra;
@@ -31,6 +33,7 @@ const saveButton = byId('save-file');
 const recoveryButton = byId('save-recovery');
 const formatButton = byId('format-document');
 const inspectButton = byId('inspect-symbol');
+const definitionButton = byId('go-definition');
 const runButton = byId('run-file');
 const testButton = byId('run-tests');
 const retryButton = byId('rerun-failures');
@@ -115,7 +118,7 @@ function syncCommands() {
   recoveryButton.hidden = !active?.recoveryConflict;
   recoveryButton.disabled = !active?.dirty || Boolean(active.saving || changingProject);
   formatButton.disabled = !active?.language || Boolean(changingProject || active.formatting || active.discarding);
-  inspectButton.disabled = !active?.language || changingProject;
+  inspectButton.disabled = definitionButton.disabled = !active?.language || changingProject;
   runButton.disabled = !active || !runnable.test(active.path) || Boolean(changingProject || run || discarding);
   runButton.hidden = Boolean(run);
   testButton.disabled = !project || Boolean(changingProject || run || discarding);
@@ -235,6 +238,9 @@ function editorState(tab, text, ending) {
           problemsPanel.changed(tab);
           semantic.changed();
         }
+        if (update.docChanged || (update.selectionSet && !update.startState.selection.eq(update.state.selection))) {
+          definitionNavigation.invalidate();
+        }
         if (update.docChanged || update.selectionSet || endingChanged) syncCursor();
       }),
     ],
@@ -344,6 +350,7 @@ function showFile(tab) {
   if (changed && active) {
     active.scroll = view.scrollSnapshot();
     semantic.changed();
+    definitionNavigation.invalidate();
     closeCompletion(view);
     signatureHelp.dismiss(view);
     symbolInfo.leave(active);
@@ -362,10 +369,6 @@ function showFile(tab) {
   selectTreeFile();
   syncCommands();
   syncCursor();
-}
-
-function normalized(text) {
-  return text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
 }
 
 function documentKey(path) {
@@ -392,7 +395,7 @@ function createTab(path, text, revision) {
     savedEol: detectLineEnding(text),
     dirty: false,
   };
-  tab.state = editorState(tab, normalized(text), tab.savedEol);
+  tab.state = editorState(tab, normalizeSource(text), tab.savedEol);
   tab.savedDoc = tab.state.doc;
   documents.set(path, tab);
   problemsPanel.track(tab);
@@ -402,30 +405,32 @@ function createTab(path, text, revision) {
 async function openFile(path, expected) {
   const request = ++fileRequest;
   const openedProject = project;
-  if (!openedProject) return null;
+  const current = () => request === fileRequest && project === openedProject && (!expected || expected.isCurrent());
+  const stale = () => new Error(expected?.staleMessage ?? 'This match is out of date. Search again.');
+  if (!openedProject || !current()) return null;
   let tab = findDocument(path);
   if (expected?.version !== undefined &&
       (!tab || tab.id !== expected.documentId || tab.version !== expected.version)) {
-    throw new Error('This match is out of date. Search again.');
+    throw stale();
   }
   if (!tab || expected?.revision) {
     let disk;
     try {
       disk = await api.read(openedProject.id, path);
     } catch (error) {
-      if (expected) throw new Error('This match is out of date. Search again.');
+      if (!current()) return null;
+      if (expected) throw stale();
       throw error;
     }
-    if (request !== fileRequest || project !== openedProject || (expected && !expected.isCurrent())) return null;
+    if (!current()) return null;
     if (expected?.revision && disk.revision !== expected.revision) {
-      throw new Error('This match is out of date. Search again.');
+      throw stale();
     }
     if (expected?.revision && tab && (tab.dirty || tab.revision !== disk.revision)) {
-      throw new Error('The open file changed on disk. Reopen it, then search again.');
+      throw new Error(expected.changedMessage ?? 'The open file changed on disk. Reopen it, then search again.');
     }
     tab ??= createTab(path, disk.text, disk.revision);
   }
-  if (expected && !expected.isCurrent()) return null;
   showFile(tab);
   notify(tab.recoveryConflict ? 'The original changed or is unavailable. Save a recovery copy.' : tab.path,
     tab.recoveryConflict);
@@ -529,7 +534,7 @@ async function openProject(picker) {
 }
 
 function setDiskBaseline(tab, disk) {
-  tab.savedDoc = disk ? Text.of(normalized(disk.text).split('\n')) : null;
+  tab.savedDoc = disk ? Text.of(normalizeSource(disk.text).split('\n')) : null;
   tab.savedEol = disk ? detectLineEnding(disk.text) : undefined;
   tab.diskRevision = disk?.revision;
 }
@@ -904,6 +909,9 @@ const semantic = createSemanticContext({
 const symbolInfo = createSymbolInfo({ semantic, getActive, notify, report });
 const semanticCompletion = createSemanticCompletion({ semantic, getActive, report });
 const signatureHelp = createSignatureHelp({ semantic, getActive, notify, report });
+const definitionNavigation = createDefinitionNavigation({
+  semantic, getActive, getFileRequest: () => fileRequest, jump: jumpToLocation, notify, report,
+});
 
 backButton.onclick = () => travel('back').catch(report);
 forwardButton.onclick = () => travel('forward').catch(report);
@@ -914,6 +922,10 @@ formatButton.onclick = formatDocument;
 inspectButton.onclick = () => {
   view.focus();
   void symbolInfo.inspect(view);
+};
+definitionButton.onclick = () => {
+  view.focus();
+  void definitionNavigation.go(view);
 };
 recoveryButton.onclick = () => saveRecoveredCopy(active).catch(report);
 runButton.onclick = runFile;
@@ -962,10 +974,13 @@ document.addEventListener('keydown', event => {
   if (event.key === 'F5') {
     event.preventDefault();
     void runFile();
+  } else if (event.key === 'F12' && view.hasFocus) {
+    event.preventDefault();
+    void definitionNavigation.go(view);
   } else if (command && event.altKey && key === 'i') {
     event.preventDefault();
     void symbolInfo.inspect(view);
-  } else if (event.key === 'Escape' && symbolInfo.dismiss(view)) {
+  } else if (event.key === 'Escape' && view.hasFocus && symbolInfo.dismiss(view)) {
     event.preventDefault();
   } else if (!command && event.altKey && event.shiftKey && key === 'f') {
     event.preventDefault();

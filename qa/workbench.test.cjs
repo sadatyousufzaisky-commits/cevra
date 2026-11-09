@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const { execFile } = require('node:child_process');
+const { createHash } = require('node:crypto');
 const { once } = require('node:events');
 const fs = require('node:fs/promises');
 const os = require('node:os');
@@ -986,4 +987,128 @@ test('signature help discards replies after the caret moves and recovers from a 
   await editor.press('Control+s');
   await page.locator('#message').getByText('Saved main.js', { exact: true }).waitFor();
   assert.equal(await fs.readFile(path.join(project, 'main.js'), 'utf8'), entry + '// edited after the failure\n');
+});
+
+test('Go to Definition selects a cross-file declaration, preserves drafts, and restores navigation history',
+  { timeout: 30_000 }, async t => {
+  const folder = 'lib (QA) & café [#%]';
+  const relative = path.join(folder, 'totals.ts');
+  const original = '\uFEFF// Windows source\r\nexport function total(value: number) { return value; }\r\n';
+  const entry = 'import { total as calculate } from "./' + folder + '/totals";\nconst result = calculate(3);';
+  const workbench = await openWorkbench(t, { 'main.ts': entry, [relative]: original });
+  const { page, editor, open, selected, project } = workbench;
+  const cursor = page.locator('#cursor');
+  await open('main.ts');
+  await replaceEditor(workbench, entry.replace('calculate(3)', 'calculate(42)'));
+  await editor.press('Control+End');
+  for (let index = 0; index < 6; index++) await editor.press('ArrowLeft');
+  const origin = await cursor.textContent();
+  await editor.press('F12');
+  await selected('totals.ts').waitFor();
+  await cursor.getByText('Ln 2, Col 17', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'total');
+
+  await editor.press('Alt+ArrowLeft');
+  await selected('main.ts').waitFor();
+  await cursor.getByText(origin, { exact: true }).waitFor();
+  assert.match(await editor.textContent(), /calculate\(42\)/);
+  await editor.press('Alt+ArrowRight');
+  await selected('totals.ts').waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'total');
+
+  const draft = '// Local draft\n\nexport function total(value: number) { return value + 1; }\n';
+  await replaceEditor(workbench, draft);
+  await editor.press('Alt+ArrowLeft');
+  await selected('main.ts').waitFor();
+  await page.getByRole('button', { name: 'Go to Definition', exact: true }).click();
+  await selected('totals.ts').waitFor();
+  await cursor.getByText('Ln 3, Col 17', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'total');
+  assert.match(await editor.textContent(), /value \+ 1/);
+  assert.equal(await fs.readFile(path.join(project, relative), 'utf8'), original);
+  assert.equal(await fs.readFile(path.join(project, 'main.ts'), 'utf8'), entry);
+});
+
+test('Go to Definition offers an accessible choice when a symbol has several declarations',
+  { timeout: 30_000 }, async t => {
+  const entry = 'interface Shape { width: number }\ninterface Shape { height: number }\nlet value: Shape;';
+  const { page, editor, open } = await openWorkbench(t, { 'main.ts': entry });
+  const chooser = page.getByRole('dialog', { name: 'Choose a definition' });
+  const cursor = page.locator('#cursor');
+  await open('main.ts');
+  await editor.press('Control+End');
+  for (let index = 0; index < 3; index++) await editor.press('ArrowLeft');
+  const origin = await cursor.textContent();
+  await editor.press('Control+Alt+i');
+  await page.locator('.symbol-info').getByText(/interface Shape/).waitFor();
+  await editor.press('F12');
+  await chooser.waitFor();
+  await chooser.getByText('2 definitions found. Choose a declaration.', { exact: true }).waitFor();
+  assert.equal(await chooser.getByRole('button', { name: /Shape main\.ts/ }).count(), 2);
+  await page.keyboard.press('Escape');
+  await chooser.waitFor({ state: 'hidden' });
+  await cursor.getByText(origin, { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Go back', exact: true }).isDisabled(), true);
+
+  await editor.press('F12');
+  await chooser.waitFor();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await chooser.waitFor({ state: 'hidden' });
+  await cursor.getByText('Ln 2, Col 11', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'Shape');
+  await editor.press('Alt+ArrowLeft');
+  await cursor.getByText(origin, { exact: true }).waitFor();
+});
+
+test('Go to Definition ignores a late reply after caret movement and verifies the destination disk revision',
+  { timeout: 30_000 }, async t => {
+  const initial = 'export function target() {}\n';
+  const changed = '// external change\n' + initial;
+  const { app, page, editor, open, selected, project } = await openWorkbench(t, {
+    'main.js': 'import { target } from "./target.js";\ntarget();', 'target.js': initial,
+  });
+  function result(text, line) {
+    return { limited: false, destinations: [{
+      path: 'target.js', offset: text.indexOf('target'), length: 6, name: 'target', line, column: 17,
+      revision: createHash('sha256').update(text).digest('hex'),
+    }] };
+  }
+  await app.evaluate(({ ipcMain }, { oldResult, newResult }) => {
+    let calls = 0;
+    ipcMain.removeHandler('cevra:definition');
+    ipcMain.handle('cevra:definition', () => {
+      if (++calls === 1) {
+        return new Promise(resolve => {
+          ipcMain.releaseDefinition = () => resolve(oldResult);
+          ipcMain.waitForDefinition?.();
+        });
+      }
+      return calls === 2 ? oldResult : newResult;
+    });
+  }, { oldResult: result(initial, 1), newResult: result(changed, 2) });
+  await open('main.js');
+  await editor.press('Control+End');
+  for (let index = 0; index < 5; index++) await editor.press('ArrowLeft');
+  await editor.press('F12');
+  await app.evaluate(({ ipcMain }) => {
+    if (ipcMain.releaseDefinition) return;
+    return new Promise(resolve => { ipcMain.waitForDefinition = resolve; });
+  });
+  await editor.press('ArrowRight');
+  await editor.press('ArrowLeft');
+  await app.evaluate(({ ipcMain }) => ipcMain.releaseDefinition());
+  // Give the released IPC reply a turn while the caret is back at the original position.
+  await delay(100);
+  assert.equal(await selected('target.js').count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Go back', exact: true }).isDisabled(), true);
+
+  await fs.writeFile(path.join(project, 'target.js'), changed);
+  await editor.press('F12');
+  await page.locator('#message').getByText(/definition changed before it could be opened/).waitFor();
+  assert.equal(await selected('target.js').count(), 0);
+  await editor.press('F12');
+  await selected('target.js').waitFor();
+  await page.locator('#cursor').getByText('Ln 2, Col 17', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'target');
 });

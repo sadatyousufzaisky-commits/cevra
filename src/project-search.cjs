@@ -1,6 +1,7 @@
 const path = require('node:path');
 const { setImmediate: yieldSearch } = require('node:timers/promises');
 const { listFolder, maxFileBytes, readSource, workspacePath } = require('./workspace.cjs');
+const { normalizeSource } = require('./source-text.cjs');
 
 const resultLimit = 400;
 const batchSize = 12;
@@ -97,8 +98,7 @@ async function searchProject(workspace, query, caseSensitive, drafts, signal) {
       const sources = await Promise.all(batch.map(relative => readSource(workspace, relative).catch(() => null)));
       for (const [offset, source] of sources.entries()) {
         signal.throwIfAborted();
-        if (source) append({ path: batch[offset], revision: source.revision },
-          source.text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n'));
+        if (source) append({ path: batch[offset], revision: source.revision }, normalizeSource(source.text));
         else result.skipped++;
         if (result.limited) return result;
         await yieldSearch();

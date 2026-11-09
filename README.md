@@ -78,6 +78,12 @@ Type `(` after a JavaScript or TypeScript function name, or move the cursor insi
 
 Press **Ctrl+Shift+Space** to request signature help at the cursor or **Escape** to dismiss it.
 
+## Go to a definition
+
+Place the cursor on a JavaScript or TypeScript symbol and press **F12**, or select **Go to Definition** in the status bar. CEVRA follows workspace imports and re-exports to the declaration and uses open drafts when finding the target. If a symbol has several declarations, choose a destination from the list.
+
+Use **Alt+Left** to return to the original selection and **Alt+Right** to revisit the definition. CEVRA checks the target revision before opening it.
+
 ## Verify CEVRA
 
 Run `npm test` on Windows before expanding the workbench. The core suite exercises JavaScript process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.

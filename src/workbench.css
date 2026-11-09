@@ -187,3 +187,11 @@ button.test-result:hover { background: var(--raised); }
 .signature-parameter { background: var(--selected); }
 .symbol-documentation, .signature-documentation { margin: 6px 0 0; color: var(--muted); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .signature-overload { margin-top: 5px; color: var(--muted); font-size: 11px; }
+.definition-dialog { width: min(540px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); }
+.definition-dialog::backdrop { background: #101417b3; }
+.definition-dialog h2 { margin: 0; font-size: 16px; }
+.definition-dialog p { margin: 4px 0 12px; color: var(--muted); }
+.definition-choices { max-height: min(320px, 50vh); overflow: auto; margin: 0 0 12px; padding: 0; list-style: none; }
+.definition-choice { display: grid; gap: 3px; width: 100%; padding: 8px; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; overflow-wrap: anywhere; }
+.definition-choice:hover { background: var(--raised); }
+.definition-location { color: var(--muted); font: 12px var(--mono); }

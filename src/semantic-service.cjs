@@ -68,6 +68,7 @@ function createSemanticService() {
 
   return {
     quickInfo: (workspace, file, position, buffers) => query('quickInfo', workspace, file, position, buffers),
+    definition: (workspace, file, position, buffers) => query('definition', workspace, file, position, buffers),
     complete: (workspace, file, position, buffers) => queue('complete', workspace, file, position, buffers),
     signatureHelp: (workspace, file, position, buffers) => queue('signatureHelp', workspace, file, position, buffers),
     stop() {
