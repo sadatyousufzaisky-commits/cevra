@@ -47,7 +47,7 @@ function createTestWorkstream(workspace, startTests) {
       } else {
         publish(event);
       }
-    });
+    }, isStopping);
   }
 
   async function recheck(id) {

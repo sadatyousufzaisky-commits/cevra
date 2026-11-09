@@ -6,7 +6,7 @@ function createTestSession(tempFolder) {
   let state;
   let failedProject;
 
-  async function start(project, retry, publish) {
+  async function start(project, retry, publish, isStopping) {
     if (retry && failedProject !== project.id) throw new Error('Run the project tests first.');
     if (!state) {
       const folder = await fs.promises.mkdtemp(path.join(tempFolder, 'cevra-tests-'));
@@ -18,7 +18,7 @@ function createTestSession(tempFolder) {
 
     async function finish(event) {
       try {
-        if (summary && !event.stopped && (event.code === 0 || event.code === 1)) {
+        if (summary && !event.stopped && !isStopping?.() && (event.code === 0 || event.code === 1)) {
           if (summary.success) {
             failedProject = undefined;
           } else {
@@ -37,7 +37,7 @@ function createTestSession(tempFolder) {
       if (event.type === 'test-summary') summary = event;
       else if (event.type === 'exit') void finish(event);
       else if (event.type === 'output' || event.type === 'test-failure') publish(event);
-    });
+    }, isStopping);
   }
 
   function dispose() {

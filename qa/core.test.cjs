@@ -14,6 +14,9 @@ const { createSemanticService } = require('../src/semantic-service.cjs');
 const { createPreferences } = require('../src/preferences.cjs');
 const { captureInputs, inputFreshness, sourceAnchor } = require('../src/continuum/revisions.cjs');
 const { createTestWorkstream } = require('../src/continuum/workstream.cjs');
+const { createExecutionSessions } = require('../src/execution/sessions.cjs');
+const { maxOutput } = require('../src/execution/process-host.cjs');
+const { createReportDecoder, encodeReport } = require('../src/execution/test-report.cjs');
 
 async function fixture(t) {
   const folder = await temporaryFolder(t, 'cevra-core-');
@@ -21,6 +24,66 @@ async function fixture(t) {
   await fs.mkdir(root);
   return { folder, root, workspace: await createWorkspace(root) };
 }
+
+test('execution sessions reject stale owners, keep a bounded output tail, and settle cancellation once', async () => {
+  const events = [];
+  const sessions = createExecutionSessions(event => events.push(event));
+  let emit;
+  let admit;
+  let stops = 0;
+  const launch = sessions.start('first', 1, 'token-1', publish => {
+    emit = publish;
+    return new Promise(resolve => { admit = resolve; });
+  });
+  assert.equal(sessions.busy, true);
+  assert.equal(sessions.stop('second', 1, 'token-1'), false);
+  assert.equal(sessions.stop('first', 1, 'token-expired'), false);
+  assert.equal(sessions.output('first', 1, 'token-expired', 0), null);
+  await assert.rejects(sessions.start('second', 2, 'token-2', () => {}), /already running/);
+  emit({ type: 'output', text: 'a'.repeat(maxOutput) });
+  emit({ type: 'output', text: 'tail café' });
+  const output = sessions.output('first', 1, 'token-1', 0);
+  assert.equal(output.text.length, maxOutput);
+  assert.equal(output.truncated, true);
+  assert.equal(output.reset, true);
+  assert.ok(output.text.endsWith('tail café'));
+  assert.equal(sessions.output('first', 1, 'token-1', output.cursor).text, '');
+  assert.equal(events.length, 0);
+  assert.equal(sessions.stop('first', 1, 'token-1'), true);
+  const canceled = sessions.cancel();
+  admit({ stop: () => { stops++; } });
+  await launch;
+  assert.equal(stops, 1);
+  emit({ type: 'exit', code: 0 });
+  emit({ type: 'exit', code: 1 });
+  await canceled;
+  assert.equal(events.length, 1);
+  assert.equal(events[0].stopped, true);
+  assert.equal(events[0].sessionId, 'token-1');
+  assert.equal(events[0].output.text, output.text);
+  assert.equal(sessions.busy, false);
+  await sessions.start('second', 1, 'token-2', publish => publish({ type: 'exit', code: 0 }));
+  assert.equal(events[1].stopped, false);
+  assert.equal(events[1].workspaceId, 'second');
+});
+
+test('test report decoder preserves output and accepts only bounded, complete records', () => {
+  const events = [];
+  const text = [];
+  const prefix = 'CEVRA-opaque ';
+  const decoder = createReportDecoder(prefix, event => events.push(event), chunk => text.push(chunk));
+  const failure = { type: 'test-failure', name: 'total', message: 'incorrect', location: null };
+  const frame = encodeReport(prefix, failure);
+  decoder.write(frame.slice(0, 7));
+  decoder.write(frame.slice(7) + encodeReport(prefix, { type: 'output', text: prefix + 'literal café\n' }));
+  const oversized = prefix + 'x'.repeat(61_000);
+  decoder.write(oversized);
+  decoder.write('\n' + encodeReport(prefix, { ...failure, message: 1 }) + 'trailing');
+  decoder.finish();
+  assert.deepEqual(events, [failure]);
+  assert.equal(text.join(''), prefix + 'literal café\n' + oversized + '\n' +
+    encodeReport(prefix, { ...failure, message: 1 }) + 'trailing');
+});
 
 test('workspace observations cover configuration and binary inputs and reject unsafe anchors', async t => {
   const { root, workspace } = await fixture(t);
@@ -266,7 +329,8 @@ test('JavaScript runner delivers both streams, preserves exit status, and reject
   const { root, workspace } = await fixture(t);
   const name = 'run (# % &).cjs';
   const script = path.join(root, name);
-  await fs.writeFile(script, 'console.log("stdout café"); console.error("stderr ✓"); process.exitCode = 37;\n');
+  await fs.writeFile(script, 'if (require("node:fs").readFileSync(0).length) throw new Error("unexpected stdin");\n' +
+    'console.log("stdout café"); console.error("stderr ✓"); process.exitCode = 37;\n');
   const { exit, output } = await run(t, workspace, name);
   assert.equal(exit.code, 37);
   assert.equal(exit.location, null);

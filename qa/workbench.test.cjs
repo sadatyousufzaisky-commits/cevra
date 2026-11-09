@@ -24,7 +24,7 @@ async function assertWindowsProcessStopped(pid) {
     }
     await delay(25);
   }
-  assert.fail('The Windows process was still running after cleanup.');
+  assert.fail('Windows process ' + pid + ' was still running after cleanup.');
 }
 
 async function openWorkbench(t, files) {
@@ -86,6 +86,13 @@ async function openWorkbench(t, files) {
       },
       state: page.locator('#run-state'),
       output: page.locator('#run-output'),
+      terminateMain: async () => {
+        const pid = await app.evaluate(() => process.pid);
+        const taskkill = path.join(process.env.SystemRoot, 'System32', 'taskkill.exe');
+        await execute(taskkill, ['/pid', String(pid), '/f'], { windowsHide: true });
+        await assertWindowsProcessStopped(pid);
+        app = undefined;
+      },
       restart: async ({ crash = false } = {}) => {
         if (crash) {
           const processUnderTest = app.process();
@@ -166,8 +173,152 @@ test('saves before execution, runs from the project root, and stops a running sc
   await output.getByText(/ready to stop \d+/).waitFor();
   const child = Number(/ready to stop (\d+)/.exec(await output.textContent())[1]);
   await page.getByRole('button', { name: 'Stop run', exact: true }).click();
-  await state.getByText('Stopped', { exact: true }).waitFor();
+  await state.getByText('Canceled', { exact: true }).waitFor();
   await assertWindowsProcessStopped(child);
+});
+
+test('Windows bounds a 12 MiB output flood and cancels the detached process tree before switching workspaces',
+  { timeout: 30_000, skip: process.platform !== 'win32' }, async t => {
+    const branch = [
+      'const { spawn } = require("node:child_process");',
+      'const leaf = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"],',
+      '  { stdio: "ignore", windowsHide: true, detached: true });',
+      'leaf.once("spawn", () => console.log(leaf.pid));',
+      'setInterval(() => {}, 1000);',
+    ].join('\n');
+    const flooding = [
+      'const { spawn } = require("node:child_process");',
+      'const { writeFileSync } = require("node:fs");',
+      'const branch = spawn(process.execPath, ["-e", ' + JSON.stringify(branch) + '],',
+      '  { stdio: ["ignore", "pipe", "ignore"], windowsHide: true, detached: true });',
+      'branch.stdout.once("data", bytes => {',
+      '  writeFileSync("tree.json", JSON.stringify([process.ppid, process.pid, branch.pid, Number(bytes)]));',
+      '  const block = Buffer.alloc(128 * 1024, 120);',
+      '  let count = 0;',
+      '  function pump() {',
+      '    if (++count > 96) return console.log("\\nFLOOD-TAIL café");',
+      '    process.stdout.write(block, () => setTimeout(pump, 15));',
+      '  }',
+      '  pump();',
+      '});',
+      'setInterval(() => {}, 1000);',
+    ].join('\n');
+    const { app, editor, page, project, open, state, output } = await openWorkbench(t, {
+      'flood.cjs': flooding, 'notes.txt': 'Can still edit',
+    });
+    await open('flood.cjs');
+    await editor.press('F5');
+    const notice = page.getByText('Earlier output was truncated.', { exact: true });
+    await notice.waitFor();
+    assert.equal(await page.locator('#open-folder').isDisabled(), true);
+    const refused = await page.evaluate(() => window.cevra.chooseFolder(false).then(() => '', error => error.message));
+    assert.match(refused, /Stop the current run before opening another project/);
+
+    await open('notes.txt');
+    await editor.press('End');
+    await page.keyboard.insertText(' while output streams');
+    assert.equal(await editor.textContent(), 'Can still edit while output streams');
+    await output.getByText(/FLOOD-TAIL café/).waitFor();
+    assert.ok((await output.textContent()).length <= 160_000);
+    const pids = JSON.parse(await fs.readFile(path.join(project, 'tree.json'), 'utf8'));
+    assert.ok(pids.every(pid => Number.isSafeInteger(pid) && pid > 0));
+    for (const pid of pids) process.kill(pid, 0);
+
+    await page.getByRole('button', { name: 'Stop run', exact: true }).click();
+    await state.getByText('Canceled', { exact: true }).waitFor();
+    await Promise.all(pids.map(assertWindowsProcessStopped));
+    await notice.waitFor();
+    assert.match(await output.textContent(), /FLOOD-TAIL café/);
+    const next = path.join(path.dirname(project), 'next workspace');
+    await fs.mkdir(next);
+    await fs.writeFile(path.join(next, 'fresh.cjs'), 'console.log("fresh workspace");\n');
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, next);
+    await page.locator('#open-folder').click();
+    await open('fresh.cjs');
+    await editor.press('F5');
+    await state.getByText(/^Passed/).waitFor();
+    assert.match(await output.textContent(), /fresh workspace/);
+    assert.doesNotMatch(await output.textContent(), /FLOOD-TAIL/);
+  });
+
+test('Windows reaps a detached child when the entry script exits normally',
+  { timeout: 20_000, skip: process.platform !== 'win32' }, async t => {
+    const { editor, open, state, output } = await openWorkbench(t, {
+      'early-exit.cjs': [
+        'const child = require("node:child_process").spawn(process.execPath,',
+        '  ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", detached: true, windowsHide: true });',
+        'child.once("spawn", () => console.log("detached " + child.pid));',
+        'child.unref();',
+      ].join('\n'),
+    });
+    await open('early-exit.cjs');
+    await editor.press('F5');
+    await state.getByText(/^Passed/).waitFor();
+    const match = /detached (\d+)/.exec(await output.textContent());
+    assert.ok(match);
+    await assertWindowsProcessStopped(Number(match[1]));
+  });
+
+test('Windows cleans up a running test tree after only the Electron main process is killed',
+  { timeout: 35_000, skip: process.platform !== 'win32' }, async t => {
+    const workbench = await openWorkbench(t, {
+      'supervised.test.cjs': [
+        'const { test } = require("node:test");',
+        'const { spawn } = require("node:child_process");',
+        'test("supervised", async () => {',
+        '  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"],',
+        '    { stdio: "ignore", detached: true, windowsHide: true });',
+        '  child.once("spawn", () => console.log("test tree " + [process.ppid, process.pid, child.pid].join(" ")));',
+        '  await new Promise(resolve => setTimeout(resolve, 30000));',
+        '});',
+      ].join('\n'),
+    });
+    const run = workbench.page.getByRole('button', { name: 'Run tests', exact: true });
+    await run.click();
+    const pattern = /test tree (\d+) (\d+) (\d+)/;
+    await workbench.output.getByText(pattern).waitFor();
+    const canceled = pattern.exec(await workbench.output.textContent()).slice(1).map(Number);
+    await workbench.page.getByRole('button', { name: 'Stop run', exact: true }).click();
+    await workbench.state.getByText('Canceled', { exact: true }).waitFor();
+    await workbench.page.locator('#test-revision').getByText('Run canceled', { exact: true }).waitFor();
+    await Promise.all(canceled.map(assertWindowsProcessStopped));
+
+    await run.click();
+    await workbench.output.getByText(pattern).waitFor();
+    const pids = pattern.exec(await workbench.output.textContent()).slice(1).map(Number);
+    for (const pid of pids) process.kill(pid, 0);
+    await workbench.terminateMain();
+    await Promise.all(pids.map(assertWindowsProcessStopped));
+  });
+
+test('canceling while a run saves its input prevents the process from launching', { timeout: 25_000 }, async t => {
+  const original = 'require("node:fs").writeFileSync("launched.txt", "ran");\n';
+  const edited = '// draft\n' + original;
+  const { app, page, editor, open, project, state } = await openWorkbench(t, { 'save.cjs': original });
+  const revision = createHash('sha256').update(edited).digest('hex');
+  await app.evaluate(({ ipcMain }, nextRevision) => {
+    ipcMain.removeHandler('cevra:save');
+    ipcMain.handle('cevra:save', () => new Promise(resolve => {
+      ipcMain.releaseExecutionSave = () => resolve(nextRevision);
+      ipcMain.onExecutionSave?.();
+    }));
+  }, revision);
+  await open('save.cjs');
+  await replaceEditor({ editor, page }, edited);
+  await editor.press('F5');
+  try {
+    await app.evaluate(({ ipcMain }) => ipcMain.releaseExecutionSave ?
+      undefined : new Promise(resolve => { ipcMain.onExecutionSave = resolve; }));
+    await page.getByRole('button', { name: 'Stop run', exact: true }).click();
+    await state.getByText('Stopping', { exact: true }).waitFor();
+    await fs.writeFile(path.join(project, 'save.cjs'), edited);
+  } finally {
+    await app.evaluate(({ ipcMain }) => ipcMain.releaseExecutionSave?.());
+  }
+  await state.getByText('Canceled', { exact: true }).waitFor();
+  await assert.rejects(fs.access(path.join(project, 'launched.txt')), { code: 'ENOENT' });
 });
 
 test('jumps to runtime and syntax errors in nested files at unusual paths', async t => {
@@ -559,18 +710,24 @@ test('keeps drafts across a regular quit and clears them on confirmed discard', 
 test('reloads a crashed renderer and saves the recovered draft normally', { timeout: 35_000 }, async t => {
   const workbench = await openWorkbench(t, {
     'renderer.cjs': 'console.log("original");\n',
-    'running.cjs': 'console.log("running " + process.pid);\nsetInterval(() => {}, 1000);\n',
+    'running.cjs': [
+      'const child = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"],',
+      '  { stdio: "ignore", detached: true, windowsHide: true });',
+      'child.once("spawn", () => console.log("running " + process.pid + " " + child.pid));',
+      'setInterval(() => {}, 1000);',
+    ].join('\n'),
   });
   await workbench.open('renderer.cjs');
   await replaceEditor(workbench, 'console.log("renderer recovery");\n');
   await workbench.open('running.cjs');
   await workbench.editor.press('F5');
-  await workbench.output.getByText(/running \d+/).waitFor();
-  const running = Number(/running (\d+)/.exec(await workbench.output.textContent())[1]);
+  const pattern = /running (\d+) (\d+)/;
+  await workbench.output.getByText(pattern).waitFor();
+  const running = pattern.exec(await workbench.output.textContent()).slice(1).map(Number);
   const replacement = workbench.app.waitForEvent('window', { timeout: 10_000 });
   await workbench.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.forcefullyCrashRenderer());
   const page = await replacement;
-  await assertWindowsProcessStopped(running);
+  await Promise.all(running.map(assertWindowsProcessStopped));
   page.setDefaultTimeout(8_000);
   const editor = page.getByRole('textbox', { name: 'Source editor' });
   await page.getByText('Recovered 1 unsaved file.', { exact: true }).waitFor();
@@ -628,7 +785,7 @@ test('the desktop bridge blocks workspace escapes and rejects a Windows junction
   const errors = await page.evaluate(async () => {
     const { project } = await window.cevra.initial();
     const { revision } = await window.cevra.read(project.id, 'inside.cjs');
-    const grant = await window.cevra.authorizeRun(project.id);
+    const grant = await window.cevra.authorizeRun(project.id, 1);
     const operations = [
       window.cevra.read(project.id, '../outside/secret.cjs'),
       window.cevra.save(project.id, 'junction/secret.cjs', 'changed', revision),

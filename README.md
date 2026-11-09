@@ -4,7 +4,7 @@ CEVRA is a public project building a desktop environment for the whole software 
 
 ## Run the workbench
 
-On Windows with Node.js 24 and npm installed, run these commands in the repository:
+On Windows 10 or 11 with Node.js 24, npm, and the Windows .NET Framework 4.x compiler, run these commands in the repository:
 
 ```powershell
 npm ci
@@ -16,10 +16,12 @@ Choose **Open example** to try the built-in JavaScript project, or choose **Open
 - **Ctrl+S** saves the active file. The editor accepts UTF-8 text files up to 2 MiB.
 - **Ctrl+Shift+S** saves all open drafts. CEVRA reports where the save stopped if a file fails its revision check.
 - **F5** saves the active file and runs it from the project root. The first milestone supports `.js`, `.mjs`, and `.cjs` through Electron's bundled Node runtime. Other files on disk are read as saved.
-- **Stop** ends a running program. Its output remains visible in the run panel.
+- **Stop** cancels a run during preparation or execution. Its recent output remains visible in the run panel, with a notice when earlier output was truncated.
 - **Source location** takes you to the first project location CEVRA finds in a failed run's error output.
 
 The workbench uses Electron for the desktop shell and CodeMirror for the editor. CEVRA owns the project explorer, file state, and run workflow. Before the first file or test run in an untrusted workspace, choose **Run Once**, **Trust Workspace**, or **Cancel**. CEVRA asks before saving or running code. Programs execute with your user account's permissions. Workspace trust is stored locally and can be revoked in **Settings**.
+
+On Windows, CEVRA starts programs and tests inside a Job Object and waits for the process tree to stop before releasing its execution session. This covers detached children after a script exits and cleanup after the app's main process dies. Finish or cancel the active run before switching workspaces. [Windows Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)
 
 ## Run project tests
 

@@ -15,6 +15,7 @@ const { createFormatService } = require('./format-service.cjs');
 const { createSemanticService } = require('./semantic-service.cjs');
 const { createPreferences } = require('./preferences.cjs');
 const { createTestWorkstream } = require('./continuum/workstream.cjs');
+const { createExecutionSessions } = require('./execution/sessions.cjs');
 
 app.setName('CEVRA');
 
@@ -29,7 +30,7 @@ const semantics = createSemanticService();
 let window;
 let workspace;
 let workstream;
-let activeRun;
+let changingWorkspace = false;
 let runGrant;
 let authorizingRun = false;
 let activeSearch;
@@ -37,6 +38,11 @@ let rendererReady = false;
 let closePending = false;
 let allowClose = false;
 let lastRendererCrash = 0;
+const sessions = createExecutionSessions(event => {
+  if (workspace?.id === event.workspaceId && rendererReady && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
+    window.webContents.send('cevra:run-event', event);
+  }
+});
 
 function colorMode() {
   return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
@@ -86,25 +92,36 @@ async function readDrafts() {
   }
 }
 
+function ensureWorkspaceAvailable(recovering = false) {
+  if (changingWorkspace) throw new Error('A workspace is already opening.');
+  if (sessions.busy && (!recovering || rendererReady)) throw new Error('Stop the current run before opening another project.');
+}
+
 async function openWorkspace(folder, { entry, discard, recovering = false } = {}) {
-  if (activeRun && !recovering) throw new Error('Stop the current run before opening another project.');
-  const next = await createWorkspace(folder);
-  const files = await listFolder(next);
-  if (discard && workspace) await drafts.clear(workspace.root);
-  const { entries, unreadable } = await readDrafts();
-  const recovered = entries.filter(draft => draft.root === next.root);
-  const settings = await preferences.getEditor(next);
-  activeSearch?.controller.abort();
-  syntax.stop();
-  formatter.stop();
-  semantics.stop();
-  workspace = next;
-  workstream = createTestWorkstream(next, tests.start);
+  ensureWorkspaceAvailable(recovering);
+  changingWorkspace = true;
   runGrant = undefined;
-  return {
-    id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable, settings,
-    caseInsensitivePaths: process.platform === 'win32',
-  };
+  try {
+    if (recovering) await sessions.cancel();
+    const next = await createWorkspace(folder);
+    const files = await listFolder(next);
+    if (discard && workspace) await drafts.clear(workspace.root);
+    const { entries, unreadable } = await readDrafts();
+    const recovered = entries.filter(draft => draft.root === next.root);
+    const settings = await preferences.getEditor(next);
+    activeSearch?.controller.abort();
+    syntax.stop();
+    formatter.stop();
+    semantics.stop();
+    workspace = next;
+    workstream = createTestWorkstream(next, tests.start);
+    return {
+      id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable, settings,
+      caseInsensitivePaths: process.platform === 'win32',
+    };
+  } finally {
+    changingWorkspace = false;
+  }
 }
 
 handle('initial', async () => {
@@ -139,9 +156,12 @@ handle('revoke-trust', async id => {
   await preferences.setTrusted(project, false);
 });
 
-handle('authorize-run', async id => {
+handle('authorize-run', async (id, runId) => {
   const project = currentWorkspace(id);
-  if (authorizingRun || activeRun) throw new Error('An execution request is already active.');
+  if (!Number.isSafeInteger(runId) || runId < 1) throw new Error('Invalid execution request.');
+  if (authorizingRun || sessions.busy) throw new Error('An execution request is already active.');
+  if (changingWorkspace || closePending || allowClose) throw new Error('The workspace is changing.');
+  const owner = window.webContents;
   authorizingRun = true;
   runGrant = undefined;
   try {
@@ -163,8 +183,11 @@ handle('authorize-run', async id => {
       if (response === 2) await preferences.setTrusted(project, true);
     }
     currentWorkspace(id);
+    if (changingWorkspace || closePending || allowClose || window?.webContents !== owner || !rendererReady) {
+      throw new Error('The execution request expired.');
+    }
     const token = randomUUID();
-    runGrant = { id, token };
+    runGrant = { id, runId, token };
     return token;
   } finally {
     authorizingRun = false;
@@ -172,6 +195,7 @@ handle('authorize-run', async id => {
 });
 
 handle('choose-folder', async discard => {
+  ensureWorkspaceAvailable();
   const choice = await dialog.showOpenDialog(window, {
     title: 'Open a CEVRA workspace',
     properties: ['openDirectory'],
@@ -181,6 +205,7 @@ handle('choose-folder', async discard => {
 });
 
 handle('open-example', async discard => {
+  ensureWorkspaceAvailable();
   const folder = path.join(app.getPath('userData'), 'examples', 'first-run');
   await fs.mkdir(folder, { recursive: true });
   for (const [source, destination] of [
@@ -276,53 +301,41 @@ handle('draft', (id, file, text, revision) => {
   return drafts.set(project.root, file, text, revision);
 });
 
-async function execute(project, runId, start) {
-  if (activeRun) throw new Error('A program is already running.');
-  const run = { stopRequested: false };
-  activeRun = run;
-  try {
-    run.controller = await start(event => {
-      if (activeRun === run && event.type === 'exit') activeRun = undefined;
-      if (workspace === project && rendererReady && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
-        window.webContents.send('cevra:run-event', { ...event, runId, workspaceId: project.id });
-      }
-    }, () => run.stopRequested || workspace !== project);
-    if (run.stopRequested) run.controller?.stop();
-  } catch (error) {
-    if (activeRun === run) activeRun = undefined;
-    throw error;
-  }
-}
-
-function authorizedWorkspace(id, token) {
+function authorizedWorkspace(id, runId, token) {
   const project = currentWorkspace(id);
-  if (!runGrant || runGrant.id !== id || runGrant.token !== token) throw new Error('Authorize workspace execution first.');
+  if (runGrant?.id !== id || runGrant.runId !== runId || runGrant.token !== token) throw new Error('Authorize workspace execution first.');
   runGrant = undefined;
+  if (changingWorkspace || closePending || allowClose) throw new Error('The workspace is changing.');
   return project;
 }
 
 handle('start', (id, file, revision, runId, token) => {
-  const project = authorizedWorkspace(id, token);
-  return execute(project, runId, publish => startNodeRun(project, file, revision, publish));
+  const project = authorizedWorkspace(id, runId, token);
+  return sessions.start(id, runId, token, (publish, isStopping) => startNodeRun(project, file, revision, publish, isStopping));
 });
 
 handle('test', (id, retry, runId, token, goal) => {
-  const project = authorizedWorkspace(id, token);
+  const project = authorizedWorkspace(id, runId, token);
   const current = workstream;
-  return execute(project, runId, (publish, isStopping) => current.start(retry === true, goal, publish, isStopping));
+  return sessions.start(project.id, runId, token, (publish, isStopping) => current.start(retry === true, goal, publish, isStopping));
 });
 handle('test-evidence', (id, evidenceId) => {
   currentWorkspace(id);
   return workstream.recheck(evidenceId);
 });
 
-function stopRun() {
-  if (!activeRun) return;
-  activeRun.stopRequested = true;
-  activeRun.controller?.stop();
-}
-
-handle('stop', stopRun);
+handle('stop', (id, runId, sessionId) => {
+  currentWorkspace(id);
+  if (runGrant?.id === id && runGrant.runId === runId && runGrant.token === sessionId) {
+    runGrant = undefined;
+    return true;
+  }
+  return sessions.stop(id, runId, sessionId);
+});
+handle('run-output', (id, runId, sessionId, cursor) => {
+  currentWorkspace(id);
+  return sessions.output(id, runId, sessionId, cursor);
+});
 
 ipcMain.on('cevra:ready', event => {
   if (isWorkbench(event)) rendererReady = true;
@@ -331,6 +344,7 @@ ipcMain.on('cevra:ready', event => {
 handle('close-ready', async (hasDrafts, backupFailed) => {
   await preferences.getTheme();
   if (!closePending) return;
+  const closing = window;
   const stay = backupFailed ? dialog.showMessageBoxSync(window, {
     type: 'error',
     message: 'Some draft backups could not be updated.',
@@ -346,12 +360,16 @@ handle('close-ready', async (hasDrafts, backupFailed) => {
     defaultId: 0,
     cancelId: 0,
   }) === 0;
-  closePending = false;
   if (stay) {
+    closePending = false;
     window.webContents.send('cevra:close-canceled');
   } else {
+    runGrant = undefined;
+    await sessions.cancel();
+    if (!closePending || window !== closing) return;
+    closePending = false;
     allowClose = true;
-    setImmediate(() => window?.close());
+    setImmediate(() => closing.close());
   }
 });
 
@@ -384,12 +402,13 @@ async function launch() {
   workbench.webContents.on('render-process-gone', () => {
     if (window !== workbench) return;
     rendererReady = false;
+    runGrant = undefined;
     closePending = false;
     activeSearch?.controller.abort();
     syntax.stop();
     formatter.stop();
     semantics.stop();
-    stopRun();
+    void sessions.cancel();
     const now = Date.now();
     const repeated = now - lastRendererCrash < 2_000;
     lastRendererCrash = now;
@@ -405,7 +424,7 @@ async function launch() {
   workbench.on('close', event => {
     if (allowClose || !rendererReady) {
       activeSearch?.controller.abort();
-      stopRun();
+      void sessions.cancel();
       return;
     }
     event.preventDefault();

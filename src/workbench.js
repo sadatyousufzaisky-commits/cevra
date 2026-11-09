@@ -33,6 +33,7 @@ const tabs = byId('tabs');
 const editor = byId('editor');
 const tree = byId('tree');
 const output = byId('run-output');
+const outputNotice = byId('output-truncated');
 const message = byId('message');
 const openButton = byId('open-folder');
 const welcomeOpen = byId('welcome-open');
@@ -170,7 +171,7 @@ function syncCommands() {
   retryButton.hidden = !retryAvailable || byId('run-panel').dataset.mode !== 'tests';
   retryButton.disabled = testButton.disabled;
   stopButton.hidden = !run;
-  stopButton.disabled = run?.stage !== 'running';
+  stopButton.disabled = run?.stage === 'stopping';
   searchToggle.disabled = !project || changingProject;
   backButton.disabled = changingProject || navigating || !navigation.peek('back');
   forwardButton.disabled = changingProject || navigating || !navigation.peek('forward');
@@ -778,6 +779,7 @@ function resetOutput(target = '', mode = 'file') {
   byId('run-diagnostic').hidden = true;
   byId('run-target').textContent = target;
   outputText = '';
+  outputNotice.hidden = true;
   output.classList.remove('has-output');
   output.setAttribute('aria-label', testing ? 'Test output' : 'Program output');
   output.textContent = testing ? 'Waiting for test output…' :
@@ -785,75 +787,117 @@ function resetOutput(target = '', mode = 'file') {
   setRunState('Ready');
 }
 
-function appendOutput(text) {
+function appendOutput(text, { replace = false, truncated = false } = {}) {
+  if (!text && !replace) return;
   const follow = output.scrollHeight - output.clientHeight - output.scrollTop <= 24;
-  outputText = (outputText + text).slice(-maxOutput);
+  const combined = replace ? text : outputText + text;
+  if (replace) outputNotice.hidden = !truncated;
+  if (truncated || combined.length > maxOutput) outputNotice.hidden = false;
+  outputText = combined.slice(-maxOutput);
   output.textContent = outputText;
   output.classList.add('has-output');
   if (follow) output.scrollTop = output.scrollHeight;
 }
 
-async function launchRun(mode, target, start) {
-  const id = ++runSequence;
-  run = { id, mode, stage: 'starting' };
+function watchOutput(attempt) {
+  let cursor = 0;
+  async function read() {
+    if (run !== attempt) return;
+    try {
+      const batch = await api.runOutput(attempt.workspaceId, attempt.id, attempt.sessionId, cursor);
+      if (run !== attempt) return;
+      if (batch) {
+        cursor = batch.cursor;
+        appendOutput(batch.text, { replace: batch.reset, truncated: batch.truncated });
+      }
+    } catch (error) {
+      if (run === attempt) report(error);
+      return;
+    }
+    attempt.outputTimer = setTimeout(read, 50);
+  }
+  attempt.outputTimer = setTimeout(read, 50);
+}
+
+function cancelBeforeStart(attempt) {
+  run = undefined;
+  setRunState('Canceled');
+  output.textContent = 'Execution canceled.';
+  if (attempt.mode === 'tests') byId('test-empty').textContent = 'Execution canceled.';
+  syncCommands();
+}
+
+async function launchRun(mode, target, prepare, start) {
+  const attempt = { id: ++runSequence, workspaceId: project.id, mode, stage: 'starting' };
+  run = attempt;
   showDock('output');
   resetOutput(target, mode);
   setRunState('Starting', 'running');
   syncCommands();
   try {
-    const token = await api.authorizeRun(project.id);
-    if (!token) {
-      run = undefined;
-      setRunState('Canceled');
-      if (mode === 'tests') byId('test-empty').textContent = 'Execution canceled.';
-      syncCommands();
-      return;
-    }
-    await start(id, token);
-    if (run?.id === id) {
-      run.stage = 'running';
+    const token = await api.authorizeRun(attempt.workspaceId, attempt.id);
+    if (!token) return cancelBeforeStart(attempt);
+    attempt.sessionId = token;
+    if (attempt.stage === 'stopping') return cancelBeforeStart(attempt);
+    await prepare(attempt);
+    if (attempt.stage === 'stopping') return cancelBeforeStart(attempt);
+    attempt.submitted = true;
+    const admission = start(attempt);
+    watchOutput(attempt);
+    await admission;
+    if (run === attempt && attempt.stage !== 'stopping') {
+      attempt.stage = 'running';
       setRunState('Running', 'running');
       syncCommands();
     }
   } catch (error) {
+    if (run !== attempt) return;
+    clearTimeout(attempt.outputTimer);
+    if (attempt.stage === 'stopping' && !attempt.submitted) return cancelBeforeStart(attempt);
     run = undefined;
     setRunState('Could not run', 'error');
     if (mode === 'tests') byId('test-empty').textContent = 'The tests could not start.';
     appendOutput(errorText(error));
     syncCommands();
     report(error);
+  } finally {
+    if (attempt.sessionId && !attempt.submitted) {
+      void api.stop(attempt.workspaceId, attempt.id, attempt.sessionId).catch(() => {});
+    }
   }
 }
 
 function runFile() {
   if (runButton.disabled) return;
   const tab = active;
-  return launchRun('file', tab.path, async (id, token) => {
+  return launchRun('file', tab.path, async () => {
     await saveFile(tab);
     if (tab.dirty) throw new Error('The file changed during save. Run it again to include the latest edits.');
-    await api.start(project.id, tab.path, tab.revision, id, token);
-  });
+  }, attempt => api.start(attempt.workspaceId, tab.path, tab.revision, attempt.id, attempt.sessionId));
 }
 
 function runTests(retry = false) {
   if (testButton.disabled || (retry && !retryAvailable)) return;
   const goal = testEvidence.goal;
-  return launchRun('tests', retry ? 'Failed tests' : 'Project tests', async (id, token) => {
-    for (const tab of documents.values()) await saveFile(tab);
+  return launchRun('tests', retry ? 'Failed tests' : 'Project tests', async attempt => {
+    for (const tab of documents.values()) {
+      if (attempt.stage === 'stopping') return;
+      await saveFile(tab);
+    }
     if ([...documents.values()].some(tab => tab.dirty)) {
       throw new Error('An open file changed during save. Run tests again to include the latest edits.');
     }
-    run.sourceVersion = testEvidence.version;
-    await api.test(project.id, retry, id, token, goal);
-  });
+    attempt.sourceVersion = testEvidence.version;
+  }, attempt => api.test(attempt.workspaceId, retry, attempt.id, attempt.sessionId, goal));
 }
 
 async function stopRun() {
-  if (run?.stage !== 'running') return;
-  run.stage = 'stopping';
+  const attempt = run;
+  if (!attempt || attempt.stage === 'stopping') return;
+  attempt.stage = 'stopping';
   setRunState('Stopping');
   syncCommands();
-  await api.stop();
+  if (attempt.sessionId) await api.stop(attempt.workspaceId, attempt.id, attempt.sessionId);
 }
 
 function locationLabel({ path, line, column }) {
@@ -917,8 +961,8 @@ function finishTests(event, elapsed) {
   }
 
   if (event.stopped) {
-    setRunState('Stopped');
-    empty.textContent = 'The test run was stopped.';
+    setRunState('Canceled');
+    empty.textContent = 'The test run was canceled.';
   } else if (event.code === 0 && counts?.tests === 0) {
     setRunState('No tests');
     empty.textContent = 'No JavaScript tests were discovered in this project.';
@@ -934,14 +978,12 @@ function finishTests(event, elapsed) {
 }
 
 api.onRun(event => {
-  if (event.workspaceId !== project?.id || event.runId !== run?.id) return;
-  if (event.type === 'output') {
-    appendOutput(event.text);
-    return;
-  }
-  if (event.type !== 'exit') return;
+  if (event.type !== 'exit' || event.workspaceId !== project?.id || event.runId !== run?.id ||
+      event.sessionId !== run?.sessionId) return;
   const { mode, sourceVersion } = run;
+  clearTimeout(run.outputTimer);
   run = undefined;
+  if (event.output?.text) appendOutput(event.output.text, { replace: true, truncated: event.output.truncated });
   const elapsed = event.elapsed < 1000 ? `${event.elapsed} ms` : `${(event.elapsed / 1000).toFixed(1)} s`;
   if (mode === 'tests') {
     testEvidence.finish(event.evidence, sourceVersion);
@@ -950,7 +992,7 @@ api.onRun(event => {
     syncCommands();
     return;
   }
-  if (event.stopped) setRunState('Stopped');
+  if (event.stopped) setRunState('Canceled');
   else if (event.code === 0) setRunState('Passed · ' + elapsed, 'ok');
   else setRunState(`Failed · ${event.code ?? event.signal ?? 'launch'}`, 'error');
   if (event.error) appendOutput(event.error);

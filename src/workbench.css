@@ -209,7 +209,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .dock-view:hover { background: var(--raised); color: var(--text); }
 .dock-view[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--mint); }
 .problems-count { border-radius: 8px; padding: 0 5px; background: var(--raised); color: var(--danger); font-size: 11px; }
-.run-panel:is([data-pane="problems"], [data-pane="references"]) :is(#run-state, #run-target, #test-totals, #rerun-failures, .test-evidence, .run-diagnostic, .run-body) { display: none; }
+.run-panel:is([data-pane="problems"], [data-pane="references"]) :is(#run-state, #run-target, #test-totals, #rerun-failures, .test-evidence, .run-diagnostic, .output-notice, .run-body) { display: none; }
 .problems-panel { min-height: 0; flex: 1; overflow: auto; }
 .problem-list, .problem-list ul { list-style: none; margin: 0; padding: 0; }
 .problem-file { margin: 0; padding: 7px 15px; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--text); font: 12px var(--mono); overflow-wrap: anywhere; }
@@ -245,6 +245,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .diagnostic-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .diagnostic-link svg { width: 14px; height: 14px; }
 .run-error-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.output-notice { margin: 0; padding: 4px 13px; border-bottom: 1px solid var(--line); color: var(--warning); font-size: 12px; }
 .run-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .run-panel[data-mode="tests"] .run-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .run-output { margin: 0; padding: 10px 14px 15px; min-height: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.5 var(--mono); color: var(--muted); }
