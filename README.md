@@ -131,9 +131,23 @@ On Windows, add a path to `Code.exe` to run a matched comparison in the same com
 npm run benchmark -- --samples=5 "--vscode=C:\path\to\Code.exe"
 ```
 
-The comparison alternates editor order across samples and uses the same fixture and fresh profiles. VS Code runs the failing script through its built-in Node launcher with the Node executable running the harness. CEVRA uses its bundled runtime. Both apps report a runtime version, and jump timings start when the harness activates each app's output link.
+The comparison alternates editor order across samples and uses the same fixture and fresh profiles. Workspace opening measures process launch to the file tree. VS Code takes the folder as a launch argument, and the harness supplies it through CEVRA's folder picker. VS Code runs the failing script through its built-in launcher with the Node executable running the harness. CEVRA uses its bundled runtime. Both apps report a runtime version, and jump timings start when the harness activates each app's output link.
 
 To generate a fixture for manual runs, use `node qa/benchmark.cjs --fixture=PATH_TO_NEW_FOLDER`. Use `edit.ts` to type and correct `const benchmark = ;`. Search for `CEVRA_BENCHMARK_NEEDLE` at line 51, column 14. Run `main.cjs` and jump to `fault # %.cjs` at line 3, column 9.
+
+### Reference run on November 9, 2026
+
+Five interleaved samples per editor on Windows build 26300 and an Intel Core i5-1135G7. Both editors reached all 15 expected navigation targets. CEVRA used Electron 45.2.3 with Node 24.22.2, and VS Code 1.145.2 used Node 24.15.0 for the failing script.
+
+| Workflow | CEVRA median | VS Code median |
+| --- | ---: | ---: |
+| Launch to workspace tree | 832.9 ms | 3,326.5 ms |
+| Open a file | 74.9 ms | 1,173.5 ms |
+| Edit to rendered text | 25.0 ms | 92.5 ms |
+| Show a syntax error | 225.8 ms | 863.6 ms |
+| Project search | 336.7 ms | 869.5 ms |
+| Run until failure | 145.5 ms | 1,465.1 ms |
+| Jump from failure to source | 41.9 ms | 124.2 ms |
 
 ## Recover unsaved edits
 

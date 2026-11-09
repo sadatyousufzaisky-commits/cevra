@@ -38,6 +38,7 @@ async function sample(root, profile) {
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
   delete env.ELECTRON_RUN_AS_NODE;
+  const launchStarted = performance.now();
   const app = await _electron.launch({
     executablePath: require('electron'),
     args: [repo, '--user-data-dir=' + profile],
@@ -66,10 +67,9 @@ async function sample(root, profile) {
     };
     const openFolder = page.locator('#open-folder');
     await page.waitForFunction(() => !document.getElementById('open-folder').disabled);
-    const openMs = await measure(async () => {
-      await openFolder.click();
-      await tree.getByRole('button', { name: 'main.cjs', exact: true }).waitFor();
-    });
+    await openFolder.click();
+    await tree.getByRole('button', { name: 'edit.ts', exact: true }).waitFor();
+    const openMs = performance.now() - launchStarted;
     const openFileMs = await measure(async () => {
       await open('edit.ts');
       await editor.locator('.cm-line').filter({ hasText: 'const benchmark = 42;' }).waitFor();

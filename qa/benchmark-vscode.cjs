@@ -15,7 +15,6 @@ async function sampleVscode({ executablePath, root, profile, needle, faultName }
   const user = path.join(profile, 'User');
   await fs.mkdir(user, { recursive: true });
   await fs.writeFile(path.join(user, 'settings.json'), JSON.stringify({
-    'files.simpleDialog.enable': true,
     'workbench.startupEditor': 'none',
     'security.workspace.trust.enabled': false,
     'telemetry.telemetryLevel': 'off',
@@ -34,9 +33,10 @@ async function sampleVscode({ executablePath, root, profile, needle, faultName }
   const env = { ...process.env };
   delete env.VSCODE_PORTABLE;
   delete env.ELECTRON_RUN_AS_NODE;
+  const launchStarted = performance.now();
   const app = await _electron.launch({
     executablePath,
-    args: ['--user-data-dir=' + profile, '--extensions-dir=' + path.join(profile, 'extensions'),
+    args: [root, '--user-data-dir=' + profile, '--extensions-dir=' + path.join(profile, 'extensions'),
       '--skip-welcome', '--skip-release-notes', '--disable-workspace-trust', '--new-window'],
     env,
     chromiumSandbox: true,
@@ -55,18 +55,9 @@ async function sampleVscode({ executablePath, root, profile, needle, faultName }
     const lines = page.locator('.monaco-editor:visible .view-lines:visible').first();
     const selection = page.locator('.statusbar');
     const position = text => selection.getByText(text, { exact: true }).waitFor();
-    await page.locator('.monaco-workbench').waitFor();
-    await keys('Control+k');
-    await keys('Control+o');
-    const picker = page.locator('.quick-input-widget:visible');
-    const folder = picker.getByRole('textbox', { name: /Folder path/ });
-    await folder.fill(root + path.sep);
-    await picker.getByRole('option', { name: 'group-0', exact: true }).waitFor();
     const editFile = page.locator('.explorer-folders-view').getByText('edit.ts', { exact: true });
-    const openMs = await measure(async () => {
-      await picker.getByRole('button', { name: 'OK', exact: true }).click();
-      await editFile.waitFor();
-    });
+    await editFile.waitFor();
+    const openMs = performance.now() - launchStarted;
     const firstLine = lines.getByText(/const.*benchmark.*42/);
     const openFileMs = await measure(async () => {
       await editFile.click();
