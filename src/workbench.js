@@ -20,6 +20,7 @@ import { createSignatureHelp } from './signature-help.js';
 import { createSymbolInfo } from './symbol-info.js';
 import { createSymbolPicker } from './symbol-picker.js';
 import { createTestEvidence } from './test-evidence.js';
+import { createTerminalPanel } from './terminal-panel.js';
 import { createTypeProblems } from './type-problems.js';
 import { createWorkspaceLayout } from './workspace-layout.js';
 import { sourceLanguage } from './source-language.cjs';
@@ -29,6 +30,7 @@ import { changeLineEnding, detectLineEnding, lineEnding, lineEndingHistory } fro
 const api = window.cevra;
 const testEvidence = createTestEvidence(api);
 const byId = id => document.getElementById(id);
+const terminalPanel = createTerminalPanel({ api, errorText });
 const tabs = byId('tabs');
 const editor = byId('editor');
 const tree = byId('tree');
@@ -58,7 +60,10 @@ const searchToggle = byId('search-toggle');
 const backButton = byId('nav-back');
 const forwardButton = byId('nav-forward');
 const dock = byId('run-panel');
-const dockButtons = { output: byId('show-output'), problems: byId('show-problems'), references: byId('show-references') };
+const dockButtons = {
+  output: byId('show-output'), problems: byId('show-problems'), references: byId('show-references'),
+  terminal: byId('show-terminal'),
+};
 const runnable = /\.(?:js|cjs|mjs)$/i;
 const maxOutput = 160_000;
 
@@ -126,6 +131,7 @@ function applyColorMode(mode) {
   if (mode === colorMode) return;
   colorMode = mode;
   document.documentElement.dataset.colorMode = mode;
+  terminalPanel.refreshTheme();
   const effects = editorColorMode.reconfigure(colorModeExtension(mode === 'dark'));
   for (const tab of documents.values()) {
     if (tab === active) view.dispatch({ effects });
@@ -154,6 +160,8 @@ function syncCommands() {
   const open = [...documents.values()];
   const saving = savingAll || open.some(tab => tab.saving);
   const discarding = open.some(tab => tab.discarding);
+  dockButtons.terminal.disabled = !project?.terminalLimit || changingProject;
+  terminalPanel.setBusy(changingProject);
   testEvidence.setBusy(Boolean(run || changingProject));
   openButton.disabled = welcomeOpen.disabled = exampleButton.disabled = Boolean(run || changingProject || saving || discarding);
   saveButton.disabled = !active?.dirty || Boolean(active.saving || active.discarding || changingProject);
@@ -545,6 +553,7 @@ async function adoptProject(next) {
   symbolPicker.close();
   semantic.changed();
   project = next;
+  terminalPanel.reset(next);
   testEvidence.reset(next);
   documents.clear();
   expanded.clear();
@@ -761,8 +770,9 @@ function showDock(name, focus = false) {
   byId('problems-panel').hidden = byId('problems-status').hidden = name !== 'problems';
   byId('references-panel').hidden = name !== 'references';
   layout.expandDock();
+  terminalPanel.show(name === 'terminal', focus);
   problemsPanel.render();
-  if (focus) dockButtons[name].focus();
+  if (focus && name !== 'terminal') dockButtons[name].focus();
 }
 
 function resetOutput(target = '', mode = 'file') {
@@ -1242,7 +1252,7 @@ function renameSymbol() {
   });
 }
 
-for (const [pane, button] of Object.entries(dockButtons)) button.onclick = () => showDock(pane);
+for (const [pane, button] of Object.entries(dockButtons)) button.onclick = () => showDock(pane, pane === 'terminal');
 backButton.onclick = () => travel('back').catch(report);
 forwardButton.onclick = () => travel('forward').catch(report);
 openButton.onclick = welcomeOpen.onclick = () => openProject(api.chooseFolder).catch(report);
@@ -1316,6 +1326,12 @@ document.addEventListener('keydown', event => {
   if (document.querySelector('dialog[open]')) return;
   const command = event.ctrlKey || event.metaKey;
   const key = event.key.toLowerCase();
+  if (command && !event.shiftKey && !event.altKey && event.code === 'Backquote' && !dockButtons.terminal.disabled) {
+    event.preventDefault();
+    if (!event.repeat) showDock('terminal', true);
+    return;
+  }
+  if (terminalPanel.handles(event)) return;
   if (event.key === 'F5') {
     event.preventDefault();
     void runFile();

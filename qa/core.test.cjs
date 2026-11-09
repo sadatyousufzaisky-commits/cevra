@@ -2,6 +2,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { test } = require('node:test');
+const { setTimeout: delay } = require('node:timers/promises');
+const { stripVTControlCharacters } = require('node:util');
 const { temporaryFolder } = require('./temp.cjs');
 const { createWorkspace, listFolder, readSource, saveSource, saveRecoveryCopy } = require('../src/workspace.cjs');
 const { startNodeRun, startNodeTests } = require('../src/runner.cjs');
@@ -15,6 +17,7 @@ const { createPreferences } = require('../src/preferences.cjs');
 const { captureInputs, inputFreshness, sourceAnchor } = require('../src/continuum/revisions.cjs');
 const { createTestWorkstream } = require('../src/continuum/workstream.cjs');
 const { createExecutionSessions } = require('../src/execution/sessions.cjs');
+const { createTerminalSessions } = require('../src/execution/terminal-sessions.cjs');
 const { maxOutput } = require('../src/execution/process-host.cjs');
 const { createReportDecoder, encodeReport } = require('../src/execution/test-report.cjs');
 
@@ -24,6 +27,43 @@ async function fixture(t) {
   await fs.mkdir(root);
   return { folder, root, workspace: await createWorkspace(root) };
 }
+
+test('Windows terminal sessions enforce scope and bound input and output reads',
+  { timeout: 12_000, skip: process.platform !== 'win32' }, async t => {
+    const { root, workspace } = await fixture(t);
+    const terminals = createTerminalSessions();
+    t.after(() => terminals.closeAll());
+    assert.throws(() => terminals.start(workspace.id, root, 'custom', 80, 24), /supported terminal profile/);
+    const { id } = terminals.start(workspace.id, root, 'cmd', 80, 24);
+    assert.throws(() => terminals.read('another workspace', id), /session has closed/);
+    assert.throws(() => terminals.write(workspace.id, id, 'é'.repeat(8193)), /16 KiB/);
+    await assert.rejects(terminals.resize(workspace.id, id, 0, 24), /Invalid terminal size/);
+    await assert.rejects(terminals.close('another workspace', id), /session has closed/);
+    await terminals.write(workspace.id, id, 'for /L %n in (1,1,2200) do @echo CEVRA-FLOOD-0123456789-%n\r');
+    await terminals.write(workspace.id, id, 'echo CEVRA-CORE&exit /b 3\r');
+    const output = [];
+    const deadline = Date.now() + 8_000;
+    while (Date.now() < deadline) {
+      const { data, exit } = terminals.read(workspace.id, id);
+      if (data) {
+        assert.ok(data.length <= 32 * 1024);
+        output.push(data);
+      }
+      if (exit) {
+        assert.equal(exit.code, 3, exit.error);
+        const received = Buffer.concat(output);
+        assert.ok(received.length > 32 * 1024);
+        const withoutTitles = received.toString('utf8').replace(/\x1b\]0;[^\x07]*\x07/g, '');
+        assert.match(stripVTControlCharacters(withoutTitles).slice(-1000),
+          /CEVRA-FLOOD-0123456789-2200[\s\S]*CEVRA-CORE\r\n/);
+        await terminals.close(workspace.id, id);
+        assert.throws(() => terminals.read(workspace.id, id), /session has closed/);
+        return;
+      }
+      await delay(20);
+    }
+    assert.fail('Command Prompt did not exit. ' + Buffer.concat(output).toString('utf8').slice(-2000));
+  });
 
 test('execution sessions reject stale owners, keep a bounded output tail, and settle cancellation once', async () => {
   const events = [];

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -16,6 +16,7 @@ const { createSemanticService } = require('./semantic-service.cjs');
 const { createPreferences } = require('./preferences.cjs');
 const { createTestWorkstream } = require('./continuum/workstream.cjs');
 const { createExecutionSessions } = require('./execution/sessions.cjs');
+const { createTerminalSessions, terminalProfile, validateSize, maxTerminalInput } = require('./execution/terminal-sessions.cjs');
 
 app.setName('CEVRA');
 
@@ -27,6 +28,7 @@ const preferences = createPreferences(app.getPath('userData'));
 const syntax = createSyntaxService();
 const formatter = createFormatService();
 const semantics = createSemanticService();
+const terminals = createTerminalSessions();
 let window;
 let workspace;
 let workstream;
@@ -105,10 +107,20 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
     if (recovering) await sessions.cancel();
     const next = await createWorkspace(folder);
     const files = await listFolder(next);
+    const settings = await preferences.getEditor(next);
+    if (!recovering && terminals.liveCount) {
+      const { response } = await dialog.showMessageBox(window, {
+        type: 'warning', title: 'Switch workspace',
+        message: 'Close the active terminals and switch workspaces?',
+        detail: 'Commands still running in those terminals will stop.',
+        buttons: ['Stay Here', 'Close Terminals and Switch'], defaultId: 0, cancelId: 0, noLink: true,
+      });
+      if (response !== 1) return null;
+    }
     if (discard && workspace) await drafts.clear(workspace.root);
     const { entries, unreadable } = await readDrafts();
     const recovered = entries.filter(draft => draft.root === next.root);
-    const settings = await preferences.getEditor(next);
+    await terminals.closeAll();
     activeSearch?.controller.abort();
     syntax.stop();
     formatter.stop();
@@ -118,6 +130,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
     return {
       id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable, settings,
       caseInsensitivePaths: process.platform === 'win32',
+      terminalLimit: process.platform === 'win32' ? terminals.maxSessions : 0,
     };
   } finally {
     changingWorkspace = false;
@@ -156,42 +169,80 @@ handle('revoke-trust', async id => {
   await preferences.setTrusted(project, false);
 });
 
-handle('authorize-run', async (id, runId) => {
-  const project = currentWorkspace(id);
-  if (!Number.isSafeInteger(runId) || runId < 1) throw new Error('Invalid execution request.');
-  if (authorizingRun || sessions.busy) throw new Error('An execution request is already active.');
+async function authorizeExecution(project, prompt, start) {
+  if (authorizingRun) throw new Error('An execution request is already active.');
   if (changingWorkspace || closePending || allowClose) throw new Error('The workspace is changing.');
   const owner = window.webContents;
   authorizingRun = true;
-  runGrant = undefined;
   try {
     await resolveEntry(project, '');
     if (!await preferences.isTrusted(project)) {
       const { response } = await dialog.showMessageBox(window, {
         type: 'warning',
         title: 'Workspace execution',
-        message: 'Allow CEVRA to run code from this workspace?',
-        detail: project.root + '\n\nCode and tests run with your Windows user permissions.',
+        message: prompt.message,
+        detail: project.root + '\n\n' + prompt.detail,
         buttons: ['Cancel', 'Run Once', 'Trust Workspace'],
         defaultId: 0,
         cancelId: 0,
         noLink: true,
       });
       if (response !== 1 && response !== 2) return null;
-      currentWorkspace(id);
+      currentWorkspace(project.id);
       await resolveEntry(project, '');
       if (response === 2) await preferences.setTrusted(project, true);
     }
-    currentWorkspace(id);
+    const root = await resolveEntry(project, '');
+    currentWorkspace(project.id);
     if (changingWorkspace || closePending || allowClose || window?.webContents !== owner || !rendererReady) {
       throw new Error('The execution request expired.');
     }
-    const token = randomUUID();
-    runGrant = { id, runId, token };
-    return token;
+    return start(root);
   } finally {
     authorizingRun = false;
   }
+}
+
+handle('authorize-run', (id, runId) => {
+  const project = currentWorkspace(id);
+  if (!Number.isSafeInteger(runId) || runId < 1) throw new Error('Invalid execution request.');
+  if (authorizingRun || sessions.busy) throw new Error('An execution request is already active.');
+  runGrant = undefined;
+  return authorizeExecution(project, {
+    message: 'Allow CEVRA to run code from this workspace?',
+    detail: 'Code and tests run with your Windows user permissions.',
+  }, () => {
+    const token = randomUUID();
+    runGrant = { id, runId, token };
+    return token;
+  });
+});
+
+handle('terminal-new', (id, profile, columns, rows) => {
+  const project = currentWorkspace(id);
+  if (process.platform !== 'win32') throw new Error('The live terminal requires Windows.');
+  const { name } = terminalProfile(profile);
+  validateSize(columns, rows);
+  return authorizeExecution(project, {
+    message: 'Open ' + name + ' in this workspace?',
+    detail: 'Terminal commands run with your Windows user permissions.',
+  }, root => terminals.start(id, root, profile, columns, rows));
+});
+handle('terminal-read', (id, sessionId) => terminals.read(currentWorkspace(id).id, sessionId));
+handle('terminal-write', (id, sessionId, text) => terminals.write(currentWorkspace(id).id, sessionId, text));
+handle('terminal-resize', (id, sessionId, columns, rows) => terminals.resize(currentWorkspace(id).id, sessionId, columns, rows));
+handle('terminal-close', (id, sessionId) => terminals.close(currentWorkspace(id).id, sessionId));
+handle('terminal-copy', (id, sessionId, text) => {
+  terminals.assertSession(currentWorkspace(id).id, sessionId);
+  if (typeof text !== 'string' || Buffer.byteLength(text) > 1024 * 1024) throw new Error('The selection is too large to copy.');
+  return clipboard.writeText(text);
+});
+handle('terminal-paste', async (id, sessionId) => {
+  terminals.assertSession(currentWorkspace(id).id, sessionId);
+  const text = await clipboard.readText();
+  terminals.assertSession(currentWorkspace(id).id, sessionId);
+  if (Buffer.byteLength(text) > maxTerminalInput) throw new Error('Clipboard text exceeds the 16 KiB terminal paste limit.');
+  return text;
 });
 
 handle('choose-folder', async discard => {
@@ -365,7 +416,7 @@ handle('close-ready', async (hasDrafts, backupFailed) => {
     window.webContents.send('cevra:close-canceled');
   } else {
     runGrant = undefined;
-    await sessions.cancel();
+    await Promise.all([sessions.cancel(), terminals.closeAll()]);
     if (!closePending || window !== closing) return;
     closePending = false;
     allowClose = true;
@@ -409,6 +460,7 @@ async function launch() {
     formatter.stop();
     semantics.stop();
     void sessions.cancel();
+    void terminals.closeAll();
     const now = Date.now();
     const repeated = now - lastRendererCrash < 2_000;
     lastRendererCrash = now;
@@ -425,6 +477,7 @@ async function launch() {
     if (allowClose || !rendererReady) {
       activeSearch?.controller.abort();
       void sessions.cancel();
+      void terminals.closeAll();
       return;
     }
     event.preventDefault();

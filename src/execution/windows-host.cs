@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
-internal static class WindowsHost
+internal static partial class WindowsHost
 {
     private const uint KillOnJobClose = 0x2000;
     private const uint ExtendedStartupInfo = 0x00080000;
@@ -23,11 +23,11 @@ internal static class WindowsHost
         try
         {
             uint ownerId;
-            if (args.Length < 2 || !uint.TryParse(args[0], out ownerId) || !Path.IsPathRooted(args[1]))
-                throw new ArgumentException("An owner PID and an absolute executable path are required.");
+            if (args.Length < 2 || !uint.TryParse(args[0], out ownerId))
+                throw new ArgumentException("An execution owner PID is required.");
             var owner = OpenProcess(Synchronize, false, ownerId);
             Require(owner != IntPtr.Zero, "Open execution owner");
-            try { return Run(args, owner); }
+            try { return args[1] == "--terminal" ? RunTerminal(args, owner) : Run(args, owner); }
             finally { CloseHandle(owner); }
         }
         catch (Exception error)
@@ -52,48 +52,73 @@ internal static class WindowsHost
             listener.IsBackground = true;
             listener.Start();
 
-            var job = CreateJobObject(IntPtr.Zero, null);
-            Require(job != IntPtr.Zero, "CreateJobObject");
+            var job = CreateTrackedJob();
             try
             {
-                var limits = new JobLimits();
-                limits.Basic.LimitFlags = KillOnJobClose;
-                Require(SetInformationJobObject(job, ExtendedLimitInformation, ref limits,
-                    Marshal.SizeOf(typeof(JobLimits))), "SetInformationJobObject");
-                uint ownerState = WaitForSingleObject(owner, 0);
-                if (cancel.WaitOne(0) || ownerState == 0) return 1;
-                Require(ownerState == 258, "Check execution owner");
-                var process = Launch(args, job);
-                try
-                {
-                    var handles = new[] { owner, cancel.SafeWaitHandle.DangerousGetHandle(), process.Process };
-                    uint result = WaitForMultipleObjects((uint)handles.Length, handles, false, uint.MaxValue);
-                    Require(result <= 2, "WaitForMultipleObjects");
-                    uint exitCode = 1;
-                    if (result == 2)
-                        Require(GetExitCodeProcess(process.Process, out exitCode), "GetExitCodeProcess");
-                    DrainJob(job);
-                    return unchecked((int)exitCode);
-                }
-                finally { CloseHandle(process.Process); }
+                if (cancel.WaitOne(0) || OwnerExited(owner)) return 1;
+                return WaitForProcess(owner, cancel, job, Launch(args, 1, job, IntPtr.Zero, null));
             }
             finally { CloseHandle(job); }
         }
     }
 
-    private static ProcessInfo Launch(string[] args, IntPtr job)
+    private static IntPtr CreateTrackedJob()
     {
+        var job = CreateJobObject(IntPtr.Zero, null);
+        Require(job != IntPtr.Zero, "CreateJobObject");
+        try
+        {
+            var limits = new JobLimits();
+            limits.Basic.LimitFlags = KillOnJobClose;
+            Require(SetInformationJobObject(job, ExtendedLimitInformation, ref limits,
+                Marshal.SizeOf(typeof(JobLimits))), "SetInformationJobObject");
+            return job;
+        }
+        catch { CloseHandle(job); throw; }
+    }
+
+    private static bool OwnerExited(IntPtr owner)
+    {
+        uint state = WaitForSingleObject(owner, 0);
+        Require(state == 0 || state == 258, "Check execution owner");
+        return state == 0;
+    }
+
+    private static int WaitForProcess(IntPtr owner, ManualResetEvent cancel, IntPtr job, ProcessInfo process)
+    {
+        try
+        {
+            var handles = new[] { owner, cancel.SafeWaitHandle.DangerousGetHandle(), process.Process };
+            uint result = WaitForMultipleObjects((uint)handles.Length, handles, false, uint.MaxValue);
+            Require(result <= 2, "WaitForMultipleObjects");
+            uint exitCode = 1;
+            if (result == 2)
+                Require(GetExitCodeProcess(process.Process, out exitCode), "GetExitCodeProcess");
+            DrainJob(job);
+            return unchecked((int)exitCode);
+        }
+        finally { CloseHandle(process.Process); }
+    }
+
+    private static ProcessInfo Launch(string[] args, int executable, IntPtr job, IntPtr pseudoConsole,
+        string cwd, string commandTail = null)
+    {
+        if (!Path.IsPathRooted(args[executable])) throw new ArgumentException("An absolute executable path is required.");
+        bool redirected = pseudoConsole == IntPtr.Zero;
         var security = new SecurityAttributes { Size = Marshal.SizeOf(typeof(SecurityAttributes)), Inherit = true };
         IntPtr input = IntPtr.Zero, output = IntPtr.Zero, error = IntPtr.Zero, attributes = IntPtr.Zero;
         GCHandle handles = default(GCHandle), jobs = default(GCHandle);
         bool initialized = false;
         try
         {
-            input = CreateFile("NUL", 0x80000000, 3, ref security, 3, 0, IntPtr.Zero);
-            Require(input != new IntPtr(-1), "Open NUL");
-            output = InheritableStandardHandle(-11);
-            error = InheritableStandardHandle(-12);
-            handles = GCHandle.Alloc(new[] { input, output, error }, GCHandleType.Pinned);
+            if (redirected)
+            {
+                input = CreateFile("NUL", 0x80000000, 3, ref security, 3, 0, IntPtr.Zero);
+                Require(input != new IntPtr(-1), "Open NUL");
+                output = InheritableStandardHandle(-11);
+                error = InheritableStandardHandle(-12);
+                handles = GCHandle.Alloc(new[] { input, output, error }, GCHandleType.Pinned);
+            }
             jobs = GCHandle.Alloc(new[] { job }, GCHandleType.Pinned);
             IntPtr size = IntPtr.Zero;
             InitializeProcThreadAttributeList(IntPtr.Zero, 2, 0, ref size);
@@ -101,7 +126,9 @@ internal static class WindowsHost
             attributes = Marshal.AllocHGlobal(size);
             Require(InitializeProcThreadAttributeList(attributes, 2, 0, ref size), "Initialize process attributes");
             initialized = true;
-            AddAttribute(attributes, HandleList, handles, 3);
+            if (redirected) AddAttribute(attributes, HandleList, handles, 3);
+            else Require(UpdateProcThreadAttribute(attributes, 0, new UIntPtr(PseudoConsoleAttribute), pseudoConsole,
+                new UIntPtr((uint)IntPtr.Size), IntPtr.Zero, IntPtr.Zero), "Attach pseudoconsole");
             AddAttribute(attributes, JobList, jobs, 1);
 
             var startup = new StartupInfoEx { Attributes = attributes };
@@ -111,14 +138,16 @@ internal static class WindowsHost
             startup.Startup.Output = output;
             startup.Startup.Error = error;
             var command = new StringBuilder();
-            for (int index = 1; index < args.Length; index++)
+            AppendArgument(command, args[executable]);
+            if (commandTail != null) command.Append(' ').Append(commandTail);
+            else for (int index = executable + 1; index < args.Length; index++)
             {
-                if (command.Length > 0) command.Append(' ');
+                command.Append(' ');
                 AppendArgument(command, args[index]);
             }
             ProcessInfo process;
-            Require(CreateProcess(args[1], command, IntPtr.Zero, IntPtr.Zero, true,
-                ExtendedStartupInfo | CreateNoWindow, IntPtr.Zero, null, ref startup, out process), "CreateProcess");
+            Require(CreateProcess(args[executable], command, IntPtr.Zero, IntPtr.Zero, redirected,
+                ExtendedStartupInfo | (redirected ? CreateNoWindow : 0), IntPtr.Zero, cwd, ref startup, out process), "CreateProcess");
             CloseHandle(process.Thread);
             return process;
         }

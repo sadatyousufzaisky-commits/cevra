@@ -27,6 +27,28 @@ async function assertWindowsProcessStopped(pid) {
   assert.fail('Windows process ' + pid + ' was still running after cleanup.');
 }
 
+const terminalTree = [
+  'const { spawn } = require("node:child_process");',
+  'const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"],',
+  '  { stdio: "ignore", detached: true, windowsHide: true });',
+  'child.once("spawn", () => console.log("TERMINAL-TREE " + process.pid + " " + child.pid));',
+  'setInterval(() => {}, 1000);',
+].join('\n');
+
+async function startTerminalTree(page) {
+  const active = page.locator('.terminal-surface:visible');
+  const input = active.getByRole('textbox', { name: /terminal input/ });
+  const rows = active.locator('.xterm-accessibility-tree');
+  await rows.getByText(/PS .*project \(QA\)/).first().waitFor();
+  const command = "& '" + process.execPath.replaceAll("'", "''") + "' .\\terminal-tree.cjs";
+  await page.keyboard.type(command);
+  await input.press('Enter');
+  const marker = /^TERMINAL-TREE (\d+) (\d+)$/;
+  const pids = marker.exec((await rows.getByText(marker).textContent()).trim()).slice(1).map(Number);
+  for (const pid of pids) process.kill(pid, 0);
+  return pids;
+}
+
 async function openWorkbench(t, files) {
   const temp = await fs.realpath(os.tmpdir());
   const sandbox = await fs.mkdtemp(path.join(temp, 'cevra-workbench-'));
@@ -121,6 +143,123 @@ async function openWorkbench(t, files) {
   });
   return result;
 }
+
+test('Windows terminal runs PowerShell and Command Prompt independently and resizes the shell',
+  { timeout: 40_000, skip: process.platform !== 'win32' }, async t => {
+    const { app, page, project } = await openWorkbench(t, { 'notes.txt': 'Terminal fixture' });
+    await page.keyboard.press('Control+Backquote');
+    const open = page.getByRole('button', { name: 'New terminal', exact: true });
+    const close = page.getByRole('button', { name: 'Close terminal', exact: true });
+    const active = page.locator('.terminal-surface:visible');
+    const rows = active.locator('.xterm-accessibility-tree');
+    const visible = locator => locator.waitFor().catch(async error => {
+      throw new Error((await page.locator('#terminal-panel').innerText()).slice(-4000), { cause: error });
+    });
+    const send = async text => {
+      const input = active.getByRole('textbox', { name: /terminal input/ });
+      await input.press('End');
+      await page.keyboard.type(text);
+      await input.press('Enter');
+    };
+    await open.click();
+    await visible(rows.getByText(/PS .*project \(QA\)/).first());
+    assert.match(await page.locator('#terminal-root').textContent(), /project \(QA\)/);
+    const text = '$cevraValue = "café ✓"; Write-Output ("PTY " + $cevraValue)';
+    await app.evaluate(({ clipboard }, value) => {
+      // Exercise the app's clipboard bridge without replacing the user's clipboard.
+      let contents = value;
+      clipboard.readText = async () => contents;
+      clipboard.writeText = async text => { contents = text; };
+    }, text);
+    await page.getByRole('button', { name: 'Paste', exact: true }).click();
+    await visible(rows.getByText(/\$cevraValue/).first());
+    await active.getByRole('textbox', { name: /terminal input/ }).press('Enter');
+    await visible(rows.getByText('PTY café ✓', { exact: true }));
+
+    await send('Write-Output ("ROWS:" + [Console]::WindowHeight)');
+    const height = rows.getByText(/^ROWS:\d+$/).last();
+    const initial = Number((await height.textContent()).split(':')[1]);
+    const resize = page.getByRole('separator', { name: 'Resize bottom panel' });
+    await resize.press('End');
+    await page.waitForFunction(value =>
+      document.querySelector('.terminal-surface:not([hidden]) .xterm-accessibility-tree').childElementCount > value, initial);
+    await send('Write-Output ("NEWROWS:" + [Console]::WindowHeight)');
+    const resized = Number((await rows.getByText(/^NEWROWS:\d+$/).textContent()).split(':')[1]);
+    assert.ok(resized > initial);
+    await send('Write-Host CEVRA-COLOR -ForegroundColor Green');
+    const colored = active.locator('.xterm-rows :is(.xterm-fg-2, .xterm-fg-10)').getByText('CEVRA-COLOR', { exact: true });
+    await visible(colored);
+    const { x, y, width, height: rowHeight } = await colored.boundingBox();
+    await page.mouse.click(x + width / 2, y + rowHeight / 2, { clickCount: 3 });
+    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await page.getByText('Selection copied.', { exact: true }).waitFor();
+    assert.match(await app.evaluate(({ clipboard }) => clipboard.readText()), /CEVRA-COLOR/);
+    const lastLine = Math.max(60, resized * 3);
+    const earlierLine = rows.getByText('LINE-' + (lastLine - resized - 1), { exact: true });
+    await send('1..' + lastLine + ' | ForEach-Object { "LINE-$_" }');
+    await visible(rows.getByText('LINE-' + lastLine, { exact: true }));
+    assert.equal(await earlierLine.count(), 0);
+    await active.getByRole('textbox', { name: /terminal input/ }).press('Shift+PageUp');
+    await visible(earlierLine);
+
+    await page.getByLabel('Shell', { exact: true }).selectOption('cmd');
+    await open.click();
+    await visible(rows.getByText(/project \(QA\).*?>/).first());
+    await send('echo CEVRA-CMD');
+    await rows.getByText('CEVRA-CMD', { exact: true }).waitFor();
+    await send('cd');
+    await visible(rows.getByText(project, { exact: true }));
+    await page.getByRole('button', { name: 'PowerShell 1', exact: true }).click();
+    await send('Write-Output ("STILL " + $cevraValue)');
+    await rows.getByText('STILL café ✓', { exact: true }).waitFor();
+    assert.equal(await rows.getByText('CEVRA-CMD', { exact: true }).count(), 0);
+    await send('Write-Output CEVRA-SLEEPING; Start-Sleep -Seconds 60');
+    const sleeping = rows.getByText('CEVRA-SLEEPING', { exact: true });
+    await visible(sleeping);
+    await active.getByRole('textbox', { name: /terminal input/ }).press('Control+c');
+    await visible(sleeping.locator('xpath=following-sibling::*[1]').filter({ hasText: /^PS .*?>\s*$/ }));
+    await send('Write-Output CEVRA-INTERRUPTED');
+    await visible(rows.getByText('CEVRA-INTERRUPTED', { exact: true }));
+    await close.click();
+    await page.getByRole('button', { name: 'PowerShell 1', exact: true }).waitFor({ state: 'detached' });
+    await rows.getByText('CEVRA-CMD', { exact: true }).waitFor();
+    await send('exit 7');
+    await page.getByText('Shell exited with code 7.', { exact: true }).waitFor();
+  });
+
+test('Windows terminal honors trust and cleans up a detached tree before switching workspaces',
+  { timeout: 35_000, skip: process.platform !== 'win32' }, async t => {
+    const { app, page, project } = await openWorkbench(t, { 'terminal-tree.cjs': terminalTree });
+    const terminal = page.getByRole('button', { name: 'Terminal', exact: true });
+    await terminal.click();
+    const start = page.getByRole('button', { name: 'New terminal', exact: true });
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 0 }); });
+    await start.click();
+    await page.getByText('Terminal launch canceled.', { exact: true }).waitFor();
+    assert.equal(await page.locator('.terminal-surface').count(), 0);
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
+    await start.click();
+    const pids = await startTerminalTree(page);
+
+    const next = path.join(path.dirname(project), 'next');
+    await fs.mkdir(next);
+    await fs.writeFile(path.join(next, 'new.txt'), 'next workspace');
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+      dialog.showMessageBox = async () => ({ response: 0 });
+    }, next);
+    await page.locator('#open-folder').click();
+    await page.locator('#open-folder').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => !document.getElementById('open-folder').disabled);
+    assert.equal(await page.locator('.terminal-surface').count(), 1);
+    for (const pid of pids) process.kill(pid, 0);
+
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
+    await page.locator('#open-folder').click();
+    await page.getByRole('button', { name: 'new.txt', exact: true }).waitFor();
+    await Promise.all(pids.map(assertWindowsProcessStopped));
+    assert.equal(await page.locator('.terminal-surface').count(), 0);
+  });
 
 test('saves a nested UTF-8 file with BOM and CRLF and preserves external changes', async t => {
   const folder = 'notes (draft)';
@@ -710,6 +849,7 @@ test('keeps drafts across a regular quit and clears them on confirmed discard', 
 test('reloads a crashed renderer and saves the recovered draft normally', { timeout: 35_000 }, async t => {
   const workbench = await openWorkbench(t, {
     'renderer.cjs': 'console.log("original");\n',
+    'terminal-tree.cjs': terminalTree,
     'running.cjs': [
       'const child = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"],',
       '  { stdio: "ignore", detached: true, windowsHide: true });',
@@ -724,6 +864,11 @@ test('reloads a crashed renderer and saves the recovered draft normally', { time
   const pattern = /running (\d+) (\d+)/;
   await workbench.output.getByText(pattern).waitFor();
   const running = pattern.exec(await workbench.output.textContent()).slice(1).map(Number);
+  if (process.platform === 'win32') {
+    await workbench.page.getByRole('button', { name: 'Terminal', exact: true }).click();
+    await workbench.page.getByRole('button', { name: 'New terminal', exact: true }).click();
+    running.push(...await startTerminalTree(workbench.page));
+  }
   const replacement = workbench.app.waitForEvent('window', { timeout: 10_000 });
   await workbench.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.forcefullyCrashRenderer());
   const page = await replacement;
@@ -731,6 +876,7 @@ test('reloads a crashed renderer and saves the recovered draft normally', { time
   page.setDefaultTimeout(8_000);
   const editor = page.getByRole('textbox', { name: 'Source editor' });
   await page.getByText('Recovered 1 unsaved file.', { exact: true }).waitFor();
+  assert.equal(await page.locator('.terminal-surface').count(), 0);
   assert.match(await editor.textContent(), /renderer recovery/);
   await editor.press('Control+s');
   await page.getByText('Saved renderer.cjs', { exact: true }).waitFor();

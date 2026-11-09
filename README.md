@@ -23,6 +23,12 @@ The workbench uses Electron for the desktop shell and CodeMirror for the editor.
 
 On Windows, CEVRA starts programs and tests inside a Job Object and waits for the process tree to stop before releasing its execution session. This covers detached children after a script exits and cleanup after the app's main process dies. Finish or cancel the active run before switching workspaces. [Windows Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)
 
+## Use the integrated terminal
+
+Choose **Terminal** in the bottom panel or press **Ctrl+Backtick**. Select **PowerShell** or **Command Prompt**, then choose **New terminal**. Each shell starts in the workspace folder and has its own environment and output. You can keep up to four sessions open and switch between them while commands run. The shell resizes with the panel. Use **Copy** and **Paste** or **Ctrl+Shift+C** and **Ctrl+Shift+V**.
+
+Opening a shell uses the same workspace trust prompt as running code. **Close terminal** ends its process tree. CEVRA asks before closing active terminals on a workspace switch and also closes them if the renderer crashes. Scrollback holds up to 2,000 lines in memory per session. The built-in PowerShell profile starts without loading user profiles and disables PSReadLine history saves for the session. The terminal requires the Windows pseudoconsole API available from Windows 10 version 1809. Command Prompt starts in local folders. Use PowerShell for UNC paths. [Windows pseudoconsole sessions](https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session)
+
 ## Run project tests
 
 **Run tests** (Ctrl+Alt+T) saves open edits and uses Node's built-in test runner to discover JavaScript test files in the project. Click a failure to jump to its assertion or error location. The output pane keeps error details alongside the failure list.

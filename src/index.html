@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'">
   <title>CEVRA</title>
+  <link rel="stylesheet" href="../dist/workbench.css">
   <link rel="stylesheet" href="./workbench.css">
   <script src="../dist/workbench.js" defer></script>
 </head>
@@ -116,6 +117,7 @@
             <button id="show-output" class="dock-view" aria-pressed="true"><span id="run-heading">Run output</span></button>
             <button id="show-problems" class="dock-view" aria-label="Problems" aria-pressed="false" title="Problems (Ctrl+Shift+M)">Problems <span id="problems-count" class="problems-count" aria-hidden="true" hidden></span></button>
             <button id="show-references" class="dock-view" aria-pressed="false" title="References (Shift+F12 to search)">References</button>
+            <button id="show-terminal" class="dock-view" aria-pressed="false" title="Terminal (Ctrl+`)" disabled>Terminal</button>
           </div>
           <span id="run-state" class="run-state" role="status">Ready</span>
           <span id="run-target" class="run-target"></span>
@@ -165,6 +167,25 @@
             </div>
             <p id="references-scope" class="references-scope"></p>
             <ul id="reference-results" class="problem-list" aria-label="Reference locations"></ul>
+          </section>
+          <section id="terminal-panel" class="terminal-panel" aria-label="Workspace terminal" hidden>
+            <div class="terminal-toolbar">
+              <label for="terminal-profile">Shell</label>
+              <select id="terminal-profile" disabled>
+                <option value="powershell">PowerShell</option>
+                <option value="cmd">Command Prompt</option>
+              </select>
+              <button id="terminal-new" class="button" disabled>New terminal</button>
+              <div id="terminal-tabs" class="terminal-tabs" role="group" aria-label="Terminal sessions"></div>
+              <button id="terminal-copy" class="button" title="Copy selection (Ctrl+Shift+C)" disabled>Copy</button>
+              <button id="terminal-paste" class="button" title="Paste (Ctrl+Shift+V)" disabled>Paste</button>
+              <button id="terminal-close" class="button" disabled>Close terminal</button>
+            </div>
+            <div class="terminal-details">
+              <span id="terminal-status" role="status">Choose a shell and open a terminal.</span>
+              <span id="terminal-root" hidden></span>
+            </div>
+            <div id="terminal-surfaces" class="terminal-surfaces"></div>
           </section>
         </div>
       </section>

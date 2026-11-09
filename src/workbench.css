@@ -197,6 +197,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 
 .run-panel { --dock-default: clamp(155px, 25vh, 250px); flex: 0 0 min(var(--dock-size, var(--dock-default)), 48%); min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--dock); }
 .run-panel[data-mode="tests"] { --dock-default: clamp(208px, 35vh, 340px); }
+.run-panel[data-pane="terminal"] { --dock-default: clamp(208px, 35vh, 340px); }
 .run-panel[data-collapsed="true"] { flex-basis: 41px; }
 .run-panel[data-collapsed="true"] :is(#rerun-failures, #problems-retry) { display: none; }
 .dock-resizer { flex: 0 0 6px; cursor: ns-resize; touch-action: none; }
@@ -209,7 +210,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .dock-view:hover { background: var(--raised); color: var(--text); }
 .dock-view[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--mint); }
 .problems-count { border-radius: 8px; padding: 0 5px; background: var(--raised); color: var(--danger); font-size: 11px; }
-.run-panel:is([data-pane="problems"], [data-pane="references"]) :is(#run-state, #run-target, #test-totals, #rerun-failures, .test-evidence, .run-diagnostic, .output-notice, .run-body) { display: none; }
+.run-panel:is([data-pane="problems"], [data-pane="references"], [data-pane="terminal"]) :is(#run-state, #run-target, #test-totals, #rerun-failures, .test-evidence, .run-diagnostic, .output-notice, .run-body) { display: none; }
 .problems-panel { min-height: 0; flex: 1; overflow: auto; }
 .problem-list, .problem-list ul { list-style: none; margin: 0; padding: 0; }
 .problem-file { margin: 0; padding: 7px 15px; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--text); font: 12px var(--mono); overflow-wrap: anywhere; }
@@ -221,6 +222,19 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .problem-location, .problem-note { color: var(--muted); font: 12px var(--mono); }
 .problem-note { margin: 0; padding: 8px 15px; }
 .references-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.terminal-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
+.terminal-toolbar { display: flex; flex: none; align-items: center; flex-wrap: wrap; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.terminal-toolbar select { background: var(--base); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; }
+.terminal-toolbar .button, .terminal-tab { min-height: 25px; padding: 3px 7px; font-size: 12px; }
+.terminal-tabs { display: flex; gap: 3px; min-width: 0; flex: 1 1 130px; overflow: auto hidden; }
+.terminal-tab { flex: none; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); background: transparent; }
+.terminal-tab[aria-pressed="true"] { background: var(--selected); color: var(--text); border-color: var(--mint); }
+.terminal-tab.terminal-ended { border-style: dashed; }
+.terminal-details { display: flex; flex: none; gap: 10px; min-width: 0; padding: 3px 10px; color: var(--muted); font-size: 12px; }
+#terminal-root { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.terminal-surfaces { flex: 1; min-height: 0; min-width: 0; background: var(--base); }
+.terminal-surface { height: 100%; padding: 3px 8px; overflow: hidden; }
+.terminal-surface .xterm { height: 100%; }
 .references-tools { display: flex; align-items: center; gap: 8px; padding: 6px 12px; }
 .references-tools p { flex: 1; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .references-tools .button { min-height: 27px; padding: 3px 8px; font-size: 12px; }
