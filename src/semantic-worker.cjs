@@ -4,18 +4,20 @@ const { createSemanticProject } = require('./semantic-project.cjs');
 let project;
 let projectId;
 
-parentPort.on('message', ({ id, workspace, target, position, sources }) => {
+parentPort.on('message', ({ id, workspace, operation, target, position, sources }) => {
   try {
     if (projectId !== workspace.id) {
       project?.dispose();
       project = createSemanticProject(workspace);
       projectId = workspace.id;
     }
-    parentPort.postMessage({ id, result: project.quickInfo(target, position, sources) });
+    const query = operation === 'complete' ? project.complete : project.quickInfo;
+    parentPort.postMessage({ id, result: query(target, position, sources) });
   } catch (error) {
     project?.dispose();
     project = undefined;
     projectId = undefined;
-    parentPort.postMessage({ id, error: 'Could not inspect this symbol. ' + error.message.split(/\r?\n/, 1)[0].slice(0, 200) });
+    const message = operation === 'complete' ? 'Could not suggest completions. ' : 'Could not inspect this symbol. ';
+    parentPort.postMessage({ id, error: message + error.message.split(/\r?\n/, 1)[0].slice(0, 200) });
   }
 });

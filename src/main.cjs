@@ -135,6 +135,8 @@ handle('syntax', (id, file, text) => {
 handle('format', (id, file, text, eol, bom) => formatter.format(currentWorkspace(id), file, text, eol, bom));
 handle('quick-info', (id, file, position, buffers) =>
   semantics.quickInfo(currentWorkspace(id), file, position, buffers));
+handle('complete', (id, file, position, buffers) =>
+  semantics.complete(currentWorkspace(id), file, position, buffers));
 handle('search', async (id, requestId, query, caseSensitive, snapshots) => {
   const project = currentWorkspace(id);
   activeSearch?.controller.abort();

@@ -66,6 +66,12 @@ Hover over a JavaScript or TypeScript name, or place the cursor on it and press 
 
 The bridge uses selected compiler options from the nearest `tsconfig.json` or `jsconfig.json`, including workspace-local import aliases. This first slice follows the active file's import graph within the workspace and uses bundled TypeScript library declarations. It skips dependency directories, configuration inheritance, project references, and language-service plugins.
 
+## Complete JavaScript and TypeScript
+
+Type after `object.` or press **Ctrl+Space** to request suggestions at the cursor. CEVRA shows the kind of each suggestion and uses unsaved workspace imports when resolving members and named exports. It also suggests values for supported typed contexts, such as a string literal argument with a fixed set of allowed values.
+
+Use **Up** and **Down** to select an option, **Enter** to accept it, or **Escape** to dismiss the list. Accepting a symbol completion edits the active buffer in one undo step. Suggestions use the same local import graph as symbol inspection.
+
 ## Verify CEVRA
 
 Run `npm test` on Windows before expanding the workbench. The core suite exercises JavaScript process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.

@@ -40,39 +40,21 @@ function tooltip(info) {
   };
 }
 
-export function createSymbolInfo({ api, getActive, getDocuments, available, notify, report }) {
-  const snapshots = new WeakMap();
+export function createSymbolInfo({ semantic, getActive, notify, report }) {
   const requests = { hover: 0, inspect: 0 };
-  let generation = 0;
-
-  function snapshot(tab) {
-    const doc = tab.state.doc;
-    let cached = snapshots.get(tab);
-    if (cached?.doc !== doc) {
-      cached = { doc, text: doc.toString() };
-      snapshots.set(tab, cached);
-    }
-    return { path: tab.path, documentId: tab.id, version: tab.version, text: cached.text };
-  }
 
   function query(tab, position, kind) {
     const id = ++requests[kind];
-    const epoch = generation;
-    const version = tab.version;
-    const buffers = [snapshot(tab)];
-    for (const other of getDocuments()) {
-      if (other !== tab && other.language && other.dirty) buffers.push(snapshot(other));
-    }
+    const request = semantic.query('quickInfo', tab, position);
     return {
-      result: api.quickInfo(tab.projectId, tab.path, position, buffers),
-      current: () => id === requests[kind] && epoch === generation && tab.version === version &&
-        available() && getActive() === tab,
+      result: request.result,
+      current: () => id === requests[kind] && request.current(),
     };
   }
 
   const hover = hoverTooltip(async (view, position, side) => {
     const tab = getActive();
-    if (!tab?.language || !available() || view.state.field(manualTooltip, false)) return null;
+    if (!tab?.language || !semantic.available() || view.state.field(manualTooltip, false)) return null;
     const node = syntaxTree(view.state).resolveInner(position, side);
     if (!/(?:Name|Definition|Identifier)$/.test(node.name) || node.to <= node.from) return null;
     const offset = Math.max(node.from, Math.min(position, node.to - 1));
@@ -87,9 +69,7 @@ export function createSymbolInfo({ api, getActive, getDocuments, available, noti
 
   return {
     extension: [manualTooltip, hover],
-    changed() { generation++; },
     leave(tab) {
-      generation++;
       if (!tab.language) return;
       tab.state = tab.state.update({ effects: [setManual.of(null), closeHoverTooltips] }).state;
     },
@@ -102,7 +82,7 @@ export function createSymbolInfo({ api, getActive, getDocuments, available, noti
     },
     async inspect(view) {
       const tab = getActive();
-      if (!tab?.language || !available()) return;
+      if (!tab?.language || !semantic.available()) return;
       const selection = view.state.selection;
       const request = query(tab, selection.main.head, 'inspect');
       const current = () => request.current() && view.state.selection.eq(selection);

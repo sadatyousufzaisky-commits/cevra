@@ -732,3 +732,132 @@ test('symbol inspection discards stale replies and leaves editing and saving ava
   await editor.press('Escape');
   await page.locator('.symbol-info').waitFor({ state: 'detached' });
 });
+
+test('JavaScript autocomplete follows unsaved imports and supports keyboard selection and undo',
+  { timeout: 30_000 }, async t => {
+  const folder = 'lib (# % &)';
+  const relative = path.join(folder, 'model.js');
+  const saved = 'export const model = { diskOnly: 1 };\n';
+  const entry = 'import { model } from "./' + folder + '/model.js";\nmodel';
+  const workbench = await openWorkbench(t, { 'main.js': entry, [relative]: saved });
+  const { page, editor, open, project } = workbench;
+  const list = page.getByRole('listbox');
+  const option = name => list.getByRole('option', { name });
+  await workbench.file(folder).click();
+  await open('model.js');
+  await replaceEditor(workbench, 'export const model = { add(value) { return value; }, zebra: 1 };\n');
+
+  await open('main.js');
+  await editor.press('Control+End');
+  await page.keyboard.type('.');
+  await option(/add.*method/).waitFor();
+  await option(/zebra.*property/).waitFor();
+  assert.equal(await option(/diskOnly/).count(), 0);
+  assert.equal(await option(/add.*method/).getAttribute('aria-selected'), 'true');
+  // CodeMirror deliberately ignores completion keystrokes just after opening the list.
+  await delay(100);
+  await editor.press('ArrowDown');
+  assert.equal(await option(/zebra.*property/).getAttribute('aria-selected'), 'true');
+  await editor.press('Enter');
+  await list.waitFor({ state: 'detached' });
+  assert.deepEqual(await editor.locator('.cm-line').allTextContents(), (entry + '.zebra').split('\n'));
+  await editor.press('Control+z');
+  assert.deepEqual(await editor.locator('.cm-line').allTextContents(), (entry + '.').split('\n'));
+  assert.equal(await fs.readFile(path.join(project, relative), 'utf8'), saved);
+  assert.equal(await fs.readFile(path.join(project, 'main.js'), 'utf8'), entry);
+});
+
+test('TypeScript autocomplete preserves member syntax and suggests typed argument values', { timeout: 30_000 }, async t => {
+  const entry = 'const data = { calculate() {}, "dash-name": 1 };\ndata.calOld;\ndata?.da;\n' +
+    'function setMode(level: "basic" | "advanced") {}\nsetMode("ba");';
+  const { page, editor, open } = await openWorkbench(t, { 'main.ts': entry });
+  const list = page.getByRole('listbox');
+  await open('main.ts');
+  await editor.press('Control+Home');
+  await editor.press('ArrowDown');
+  await editor.press('End');
+  for (let index = 0; index < 4; index++) await editor.press('ArrowLeft');
+  await editor.press('Control+Space');
+  await list.getByRole('option', { name: /calculate.*method/ }).waitFor();
+  await delay(100);
+  await editor.press('Enter');
+  assert.equal((await editor.locator('.cm-line').allTextContents())[1], 'data.calculate;');
+
+  await editor.press('ArrowDown');
+  await editor.press('End');
+  await editor.press('ArrowLeft');
+  await editor.press('Control+Space');
+  await list.getByRole('option', { name: /dash-name.*property/ }).waitFor();
+  await delay(100);
+  await editor.press('Enter');
+  assert.equal((await editor.locator('.cm-line').allTextContents())[2], 'data?.["dash-name"];');
+
+  await editor.press('Control+End');
+  for (let index = 0; index < 3; index++) await editor.press('ArrowLeft');
+  await editor.press('Control+Space');
+  await list.getByRole('option', { name: /basic.*string/ }).waitFor();
+  await delay(100);
+  await editor.press('Enter');
+  assert.equal((await editor.locator('.cm-line').allTextContents())[4], 'setMode("basic");');
+});
+
+test('autocomplete ignores late replies after typing or switching tabs and recovers after a service error',
+  { timeout: 30_000 }, async t => {
+  const workbench = await openWorkbench(t, { 'entry.js': 'const value = 1;\n', 'other.txt': 'other tab' });
+  const { app, page, editor, open, project } = workbench;
+  await app.evaluate(({ ipcMain }) => {
+    let count = 0;
+    const held = new Map();
+    const waiters = new Map();
+    ipcMain.waitForCompletion = id => held.has(id) ? Promise.resolve() : new Promise(resolve => waiters.set(id, resolve));
+    ipcMain.releaseCompletion = id => held.get(id)();
+    ipcMain.removeHandler('cevra:complete');
+    ipcMain.handle('cevra:complete', (_event, _workspace, _file, position) => {
+      const id = ++count;
+      const suggestion = label => ({
+        from: position, to: position, global: false,
+        options: [{ label, kind: 'const', insert: label, from: position, to: position }],
+      });
+      if (id === 1 || id === 3) {
+        return new Promise(resolve => {
+          held.set(id, () => resolve(suggestion('staleOption')));
+          waiters.get(id)?.();
+        });
+      }
+      if (id === 4) throw new Error('Test completion service stopped.');
+      return suggestion(id === 2 ? 'currentOption' : 'restartedOption');
+    });
+  });
+  await open('entry.js');
+  const list = page.getByRole('listbox');
+  await page.evaluate(() => {
+    window.sawStaleCompletion = false;
+    new MutationObserver(records => {
+      if (records.some(record => [...record.addedNodes].some(node => node.textContent.includes('staleOption')))) {
+        window.sawStaleCompletion = true;
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  await editor.press('Control+End');
+  await editor.press('Control+Space');
+  await app.evaluate(({ ipcMain }) => ipcMain.waitForCompletion(1));
+  await page.keyboard.type('x');
+  await list.getByRole('option', { name: /currentOption/ }).waitFor();
+  await app.evaluate(({ ipcMain }) => ipcMain.releaseCompletion(1));
+
+  await editor.press('Escape');
+  await editor.press('Control+Space');
+  await app.evaluate(({ ipcMain }) => ipcMain.waitForCompletion(3));
+  await open('other.txt');
+  await open('entry.js');
+  await app.evaluate(({ ipcMain }) => ipcMain.releaseCompletion(3));
+  await editor.press('Control+Space');
+  await page.locator('#message').getByText('Test completion service stopped.', { exact: true }).waitFor();
+  assert.equal(await list.count(), 0);
+  await editor.press('Control+s');
+  await page.locator('#message').getByText('Saved entry.js', { exact: true }).waitFor();
+  assert.equal(await fs.readFile(path.join(project, 'entry.js'), 'utf8'), 'const value = 1;\nx');
+  await editor.press('Control+Space');
+  await list.getByRole('option', { name: /restartedOption/ }).waitFor();
+  assert.equal(await page.evaluate(() => window.sawStaleCompletion), false);
+});

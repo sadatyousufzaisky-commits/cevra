@@ -29,6 +29,43 @@ function compilerPath(file) {
   return file.replaceAll(path.sep, '/');
 }
 
+function completionRange(span, position, length) {
+  if (!span) return { from: position, to: position };
+  const { start, length: width } = span;
+  const end = start + width;
+  return start >= 0 && start <= position && position <= end && end <= length ? { from: start, to: end } : null;
+}
+
+function completionOptions(info, position, text) {
+  if (!info) return null;
+  const range = completionRange(info.optionalReplacementSpan, position, text.length);
+  if (!range) return null;
+  const prefix = text.slice(range.from, position);
+  if (prefix.length > 256) return null;
+  const foldedPrefix = prefix.toLowerCase();
+  const matches = [];
+  for (const entry of info.entries) {
+    if (entry.hasAction || entry.isSnippet || entry.isFromUncheckedFile ||
+        entry.kind === 'directory' || entry.kind === 'external module name') continue;
+    const insert = entry.insertText ?? entry.name;
+    if (!entry.name || entry.name.length > 256 || !insert || insert.length > 512) continue;
+    const filter = entry.filterText ?? entry.name;
+    const offset = filter.toLowerCase().indexOf(foldedPrefix);
+    if (offset < 0) continue;
+    const edit = entry.replacementSpan ? completionRange(entry.replacementSpan, position, text.length) : range;
+    if (!edit) continue;
+    const rank = filter.startsWith(prefix) ? 0 : offset === 0 ? 1 : 2;
+    matches.push({ rank, sort: entry.sortText, option: { label: entry.name, kind: entry.kind, insert, ...edit } });
+  }
+  matches.sort((a, b) => a.rank - b.rank || a.sort.localeCompare(b.sort) || a.option.label.localeCompare(b.option.label));
+  const options = new Map();
+  for (const { option } of matches) {
+    if (!options.has(option.label)) options.set(option.label, option);
+    if (options.size === 80) break;
+  }
+  return { ...range, global: info.isGlobalCompletion, options: [...options.values()] };
+}
+
 function projectOptions(workspace, target, readFile) {
   let directory = path.dirname(target);
   for (;;) {
@@ -172,7 +209,7 @@ function createSemanticProject(workspace) {
   };
   const service = ts.createLanguageService(host);
 
-  function quickInfo(target, position, sources) {
+  function query(target, sources, analyze) {
     checkedEntrySync(workspace, '');
     const overlays = new Map(sources.map(source => [key(source.file), source]));
     const current = sources.find(source => source.file === target);
@@ -193,11 +230,21 @@ function createSemanticProject(workspace) {
     generation++;
     try {
       request.options = projectOptions(workspace, target, host.readFile);
-      const info = service.getQuickInfoAtPosition(request.target, position);
+      const result = analyze(request.target, current.text);
       if (request.limited) throw new Error('This import graph exceeds CEVRA’s analysis limit.');
+      return result;
+    } finally {
+      scripts = request.records;
+      request = undefined;
+    }
+  }
+
+  function quickInfo(target, position, sources) {
+    return query(target, sources, file => {
+      const info = service.getQuickInfoAtPosition(file, position);
       if (!info) return null;
       if (info.kind === 'alias') {
-        const definitions = service.getDefinitionAtPosition(request.target, position);
+        const definitions = service.getDefinitionAtPosition(file, position);
         if (!definitions?.some(definition => definition.kind !== 'alias' || key(definition.fileName) !== key(target))) {
           return null;
         }
@@ -208,13 +255,21 @@ function createSemanticProject(workspace) {
         signature: ts.displayPartsToString(info.displayParts).slice(0, 2_000),
         documentation: ts.displayPartsToString(info.documentation).slice(0, 2_000),
       };
-    } finally {
-      scripts = request.records;
-      request = undefined;
-    }
+    });
   }
 
-  return { quickInfo, dispose: () => service.dispose() };
+  function complete(target, position, sources) {
+    return query(target, sources, (file, text) => {
+      const info = service.getCompletionsAtPosition(file, position, {
+        includeCompletionsWithInsertText: true,
+        includeCompletionsForModuleExports: false,
+        includeCompletionsForImportStatements: false,
+      });
+      return completionOptions(info, position, text);
+    });
+  }
+
+  return { quickInfo, complete, dispose: () => service.dispose() };
 }
 
 module.exports = { createSemanticProject };

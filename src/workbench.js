@@ -1,4 +1,5 @@
 import { basicSetup } from 'codemirror';
+import { closeCompletion } from '@codemirror/autocomplete';
 import { isolateHistory } from '@codemirror/commands';
 import { EditorState, Text } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
@@ -9,6 +10,8 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { createNavigationHistory } from './navigation-history.js';
 import { createProblemsPanel } from './problems-panel.js';
 import { createSearchPanel } from './search-panel.js';
+import { createSemanticContext } from './semantic-context.js';
+import { createSemanticCompletion } from './semantic-completion.js';
 import { createSymbolInfo } from './symbol-info.js';
 import { sourceLanguage } from './source-language.cjs';
 import { changeLineEnding, detectLineEnding, lineEnding, lineEndingHistory } from './line-endings.js';
@@ -203,6 +206,7 @@ function editorState(tab, text, ending) {
         javascript({ typescript: tab.language.typescript, jsx: tab.language.jsx }),
         syntaxDecorations,
         symbolInfo.extension,
+        semanticCompletion,
       ] : [],
       EditorView.contentAttributes.of({ 'aria-label': 'Source editor' }),
       EditorView.updateListener.of(update => {
@@ -227,7 +231,7 @@ function editorState(tab, text, ending) {
         }
         if (update.docChanged) {
           problemsPanel.changed(tab);
-          symbolInfo.changed();
+          semantic.changed();
         }
         if (update.docChanged || update.selectionSet || endingChanged) syncCursor();
       }),
@@ -337,6 +341,8 @@ function showFile(tab) {
   const changed = active !== tab;
   if (changed && active) {
     active.scroll = view.scrollSnapshot();
+    semantic.changed();
+    closeCompletion(view);
     symbolInfo.leave(active);
   }
   active = tab;
@@ -435,7 +441,7 @@ async function removeTab(tab) {
     }
   }
   documents.delete(tab.path);
-  symbolInfo.changed();
+  semantic.changed();
   problemsPanel.remove(tab);
   if (tab.dirty) searchPanel.changed();
   if (tab === active) showFile([...documents.values()].at(-1));
@@ -461,7 +467,7 @@ async function adoptProject(next) {
   navigation.clear();
   searchPanel.reset();
   problemsPanel.reset();
-  symbolInfo.changed();
+  semantic.changed();
   project = next;
   documents.clear();
   expanded.clear();
@@ -539,7 +545,7 @@ async function saveFile(tab) {
     tab.dirty = isDirty(tab, tab.state);
     queueDraft(tab);
     searchPanel.changed();
-    symbolInfo.changed();
+    semantic.changed();
     notify('Saved ' + tab.path);
   } catch (error) {
     if (/^This file changed on disk\./.test(errorText(error))) {
@@ -885,14 +891,15 @@ const problemsPanel = createProblemsPanel({
   errorText,
 });
 
-const symbolInfo = createSymbolInfo({
+const getActive = () => active;
+const semantic = createSemanticContext({
   api,
-  getActive: () => active,
+  getActive,
   getDocuments: () => documents.values(),
   available: () => !changingProject && !document.body.inert && !editor.inert,
-  notify,
-  report,
 });
+const symbolInfo = createSymbolInfo({ semantic, getActive, notify, report });
+const semanticCompletion = createSemanticCompletion({ semantic, getActive, report });
 
 backButton.onclick = () => travel('back').catch(report);
 forwardButton.onclick = () => travel('forward').catch(report);

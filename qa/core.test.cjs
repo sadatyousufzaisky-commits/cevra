@@ -439,3 +439,101 @@ test('semantic queries check JavaScript and confine module reads to permitted wo
   const arrayMethod = await semantics.quickInfo(workspace, script.path, commonJS.indexOf('map('), [script]);
   assert.match(arrayMethod.signature, /Array<string>\.map/);
 });
+
+test('completions use unsaved imports and preserve exact TypeScript replacement ranges', { timeout: 20_000 }, async t => {
+  const { root, workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  const saved = 'export const data = { diskOnly: 1 };\n';
+  await fs.writeFile(path.join(root, 'data.ts'), saved);
+  const draft = {
+    path: 'data.ts', documentId: 2, version: 1,
+    text: 'export const data = { calculate() {}, "dash-name": 1 };\nexport function makeMode() {}\n',
+  };
+  let version = 0;
+  async function suggest(marked, overlays = []) {
+    const position = marked.lastIndexOf('|');
+    const text = marked.slice(0, position) + marked.slice(position + 1);
+    return semantics.complete(workspace, 'main.ts', position, [
+      { path: 'main.ts', documentId: 1, version: version++, text }, ...overlays,
+    ]);
+  }
+  const imports = 'import { data } from "./data";\n';
+  const before = await suggest(imports + 'data.|');
+  assert.deepEqual(before.options.map(item => item.label), ['diskOnly']);
+  const after = await suggest(imports + 'data.|', [draft]);
+  assert.deepEqual(after.options.map(({ label, kind }) => [label, kind]), [
+    ['calculate', 'method'], ['dash-name', 'property'],
+  ]);
+
+  const existing = imports + 'data.calOld;';
+  const middle = await suggest(imports + 'data.cal|Old;', [draft]);
+  const [method] = middle.options;
+  assert.equal(middle.options.length, 1);
+  assert.equal(existing.slice(method.from, method.to), 'calOld');
+  assert.equal(method.insert, 'calculate');
+
+  const optional = imports + 'data?.da;';
+  const bracket = await suggest(imports + 'data?.da|;', [draft]);
+  const [property] = bracket.options;
+  assert.equal(optional.slice(property.from, property.to), '?.da');
+  assert.equal(property.insert, '?.["dash-name"]');
+
+  const named = await suggest('import { make| } from "./data";', [draft]);
+  assert.deepEqual(named.options.map(item => item.label), ['makeMode']);
+  const argument = await suggest('function set(level: "basic" | "advanced") {}\nset("ba|");');
+  assert.deepEqual(argument?.options.map(item => item.label), ['basic']);
+  assert.equal(await fs.readFile(path.join(root, 'data.ts'), 'utf8'), saved);
+});
+
+test('completion results are bounded, ranked before truncation, and confined to the workspace', { timeout: 20_000 }, async t => {
+  const { folder, root, workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  await fs.writeFile(path.join(folder, 'outside.js'), 'export const value = { privateData: 1 };\n');
+  await fs.writeFile(path.join(root, 'unimported.ts'), 'export const workspaceAutoImport = 1;\n');
+  const keys = Array.from({ length: 100 }, (_, index) => 'alpha' + index + ': 0');
+  const text = 'const value = { ' + keys.join(', ') + ', zebra: 1 };\nvalue.';
+  const source = { path: 'index.js', documentId: 1, version: 0, text };
+  const limited = await semantics.complete(workspace, source.path, text.length, [source]);
+  assert.equal(limited.options.length, 80);
+  const narrowed = await semantics.complete(workspace, source.path, text.length + 1, [
+    { ...source, version: 1, text: text + 'z' },
+  ]);
+  assert.deepEqual(narrowed.options.map(item => item.label), ['zebra']);
+  for (const [index, input] of [
+    'import { value } from "../outside.js";\nvalue.',
+    'workspaceAutoIm',
+    'const label = "workspaceAutoIm',
+  ].entries()) {
+    const result = await semantics.complete(workspace, source.path, input.length, [
+      { ...source, version: index + 2, text: input },
+    ]);
+    assert.equal(result?.options.length ?? 0, 0);
+  }
+});
+
+test('completion bursts keep the newest queued request and cancel queued work on shutdown', { timeout: 20_000 }, async t => {
+  const { workspace } = await fixture(t);
+  const semantics = createSemanticService();
+  t.after(semantics.stop);
+  function suggest(label, version) {
+    const text = `const value = { ${label}: 1 };\nvalue.`;
+    return semantics.complete(workspace, 'main.ts', text.length, [
+      { path: 'main.ts', documentId: 1, version, text },
+    ]);
+  }
+
+  const [first, replaced, latest] = await Promise.all([suggest('first', 0), suggest('replaced', 1), suggest('latest', 2)]);
+  assert.deepEqual(first.options.map(item => item.label), ['first']);
+  assert.equal(replaced, null);
+  assert.deepEqual(latest.options.map(item => item.label), ['latest']);
+
+  const canceled = assert.rejects(suggest('inFlight', 3), /language request was canceled/);
+  const queued = suggest('queued', 4);
+  semantics.stop();
+  await canceled;
+  assert.equal(await queued, null);
+  const restarted = await suggest('restarted', 5);
+  assert.deepEqual(restarted.options.map(item => item.label), ['restarted']);
+});
