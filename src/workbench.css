@@ -261,7 +261,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .task-list li[data-outcome="failed"] strong { color: var(--danger); }
 .task-list li[data-outcome="running"] strong { color: var(--mint); }
 .task-list .diagnostic-link { justify-self: start; }
-.run-panel[data-mode="tasks"] .test-evidence :is(label, input) { display: none; }
+.run-panel[data-mode="tasks"] .test-evidence :is(label, input, #workstream-end) { display: none; }
 .terminal-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
 .terminal-toolbar { display: flex; flex: none; align-items: center; flex-wrap: wrap; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--line); font-size: 12px; }
 .terminal-toolbar select { background: var(--base); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; }

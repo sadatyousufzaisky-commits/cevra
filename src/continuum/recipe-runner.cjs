@@ -16,8 +16,9 @@ function startRecipe(plan, refresh, execute, publish, isSessionStopping) {
           anchor ??= event.anchor;
           reason ??= event.reason;
         } else if (event.type === 'exit') {
-          const location = event.location ?? anchor ?? event.failures?.find(failure => failure.anchor)?.anchor;
-          resolve({ ...event, location, error: event.error ?? reason });
+          const failure = event.failures?.find(item => item.anchor) ?? event.failures?.[0];
+          const location = event.location ?? anchor ?? failure?.anchor;
+          resolve({ ...event, location, summary: event.summary ?? failure?.message, error: event.error ?? reason });
         }
       }
       Promise.resolve(execute(step, emit, isStopping)).then(controller => {

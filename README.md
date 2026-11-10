@@ -57,6 +57,8 @@ The built-in example includes a failing test for fractional weights. In `total.c
 
 Expand **Run output** and enter a **Workstream** goal, then choose **Run tests**. The result records the goal, a unique attempt ID, the observed workspace revision, and the outcome. A failure opens its recorded line only if the source revision still matches. Editing a buffer marks the result **Historical** immediately. **Check inputs** and returning focus to CEVRA recheck the workspace on disk.
 
+A recipe test uses the current Workstream goal when the step leaves its own `goal` unset. **End Workstream** clears the active goal while preserving the recorded result and any retained Run Capsules.
+
 The latest result stays available in **Test results** for the open workspace. CEVRA compares snapshots of supported workspace files before and after the run. The scan includes source, configuration, and binary files and is bounded to 256 files and 16 MiB, with a 2 MiB per-file limit. It excludes dependency and cache directories and version-control data. Unreadable inputs, unsafe links, and scan limits make the workspace revision unavailable. The observation covers those snapshots. The runner still executes against the live workspace, where code can also read external inputs. A retry records the new attempt and keeps previously passed tests separate in the totals.
 
 ### Keep a local Flightpath
@@ -214,6 +216,29 @@ Use **Settings** or **Ctrl+,** for font size and family, indentation, wrapping, 
 Run `npm test` on Windows before expanding the workbench. Put Git and Python 3 with `venv` support on PATH. The core suite exercises process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks JavaScript, TypeScript, and Python execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.
 
 GitHub Actions runs the same checks on Windows for every push and pull request.
+
+### Phase 3 end-to-end benchmark
+
+Run `npm run benchmark:continuum` on Windows with Git and npm on PATH. The benchmark launches the real Electron workbench in a fresh profile and creates a temporary Git repository with a failing invoice calculation. It runs a recipe with workspace consent, opens the exact failure location, inspects the incorrect total at a live breakpoint, and repairs the calculation in the editor. It verifies that the original result becomes **Historical**, then runs a dependency graph and a fresh test suite. The final assertions check that Change Lens matches the staged bytes to the passing test revision, that the reviewed fix is the only committed change, and that the displayed commit hash matches Git.
+
+Each passing sample prints a `CONTINUUM` record with the Windows build, runtime, action timings, both workspace revisions, and the disposable fixture's commit hash. The action timings include workbench and automation overhead. The harness answers the folder picker and native confirmations deterministically. The same suite replays a missing interpreter, cancellation of a detached process tree, and recovery of an unsaved draft after a forced crash. It runs with the Windows desktop regression suite.
+
+Three consecutive samples on Windows 11 build 26300, Electron 45.2.3, and bundled Node.js 24.22.2 passed both the workflow and fault replay. The recorded workflow actions totaled **8.91 s**, **8.94 s**, and **9.90 s**. Fixture setup and cleanup are outside these timings.
+
+| Workflow checkpoint | Median |
+| --- | ---: |
+| Launch and open fixture | 686 ms |
+| Enable Flightpath and name Workstream | 215 ms |
+| Review and run the failing recipe | 530 ms |
+| Navigate to the recorded failure | 150 ms |
+| Set the breakpoint and inspect the live value | 611 ms |
+| Edit, save, and check historical evidence | 238 ms |
+| Review the working diff and stage | 1,678 ms |
+| Run the verification graph and full tests | 1,561 ms |
+| Review staged proof and commit | 3,177 ms |
+| End the Workstream | 88 ms |
+
+The hosted regression job runs on Windows Server 2025. A separate Windows 10 desktop run is still unverified.
 
 ## Benchmark the desktop workflows
 

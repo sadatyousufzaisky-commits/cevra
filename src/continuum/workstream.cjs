@@ -1,13 +1,18 @@
 const { randomUUID } = require('node:crypto');
 const { captureInputs, createRunEvidence, inputFreshness, sourceAnchor } = require('./revisions.cjs');
 
+function workstreamGoal(goal) {
+  if (typeof goal !== 'string' || goal.length > 120 || /[\r\n\0]/.test(goal)) throw new Error('Enter a workstream goal of up to 120 characters.');
+  return goal.trim() || 'Project tests';
+}
+
 function createTestWorkstream(workspace, startTests, history) {
   const workstreamId = history?.workstreamId ?? randomUUID();
   const observed = createRunEvidence(workspace);
   let latestFull;
 
   async function start(retry, goal, publish, isStopping) {
-    if (typeof goal !== 'string' || goal.length > 120 || /[\r\n\0]/.test(goal)) throw new Error('Enter a workstream goal of up to 120 characters.');
+    const label = workstreamGoal(goal);
     observed.clear();
     if (!retry) latestFull = undefined;
     const id = randomUUID();
@@ -21,7 +26,7 @@ function createTestWorkstream(workspace, startTests, history) {
       const outcome = stopped ? 'cancelled' : event.code !== 0 || !event.counts ? 'failed' :
         event.counts.tests === 0 ? 'empty' : 'passed';
       const evidence = {
-        schemaVersion: 1, id, workstreamId, workspaceId: workspace.id, goal: goal.trim() || 'Project tests',
+        schemaVersion: 1, id, workstreamId, workspaceId: workspace.id, goal: label,
         revision: before.revision, fileCount: before.files.size, freshness, outcome, retry,
         exitCode: event.code, durationMs: event.elapsed,
       };
@@ -57,4 +62,4 @@ function createTestWorkstream(workspace, startTests, history) {
   return { start, recheck: observed.recheck, latestFull: () => latestFull };
 }
 
-module.exports = { createTestWorkstream };
+module.exports = { createTestWorkstream, workstreamGoal };

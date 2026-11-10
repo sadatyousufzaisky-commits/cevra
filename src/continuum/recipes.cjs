@@ -22,7 +22,8 @@ function singleLine(value, limit) {
 function stepFor(workspace, value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Each recipe step must be an object.');
   if (value.kind === 'test' && object(value, ['kind', 'goal']) && (value.goal === undefined || singleLine(value.goal, 120))) {
-    return { kind: 'test', goal: value.goal?.trim() || 'Project tests' };
+    const goal = value.goal?.trim();
+    return goal ? { kind: 'test', goal } : { kind: 'test' };
   }
   if (value.kind === 'task' && object(value, ['kind', 'target']) && typeof value.target === 'string' &&
       /^(?:npm|dag):/.test(value.target) && isTaskId(value.target.slice(4))) return { kind: 'task', target: value.target };
@@ -100,7 +101,7 @@ async function resolveRecipe(workspace, python, id) {
           (item.continueOnFailure ? ' · Continue if a dependency fails' : '') : ''));
       pin = tasks.revision;
     } else if (step.kind === 'test') {
-      label = 'Test · ' + step.goal;
+      label = step.goal ? 'Test · ' + step.goal : 'Project tests';
       details = ['Full JavaScript test suite'];
     } else {
       const source = await readSource(workspace, step.file);
@@ -145,7 +146,7 @@ async function createRecipeFile(workspace) {
   let identity;
   try {
     identity = await handle.stat({ bigint: true });
-    await handle.writeFile(encodeRecipes([{ id: 'project-tests', name: 'Project tests', steps: [{ kind: 'test', goal: 'Project tests' }] }]));
+    await handle.writeFile(encodeRecipes([{ id: 'project-tests', name: 'Project tests', steps: [{ kind: 'test' }] }]));
     await handle.sync();
   } catch (error) {
     await handle.close().catch(() => {});

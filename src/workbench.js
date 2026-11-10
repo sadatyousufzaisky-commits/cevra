@@ -882,7 +882,7 @@ function resetOutput(target = '', mode = 'file', plan = []) {
   const recipe = mode === 'recipe';
   const debug = mode === 'debug';
   dock.dataset.mode = mode;
-  testEvidence.clear();
+  if (testing || tasks || recipe) testEvidence.clear();
   taskPanel.start(plan);
   byId('run-heading').textContent = testing ? 'Test results' : tasks ? 'Task output' :
     recipe ? 'Recipe output' : debug ? 'Debug output' : 'Run output';
@@ -1075,6 +1075,7 @@ function runRecipe(plan) {
     return;
   }
   const debugging = Boolean(plan.entry);
+  const goal = testEvidence.goal;
   if (debugging) {
     debugEntry = plan.entry;
     debugRecipe = plan;
@@ -1083,7 +1084,7 @@ function runRecipe(plan) {
     attempt => {
       if (plan.preview.some(step => step.kind === 'test')) retryAvailable = false;
       return api.recipeStart(attempt.workspaceId, attempt.id, attempt.sessionId,
-        debugging ? failureLens.requestBreakpoints() : []);
+        debugging ? failureLens.requestBreakpoints() : [], goal);
     }, debugging ? [] : plan.preview,
     attempt => api.authorizeRecipe(attempt.workspaceId, attempt.id, plan.id, plan.digest));
 }

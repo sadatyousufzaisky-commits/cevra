@@ -16,7 +16,7 @@ const { createSemanticService } = require('./semantic-service.cjs');
 const { createPreferences } = require('./preferences.cjs');
 const { createFlightpathStore } = require('./continuum/flightpath.cjs');
 const { createChangeLens } = require('./continuum/change-lens.cjs');
-const { createTestWorkstream } = require('./continuum/workstream.cjs');
+const { createTestWorkstream, workstreamGoal } = require('./continuum/workstream.cjs');
 const { readTaskCatalog } = require('./continuum/task-catalog.cjs');
 const { createTaskRunner } = require('./continuum/task-runner.cjs');
 const { createRecipeFile, recipeCatalog, recipeFile, requireRecipe, resolveRecipe, upgradeRecipes } = require('./continuum/recipes.cjs');
@@ -479,12 +479,13 @@ handle('authorize-recipe', async (id, runId, recipeId, digest) => {
     return token;
   });
 });
-handle('recipe-start', (id, runId, token, breakpoints) => {
+handle('recipe-start', (id, runId, token, breakpoints, goal = '') => {
   const grant = runGrant;
   const project = authorizedWorkspace(id, runId, token, 'recipe');
   const python = pythonProfiles;
   const tasks = taskRunner;
   const tests = workstream;
+  const label = workstreamGoal(goal);
   async function refresh() {
     const plan = await requireRecipe(project, python, grant.recipeId, grant.digest);
     if (trustEpoch !== grant.epoch) throw new Error('Workspace trust was revoked. Review the recipe before running again.');
@@ -497,7 +498,7 @@ handle('recipe-start', (id, runId, token, breakpoints) => {
       return startDebugger(project, file, revision, breakpoints, publish, isStopping);
     }
     return startRecipe(plan, refresh, (step, emit, stopping) => {
-      if (step.kind === 'test') return tests.start(false, step.goal, emit, stopping);
+      if (step.kind === 'test') return tests.start(false, step.goal ?? label, emit, stopping);
       if (step.kind === 'task') return tasks.start(step.target, step.pin, emit, stopping);
       return startSourceRun(project, step.file, step.revision, step.runtime, python, emit, stopping);
     }, publish, isStopping);

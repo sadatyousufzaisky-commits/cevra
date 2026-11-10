@@ -47,7 +47,7 @@ contextBridge.exposeInMainWorld('cevra', {
   recipePreview: (id, recipeId) => ipcRenderer.invoke('cevra:recipe-preview', id, recipeId),
   recipeFile: (id, action, revision) => ipcRenderer.invoke('cevra:recipe-file', id, action, revision),
   authorizeRecipe: (id, runId, recipeId, digest) => ipcRenderer.invoke('cevra:authorize-recipe', id, runId, recipeId, digest),
-  recipeStart: (id, runId, token, breakpoints) => ipcRenderer.invoke('cevra:recipe-start', id, runId, token, breakpoints),
+  recipeStart: (id, runId, token, breakpoints, goal) => ipcRenderer.invoke('cevra:recipe-start', id, runId, token, breakpoints, goal),
   flightpath: (id, action) => ipcRenderer.invoke('cevra:flightpath', id, action),
   gitStatus: id => ipcRenderer.invoke('cevra:git-status', id),
   gitDiff: (id, snapshot, file, side) => ipcRenderer.invoke('cevra:git-diff', id, snapshot, file, side),

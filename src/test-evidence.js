@@ -1,12 +1,18 @@
 export function createTestEvidence(api, onChange) {
   const strip = document.getElementById('test-evidence');
   const goal = document.getElementById('workstream-goal');
+  const end = document.getElementById('workstream-end');
   const status = document.getElementById('test-revision');
   const check = document.getElementById('test-recheck');
   let project;
   let edits = 0;
   let evidence;
   let checking;
+
+  function syncGoal() {
+    end.hidden = !goal.value.trim();
+    end.disabled = goal.disabled;
+  }
 
   function render() {
     const revision = evidence?.revision?.slice(0, 10);
@@ -45,17 +51,24 @@ export function createTestEvidence(api, onChange) {
   }
 
   check.onclick = () => void recheck();
+  goal.addEventListener('input', syncGoal);
+  end.onclick = () => {
+    goal.value = '';
+    syncGoal();
+    goal.focus();
+  };
   window.addEventListener('focus', () => void recheck());
 
   return {
     get goal() { return goal.value; },
     get version() { return edits; },
     get latest() { return evidence; },
-    setBusy(busy) { goal.disabled = busy; },
+    setBusy(busy) { goal.disabled = busy; syncGoal(); },
     reset(next) {
       project = next;
       strip.hidden = !next;
       goal.value = '';
+      syncGoal();
       evidence = undefined;
       edits = 0;
       render();
