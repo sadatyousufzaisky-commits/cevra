@@ -28,7 +28,12 @@
         "nodeVersion": "24.15.0"
       }
     },
-    { "id": "G1", "name": "Package & Manifest Inspection", "status": "unverified", "evidence": [] },
+    {
+      "id": "G1",
+      "name": "Package & Manifest Inspection",
+      "status": "in_progress",
+      "evidence": ["g1-package-inspection.md", "../../qa/extensions.test.cjs"]
+    },
     { "id": "G2", "name": "Registry & Transactional Storage", "status": "unverified", "evidence": [] },
     { "id": "G3", "name": "Extension Host Isolation", "status": "unverified", "evidence": [] },
     { "id": "G4", "name": "Contribution APIs", "status": "unverified", "evidence": [] },

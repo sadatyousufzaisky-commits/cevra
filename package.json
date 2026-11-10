@@ -8,10 +8,12 @@
     "build:host": "node scripts/build-process-host.cjs",
     "start": "npm run build && electron .",
     "test": "npm run test:core && npm run test:desktop",
-    "test:core": "npm run build:host && node --test qa/core.test.cjs",
+    "test:core": "npm run build:host && node --test --test-concurrency=1 qa/core.test.cjs qa/extensions.test.cjs",
     "test:desktop": "npm run build && node --test --test-concurrency=1 qa/continuum.test.cjs qa/workbench.test.cjs",
     "benchmark": "npm run build && node qa/benchmark.cjs",
-    "benchmark:continuum": "npm run build && node --test qa/continuum.test.cjs"
+    "benchmark:continuum": "npm run build && node --test qa/continuum.test.cjs",
+    "inspect:extension": "node scripts/inspect-extension.cjs",
+    "test:extensions": "node --test qa/extensions.test.cjs"
   },
   "devDependencies": {
     "electron": "45.2.3",
