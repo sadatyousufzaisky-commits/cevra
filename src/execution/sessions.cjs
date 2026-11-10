@@ -28,7 +28,7 @@ function createExecutionSessions(publish) {
         if (event.truncated || session.tail.length + event.text.length > maxOutput) session.truncated = true;
         session.tail = (session.tail + event.text).slice(-maxOutput);
         session.cursor += event.text.length;
-      } else if (event.type === 'task-progress') {
+      } else if (event.type === 'task-progress' || event.type === 'debug-state' || event.type === 'debug-breakpoint') {
         publish({ ...event, workspaceId, runId, sessionId });
       } else if (event.type === 'exit') {
         active = undefined;
@@ -74,6 +74,12 @@ function createExecutionSessions(publish) {
       if (!matches(workspaceId, runId, sessionId)) return false;
       requestStop(active);
       return true;
+    },
+    debug(workspaceId, runId, sessionId, action, pauseId, frame) {
+      if (!matches(workspaceId, runId, sessionId) || active.stopping || !active.controller?.debug) {
+        throw new Error('The debug session has ended.');
+      }
+      return active.controller.debug(action, pauseId, frame);
     },
     cancel() {
       const session = active;

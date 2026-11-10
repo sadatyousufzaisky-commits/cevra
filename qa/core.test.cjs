@@ -22,6 +22,7 @@ const { readTaskCatalog } = require('../src/continuum/task-catalog.cjs');
 const { planTask } = require('../src/continuum/task-plan.cjs');
 const { createTaskRunner } = require('../src/continuum/task-runner.cjs');
 const { createExecutionSessions } = require('../src/execution/sessions.cjs');
+const { startDebugger } = require('../src/execution/debugger.cjs');
 const { createPythonProfiles } = require('../src/execution/python-profiles.cjs');
 const { pythonColumn, pythonDiagnostic } = require('../src/execution/runtime-location.cjs');
 const { createTerminalSessions } = require('../src/execution/terminal-sessions.cjs');
@@ -34,6 +35,49 @@ async function fixture(t) {
   await fs.mkdir(root);
   return { folder, root, workspace: await createWorkspace(root) };
 }
+
+test('Node debugger binds a nested breakpoint, reads paused variables, and releases after an exception',
+  { timeout: 20_000 }, async t => {
+    const { root, workspace } = await fixture(t);
+    const helper = path.join('nested (QA)', 'helper # %.cjs');
+    await fs.mkdir(path.join(root, 'nested (QA)'));
+    await fs.writeFile(path.join(root, helper), 'exports.run = function run() {\n  const amount = 42;\n  throw new Error("debug failure " + amount);\n};\n');
+    await fs.writeFile(path.join(root, 'entry.cjs'), 'require("./nested (QA)/helper # %.cjs").run();\n');
+    const { revision } = await readSource(workspace, 'entry.cjs');
+    const events = [];
+    const controller = await startDebugger(workspace, 'entry.cjs', revision, [{ id: 1, path: helper, line: 3 }],
+      event => events.push(event), () => false);
+    t.after(() => controller.stop());
+    async function wait(predicate) {
+      const end = Date.now() + 4500;
+      while (Date.now() < end) {
+        const result = events.find(predicate);
+        if (result) return result;
+        await delay(15);
+      }
+      assert.fail(JSON.stringify(events).slice(-4000));
+    }
+    const entry = await wait(event => event.reason === 'Entry');
+    assert.equal(entry.frames[0].anchor.path, 'entry.cjs');
+    await controller.debug('resume', entry.pauseId);
+    const hit = await wait(event => event.reason === 'Breakpoint');
+    assert.equal(hit.frames[0].anchor.path, helper);
+    assert.equal(hit.frames[0].anchor.line, 3);
+    assert.equal((await wait(event => event.type === 'debug-breakpoint')).id, 1);
+    const scopes = await controller.debug('variables', hit.pauseId, 0);
+    assert.deepEqual(scopes.find(scope => scope.name === 'local').values.find(variable => variable.name === 'amount'),
+      { name: 'amount', value: '42' });
+    await assert.rejects(controller.debug('variables', entry.pauseId, 0), /no longer paused/);
+    await assert.rejects(controller.debug('Runtime.evaluate'), /Unknown debugger command/);
+    await controller.debug('resume', hit.pauseId);
+    const exception = await wait(event => event.reason === 'Exception');
+    assert.match(exception.summary, /debug failure 42/);
+    await controller.debug('resume', exception.pauseId);
+    const exit = await wait(event => event.type === 'exit');
+    assert.equal(exit.code, 1);
+    assert.equal(exit.stopped, false);
+    assert.doesNotMatch(events.map(event => event.text ?? '').join(''), /Debugger listening|Waiting for the debugger/);
+  });
 
 test('Python profiles discover workspace environments without running them and reject changed selections', async t => {
   const { root, workspace } = await fixture(t);

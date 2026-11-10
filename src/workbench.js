@@ -9,6 +9,7 @@ import { createDefinitionNavigation } from './definition-navigation.js';
 import { createEditPreview } from './edit-preview.js';
 import { createEditorSettings, editorOptions, optionExtensions } from './editor-settings.js';
 import { colorModeExtension, editorColorMode, editorTheme } from './editor-theme.js';
+import { createFailureLens, refreshDebugGutter } from './failure-lens.js';
 import { createFlightpathPanel } from './flightpath-panel.js';
 import { indentGuides } from './indent-guides.js';
 import { createNavigationHistory } from './navigation-history.js';
@@ -41,6 +42,8 @@ const byId = id => document.getElementById(id);
 const terminalPanel = createTerminalPanel({ api, errorText });
 const runtimePanel = createRuntimePanel({ api, errorText });
 const taskPanel = createTaskPanel({ api, errorText, runTask, jump: jumpToTaskSource });
+const failureLens = createFailureLens({ start: () => runDebug(), stop: () => void stopRun().catch(report), restart: () => void restartDebug().catch(report),
+  command: sendDebugCommand, jump: jumpToDebugSource, redraw: redrawDebugGutter, errorText });
 const tabs = byId('tabs');
 const editor = byId('editor');
 const tree = byId('tree');
@@ -72,7 +75,7 @@ const forwardButton = byId('nav-forward');
 const dock = byId('run-panel');
 const dockButtons = {
   output: byId('show-output'), problems: byId('show-problems'), references: byId('show-references'),
-  terminal: byId('show-terminal'), flightpath: byId('show-flightpath'), tasks: byId('show-tasks'),
+  terminal: byId('show-terminal'), flightpath: byId('show-flightpath'), tasks: byId('show-tasks'), failure: byId('show-failure'),
 };
 const maxOutput = 160_000;
 
@@ -87,6 +90,7 @@ let documentSequence = 0;
 let navigating = false;
 let runSequence = 0;
 let run;
+let debugEntry;
 let diagnostic;
 let retryAvailable = false;
 let testPass;
@@ -174,7 +178,10 @@ function syncCommands() {
   dock.dataset.runtime = runtime ?? '';
   runtimePanel.sync(project, runtime, Boolean(run || changingProject));
   dockButtons.terminal.disabled = !project?.terminalLimit || changingProject;
-  dockButtons.flightpath.disabled = dockButtons.tasks.disabled = !project || changingProject;
+  dockButtons.flightpath.disabled = dockButtons.tasks.disabled = dockButtons.failure.disabled = !project || changingProject;
+  const canDebug = !changingProject && !saving && !discarding;
+  failureLens.setAvailable(canDebug && !run && runtime === 'javascript',
+    canDebug && Boolean(debugEntry) && (!run || run.mode === 'debug'));
   taskPanel.setBusy(Boolean(run || changingProject || saving || discarding));
   terminalPanel.setBusy(changingProject);
   testEvidence.setBusy(Boolean(run || changingProject));
@@ -272,6 +279,7 @@ function updateDocument(tab, before, state, changes, docChanged) {
     tab.syntaxIssues = tab.typeIssues = undefined;
     tab.version++;
     navigation.map(tab.id, changes, state.doc);
+    failureLens.mapBreakpoints(tab.path, before.doc, state.doc, changes);
   }
   if (docChanged || endingChanged) {
     testEvidence.changed();
@@ -308,6 +316,7 @@ function editorState(tab, text, ending) {
       editorTheme,
       editorColorMode.of(colorModeExtension(colorMode === 'dark')),
       editorOptions.of(optionExtensions(editorSettings)),
+      runtimeKind(tab.path) === 'javascript' ? failureLens.gutter(tab) : [],
       tab.language ? [
         javascript({ typescript: tab.language.typescript, jsx: tab.language.jsx }),
         keymap.of([indentWithTab]),
@@ -570,6 +579,8 @@ async function adoptProject(next) {
   project = next;
   terminalPanel.reset(next);
   taskPanel.reset(next);
+  debugEntry = undefined;
+  failureLens.reset(next);
   flightpathPanel.reset(next);
   testEvidence.reset(next);
   documents.clear();
@@ -799,6 +810,7 @@ function showDock(name, focus = false) {
   terminalPanel.show(name === 'terminal', focus);
   flightpathPanel.show(name === 'flightpath');
   taskPanel.show(name === 'tasks');
+  failureLens.show(name === 'failure');
   problemsPanel.render();
   if (focus && name !== 'terminal') dockButtons[name].focus();
 }
@@ -807,10 +819,11 @@ function resetOutput(target = '', mode = 'file', plan = []) {
   testPass = undefined;
   const testing = mode === 'tests';
   const tasks = mode === 'tasks';
+  const debug = mode === 'debug';
   dock.dataset.mode = mode;
   testEvidence.clear();
   taskPanel.start(plan);
-  byId('run-heading').textContent = testing ? 'Test results' : tasks ? 'Task output' : 'Run output';
+  byId('run-heading').textContent = testing ? 'Test results' : tasks ? 'Task output' : debug ? 'Debug output' : 'Run output';
   byId('test-results').hidden = !testing;
   byId('test-empty').hidden = false;
   byId('test-empty').textContent = 'Waiting for test results…';
@@ -821,6 +834,7 @@ function resetOutput(target = '', mode = 'file', plan = []) {
   byId('run-target').textContent = target;
   outputText = '';
   outputNotice.hidden = true;
+  failureLens.begin(debug);
   output.classList.remove('has-output');
   output.setAttribute('aria-label', testing ? 'Test output' : tasks ? 'Task output' : 'Program output');
   output.textContent = testing ? 'Waiting for test output…' :
@@ -836,6 +850,7 @@ function appendOutput(text, { replace = false, truncated = false } = {}) {
   if (truncated || combined.length > maxOutput) outputNotice.hidden = false;
   outputText = combined.slice(-maxOutput);
   output.textContent = outputText;
+  failureLens.output(outputText, !outputNotice.hidden);
   output.classList.add('has-output');
   if (follow) output.scrollTop = output.scrollHeight;
 }
@@ -866,13 +881,14 @@ function cancelBeforeStart(attempt) {
   output.textContent = 'Execution canceled.';
   if (attempt.mode === 'tests') byId('test-empty').textContent = 'Execution canceled.';
   if (attempt.mode === 'tasks') taskPanel.blockWaiting('Run canceled');
+  failureLens.exit({ stopped: true });
   syncCommands();
 }
 
 async function launchRun(mode, target, prepare, start, plan) {
   const attempt = { id: ++runSequence, workspaceId: project.id, mode, stage: 'starting' };
   run = attempt;
-  showDock('output');
+  showDock(mode === 'debug' ? 'failure' : 'output');
   resetOutput(target, mode, plan);
   setRunState('Starting', 'running');
   syncCommands();
@@ -901,6 +917,7 @@ async function launchRun(mode, target, prepare, start, plan) {
     if (mode === 'tests') byId('test-empty').textContent = 'The tests could not start.';
     if (mode === 'tasks') taskPanel.blockWaiting('Task execution could not start');
     appendOutput(errorText(error));
+    failureLens.exit({ error: errorText(error) });
     syncCommands();
     report(error);
   } finally {
@@ -925,6 +942,41 @@ function runFile() {
     await saveFile(tab);
     if (tab.dirty) throw new Error('The file changed during save. Run it again to include the latest edits.');
   }, attempt => api.start(attempt.workspaceId, tab.path, tab.revision, attempt.id, attempt.sessionId, profile));
+}
+
+function redrawDebugGutter() {
+  if (runtimeKind(active?.path) === 'javascript') view.dispatch({ effects: refreshDebugGutter.of(null) });
+}
+
+function runDebug(tab = active) {
+  if (!tab || runtimeKind(tab.path) !== 'javascript' || run || changingProject || savingAll ||
+      [...documents.values()].some(item => item.saving || item.discarding)) return;
+  debugEntry = tab.path;
+  return launchRun('debug', tab.path, prepareWorkspaceRun,
+    attempt => api.debugStart(attempt.workspaceId, tab.path, tab.revision, attempt.id, attempt.sessionId, failureLens.requestBreakpoints()));
+}
+
+async function restartDebug() {
+  const file = debugEntry;
+  if (!file || changingProject) return;
+  if (run?.mode === 'debug' && run.stage !== 'stopping') {
+    run.restart = true;
+    await stopRun();
+  } else if (!run) {
+    const current = project;
+    const tab = await openFile(file);
+    if (project === current && tab && !run) void runDebug(tab);
+  }
+}
+
+function sendDebugCommand(action, pauseId, frame) {
+  const attempt = run;
+  if (attempt?.mode !== 'debug' || !attempt.sessionId || attempt.stage === 'stopping') throw new Error('The debug session has ended.');
+  return api.debugCommand(attempt.workspaceId, attempt.id, attempt.sessionId, action, pauseId, frame);
+}
+
+function jumpToDebugSource(anchor, isCurrent) {
+  jumpToRecordedSource(anchor, isCurrent, 'The recorded debug source changed or is unavailable. Restart debugging to refresh this location.');
 }
 
 async function prepareWorkspaceRun(attempt) {
@@ -954,6 +1006,7 @@ async function stopRun() {
   const attempt = run;
   if (!attempt || attempt.stage === 'stopping') return;
   attempt.stage = 'stopping';
+  if (attempt.mode === 'debug') failureLens.stopping();
   setRunState('Stopping');
   syncCommands();
   if (attempt.sessionId) await api.stop(attempt.workspaceId, attempt.id, attempt.sessionId);
@@ -1055,11 +1108,14 @@ api.onRun(event => {
   if (event.workspaceId !== project?.id || event.runId !== run?.id ||
       event.sessionId !== run?.sessionId) return;
   if (event.type === 'task-progress' && run.mode === 'tasks') taskPanel.progress(event);
+  if (event.type === 'debug-state' && run.mode === 'debug') failureLens.state(event);
+  if (event.type === 'debug-breakpoint' && run.mode === 'debug') failureLens.verified(event);
   if (event.type !== 'exit') return;
-  const { mode, sourceVersion } = run;
+  const { mode, sourceVersion, restart } = run;
   clearTimeout(run.outputTimer);
   run = undefined;
   if (event.output?.text) appendOutput(event.output.text, { replace: true, truncated: event.output.truncated });
+  failureLens.exit(event);
   const elapsed = event.elapsed < 1000 ? `${event.elapsed} ms` : `${(event.elapsed / 1000).toFixed(1)} s`;
   if (mode === 'tests') {
     testEvidence.finish(event.evidence, sourceVersion);
@@ -1094,6 +1150,7 @@ api.onRun(event => {
     byId('run-diagnostic').hidden = false;
   }
   syncCommands();
+  if (restart) void restartDebug().catch(report);
 });
 
 function documentPosition(line, column) {
@@ -1416,9 +1473,16 @@ document.addEventListener('keydown', event => {
     return;
   }
   if (terminalPanel.handles(event)) return;
-  if (event.key === 'F5') {
+  if (event.key === 'F6' && view.hasFocus && runtimeKind(active?.path) === 'javascript') {
     event.preventDefault();
-    void runFile();
+    if (!event.repeat) void runDebug();
+  } else if (event.key === 'F9' && view.hasFocus && runtimeKind(active?.path) === 'javascript') {
+    event.preventDefault();
+    if (!event.repeat) failureLens.toggle(active.path, view.state.doc.lineAt(view.state.selection.main.head).number);
+  } else if (event.key === 'F5') {
+    event.preventDefault();
+    if (run?.mode === 'debug' && failureLens.phase === 'paused') void failureLens.action('resume');
+    else void runFile();
   } else if (view.hasFocus && (editorSettings?.renameShortcut === 'ctrl-alt-r' ?
     command && event.altKey && !event.shiftKey && key === 'r' : event.key === 'F2' && !command && !event.altKey && !event.shiftKey)) {
     event.preventDefault();

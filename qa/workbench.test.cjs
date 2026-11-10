@@ -795,6 +795,11 @@ test('Runtime Fabric runs TypeScript and maps transformed runtime and syntax err
     await link.click();
     await workbench.selected('error # %.ts').waitFor();
     await page.locator('#cursor').getByText('Ln 3, Col 9', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Failure Lens', exact: true }).click();
+    await page.locator('#failure-output').getByText(/TS runtime ready/).waitFor();
+    await page.getByRole('button', { name: /Recorded failure.*error # %\.ts:3:9/ }).click();
+    await page.locator('#cursor').getByText('Ln 3, Col 9', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Run output', exact: true }).click();
     await replaceEditor(workbench, '// line one\nconst value: number = ;\n');
     await link.click();
     await page.locator('#message').getByText(/recorded runtime source changed/).waitFor();
@@ -891,6 +896,134 @@ test('Runtime Fabric uses an explicitly selected Python virtual environment and 
     await editor.press('F5');
     await state.getByText(/^Passed/).waitFor();
     await output.getByText(/PY-SUCCESS/).waitFor();
+  });
+
+test('Failure Lens debugs a nested JavaScript breakpoint, steps, and keeps an uncaught failure with source',
+  { timeout: 42_000 }, async t => {
+    const folder = 'nested (Debug) & café';
+    const name = 'amount # %.cjs';
+    const workbench = await openWorkbench(t, {
+      'entry.cjs': `require(${JSON.stringify('./' + folder + '/' + name)}).work(19);\n`,
+      [path.join(folder, name)]: [
+        'exports.work = function work(seed) {',
+        '  const amount = seed + 2;',
+        '  const twice = double(amount);',
+        '  console.log("DEBUG-OUTPUT", twice);',
+        '  throw new Error("debugger failure " + twice);',
+        '};',
+        'function double(x) {',
+        '  return x * 2;',
+        '}',
+      ].join('\n') + '\n',
+    });
+    const { page, editor } = workbench;
+    const lens = page.getByRole('region', { name: 'Failure Lens', exact: true });
+    const status = page.locator('#debug-status');
+    const stack = lens.getByRole('list', { name: 'Call stack', exact: true });
+    const variables = page.locator('#debug-variables');
+    const breakpoint = lens.getByRole('list', { name: 'Breakpoints', exact: true });
+    const button = name => lens.getByRole('button', { name, exact: true });
+    await workbench.file(folder).click();
+    await workbench.open(name);
+    const line = await editor.locator('.cm-line').nth(2).boundingBox();
+    const gutter = await page.locator('.cm-debug-gutter').boundingBox();
+    await page.mouse.click(gutter.x + gutter.width / 2, line.y + line.height / 2);
+    await page.getByRole('button', { name: 'Failure Lens', exact: true }).click();
+    await breakpoint.getByText(/amount # %\.cjs:3 · pending/).waitFor();
+    await button('Disable breakpoint').click();
+    await breakpoint.getByText(/:3 · disabled/).waitFor();
+    await button('Enable breakpoint').click();
+    await workbench.open('entry.cjs');
+    await button('Debug file').click();
+    await status.getByText('Paused · Entry', { exact: true }).waitFor();
+    await button('Continue').click();
+    await status.getByText('Paused · Breakpoint', { exact: true }).waitFor().catch(async error => {
+      throw new Error((await lens.innerText()).slice(0, 3500), { cause: error });
+    });
+    await breakpoint.getByText(/:3 · verified/).waitFor();
+    await variables.getByText('amount', { exact: true }).waitFor();
+    await variables.getByText('21', { exact: true }).waitFor();
+
+    const workFrame = stack.getByRole('button', { name: /work · .*amount # %\.cjs:3:/ });
+    await workFrame.click();
+    await workbench.selected(name).waitFor();
+    await page.locator('#cursor').getByText(/^Ln 3,/).waitFor();
+    await page.locator('.debug-marker[title="Paused here"]').waitFor();
+    await stack.getByRole('button', { name: /entry\.cjs:1:/ }).click();
+    await workbench.selected('entry.cjs').waitFor();
+    await button('Step into').click();
+    await stack.getByRole('button', { name: /double · .*amount # %\.cjs:8:/ }).waitFor();
+    await variables.getByText('x', { exact: true }).waitFor();
+    await button('Step out').click();
+    await stack.getByRole('button', { name: /work · .*amount # %\.cjs:4:/ }).waitFor();
+    await button('Step over').click();
+    const throwFrame = stack.getByRole('button', { name: /work · .*amount # %\.cjs:5:/ });
+    await throwFrame.waitFor();
+    await page.locator('#failure-output').getByText(/DEBUG-OUTPUT 42/).waitFor();
+    await button('Continue').click();
+    await status.getByText('Paused · Exception', { exact: true }).waitFor();
+    await page.locator('#debug-summary').getByText('Error: debugger failure 42', { exact: true }).waitFor();
+    await throwFrame.click();
+    await workbench.selected(name).waitFor();
+    await page.locator('#cursor').getByText(/^Ln 5,/).waitFor();
+    await replaceEditor(workbench, '// draft changed while paused\n');
+    await throwFrame.click();
+    await page.locator('#message').getByText(/recorded debug source changed/).waitFor();
+    assert.match(await editor.textContent(), /draft changed while paused/);
+    await button('Continue').click();
+    await status.getByText('Run failed', { exact: true }).waitFor();
+    await stack.getByRole('button', { name: /work · .*amount # %\.cjs:5:/ }).waitFor();
+    await variables.getByText('Variables are available while paused.', { exact: true }).waitFor();
+  });
+
+test('Windows debugger requires workspace trust and Pause, Restart, and Stop supervise detached children',
+  { timeout: 40_000, skip: process.platform !== 'win32' }, async t => {
+    const workbench = await openWorkbench(t, { 'hold.cjs': terminalTree.replace('TERMINAL-TREE', 'DEBUG-TREE') });
+    const { app, page, editor } = workbench;
+    const status = page.locator('#debug-status');
+    const output = page.locator('#failure-output');
+    const lens = page.getByRole('region', { name: 'Failure Lens', exact: true });
+    const button = name => lens.getByRole('button', { name, exact: true });
+    const marker = /DEBUG-TREE (\d+) (\d+)/;
+    async function runningTree() {
+      await button('Continue').click();
+      await output.getByText(marker).waitFor();
+      const pids = marker.exec(await output.textContent()).slice(1).map(Number);
+      for (const pid of pids) process.kill(pid, 0);
+      return pids;
+    }
+    await workbench.open('hold.cjs');
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 0 }); });
+    await editor.press('F6');
+    await status.getByText('Debug session stopped', { exact: true }).waitFor();
+    assert.doesNotMatch(await output.textContent(), marker);
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
+    await button('Debug file').click();
+    await status.getByText('Paused · Entry', { exact: true }).waitFor();
+    const first = await runningTree();
+    await button('Pause').click();
+    await status.getByText(/^Paused(?: ·|$)/).waitFor();
+    await button('Restart debugger').click();
+    await status.getByText('Paused · Entry', { exact: true }).waitFor();
+    await Promise.all(first.map(assertWindowsProcessStopped));
+    const second = await runningTree();
+    assert.notEqual(first[0], second[0]);
+    await button('Stop debugging').click();
+    await status.getByText('Debug session stopped', { exact: true }).waitFor();
+    await Promise.all(second.map(assertWindowsProcessStopped));
+
+    await button('Restart debugger').click();
+    await status.getByText('Paused · Entry', { exact: true }).waitFor();
+    const third = await runningTree();
+    await button('Pause').click();
+    await status.getByText(/^Paused(?: ·|$)/).waitFor();
+    const replacement = app.waitForEvent('window', { timeout: 12_000 });
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.forcefullyCrashRenderer());
+    const recovered = await replacement;
+    await Promise.all(third.map(assertWindowsProcessStopped));
+    await recovered.getByRole('button', { name: 'Failure Lens', exact: true }).click();
+    assert.equal(await recovered.locator('#debug-stack li').count(), 0);
+    assert.ok(await recovered.getByRole('button', { name: 'Continue', exact: true }).isDisabled());
   });
 
 test('project replacement rejects a changed file, then recovers the entire confirmed batch after a crash',

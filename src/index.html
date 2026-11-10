@@ -120,6 +120,7 @@
             <button id="show-terminal" class="dock-view" aria-pressed="false" title="Terminal (Ctrl+`)" disabled>Terminal</button>
             <button id="show-flightpath" class="dock-view" aria-pressed="false" disabled>Flightpath</button>
             <button id="show-tasks" class="dock-view" aria-pressed="false" disabled>Tasks</button>
+            <button id="show-failure" class="dock-view" aria-pressed="false" disabled>Failure Lens</button>
           </div>
           <span id="run-state" class="run-state" role="status">Ready</span>
           <span id="run-target" class="run-target"></span>
@@ -223,6 +224,37 @@
               <span id="terminal-root" hidden></span>
             </div>
             <div id="terminal-surfaces" class="terminal-surfaces"></div>
+          </section>
+          <section id="failure-panel" class="flightpath-panel" aria-label="Failure Lens" hidden>
+            <div class="terminal-toolbar" role="group" aria-label="Debugger controls">
+              <button id="debug-start" class="button" title="Debug file (F6)" disabled>Debug file</button>
+              <button class="button" data-debug-action="pause" disabled>Pause</button>
+              <button class="button" data-debug-action="resume" disabled>Continue</button>
+              <button class="button" data-debug-action="over" disabled>Step over</button>
+              <button class="button" data-debug-action="into" disabled>Step into</button>
+              <button class="button" data-debug-action="out" disabled>Step out</button>
+              <button id="debug-restart" class="button" disabled>Restart debugger</button>
+              <button id="debug-stop" class="button" disabled>Stop debugging</button>
+            </div>
+            <p id="debug-status" class="task-note" role="status"></p>
+            <p id="debug-summary" class="task-note" hidden></p>
+            <div class="failure-grid">
+              <section aria-label="Stack and breakpoints">
+                <h3>Call stack</h3>
+                <ol id="debug-stack" class="debug-list" aria-label="Call stack"></ol>
+                <h3>Breakpoints</h3>
+                <ul id="debug-breakpoints" class="debug-list" aria-label="Breakpoints"></ul>
+              </section>
+              <section aria-label="Variables">
+                <h3>Variables</h3>
+                <div id="debug-variables"></div>
+              </section>
+              <section aria-label="Failure output">
+                <h3>Output</h3>
+                <p id="failure-truncated" class="task-note" hidden>Earlier output was truncated.</p>
+                <pre id="failure-output" class="run-output" tabindex="0" aria-label="Failure output"></pre>
+              </section>
+            </div>
           </section>
         </div>
       </section>

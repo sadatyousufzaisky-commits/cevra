@@ -197,6 +197,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 
 .run-panel { --dock-default: clamp(155px, 25vh, 250px); flex: 0 0 min(var(--dock-size, var(--dock-default)), 48%); min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--dock); }
 .run-panel:is([data-mode="tests"], [data-mode="tasks"], [data-runtime="python"], [data-pane="terminal"], [data-pane="flightpath"], [data-pane="tasks"]) { --dock-default: clamp(208px, 35vh, 340px); }
+.run-panel[data-pane="failure"] { --dock-default: clamp(238px, 42vh, 390px); }
 .run-panel[data-collapsed="true"] { flex-basis: 41px; }
 .run-panel[data-collapsed="true"] :is(#rerun-failures, #problems-retry) { display: none; }
 .dock-resizer { flex: 0 0 6px; cursor: ns-resize; touch-action: none; }
@@ -229,6 +230,22 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 #flightpath-capsules { overflow: auto; list-style: none; margin: 0; padding: 0; }
 .flightpath-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 7px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .flightpath-row strong { color: var(--text); }
+.failure-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); }
+.failure-grid > section { min-width: 0; overflow: auto; border-right: 1px solid var(--line); }
+.failure-grid > section:last-child { display: flex; flex-direction: column; border-right: 0; }
+.failure-grid h3 { position: sticky; top: 0; margin: 0; padding: 5px 9px; background: var(--dock); border-bottom: 1px solid var(--line); font-size: 12px; }
+.failure-grid .run-output { flex: 1; }
+.debug-list { margin: 0; padding: 0; list-style: none; }
+.debug-list li, #debug-variables { padding: 4px 8px; overflow-wrap: anywhere; font-size: 12px; }
+.debug-list .button { min-height: 22px; margin: 3px 4px 0 0; padding: 1px 5px; font-size: 11px; }
+.debug-list .diagnostic-link { text-align: left; white-space: normal; }
+.debug-list .diagnostic-link[aria-pressed="true"] { background: var(--selected); }
+#debug-variables dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 2px 8px; margin: 3px 0 9px; }
+#debug-variables dd { margin: 0; color: var(--muted); font-family: var(--mono); }
+.cm-debug-gutter { min-width: 17px; text-align: center; cursor: pointer; }
+.debug-marker { color: var(--danger); }
+.debug-marker[data-state="disabled"], .debug-marker[data-state="spacer"] { color: var(--muted); }
+.debug-marker[title="Paused here"] { color: var(--mint); }
 .task-note { margin: 0; padding: 2px 10px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .task-list { overflow: auto; list-style: none; margin: 0; padding: 0; }
 .task-list li { display: grid; gap: 3px; padding: 6px 10px; border-top: 1px solid var(--line); font-size: 12px; overflow-wrap: anywhere; }

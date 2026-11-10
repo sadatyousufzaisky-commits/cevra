@@ -31,6 +31,14 @@ On Windows, CEVRA starts programs and tests inside a Job Object and waits for th
 
 TypeScript errors and Python tracebacks link to the recorded source when CEVRA can confirm its revision. An edited source requires a new run before you can use the link. **Stop run** uses the same process-tree cleanup for all three languages.
 
+## Debug JavaScript with Failure Lens
+
+Click the breakpoint gutter beside a JavaScript line or press **F9** at the cursor. Open **Failure Lens** and choose **Debug file**, or press **F6** from the editor. CEVRA asks for workspace execution permission, saves open drafts, then pauses the bundled Node.js runtime at entry. Choose **Continue** or press **F5** to run to the next breakpoint. Breakpoints can be enabled, disabled, or removed between sessions. They stay in memory for the open workspace.
+
+Use **Pause**, **Step into**, **Step over**, and **Step out** to inspect code. Select a stack frame to inspect its local variables and navigate to its recorded source when CEVRA can verify the revision. **Restart debugger** starts the original entry file again. **Stop debugging** ends the supervised process tree. [Node.js debugger](https://nodejs.org/docs/latest-v24.x/api/debugger.html)
+
+Failure Lens pauses on uncaught JavaScript exceptions and keeps their stack and recent output after exit. Variable previews are available during a pause. It also shows recorded output and source locations from regular runs. Debug sessions in this release launch `.js`, `.mjs`, and `.cjs` files.
+
 ## Use the integrated terminal
 
 Choose **Terminal** in the bottom panel or press **Ctrl+Backtick**. Select **PowerShell** or **Command Prompt**, then choose **New terminal**. Each shell starts in the workspace folder and has its own environment and output. You can keep up to four sessions open and switch between them while commands run. The shell resizes with the panel. Use **Copy** and **Paste** or **Ctrl+Shift+C** and **Ctrl+Shift+V**.

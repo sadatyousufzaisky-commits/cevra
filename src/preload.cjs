@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('cevra', {
   saveCopy: (id, file, text) => ipcRenderer.invoke('cevra:save-copy', id, file, text),
   draft: (id, file, text, revision) => ipcRenderer.invoke('cevra:draft', id, file, text, revision),
   start: (id, file, revision, runId, token, profile) => ipcRenderer.invoke('cevra:start', id, file, revision, runId, token, profile),
+  debugStart: (id, file, revision, runId, token, breakpoints) => ipcRenderer.invoke('cevra:debug-start', id, file, revision, runId, token, breakpoints),
+  debugCommand: (id, runId, token, action, pauseId, frame) => ipcRenderer.invoke('cevra:debug-command', id, runId, token, action, pauseId, frame),
   pythonProfiles: id => ipcRenderer.invoke('cevra:python-profiles', id),
   choosePython: id => ipcRenderer.invoke('cevra:choose-python', id),
   test: (id, retry, runId, token, goal) => ipcRenderer.invoke('cevra:test', id, retry, runId, token, goal),

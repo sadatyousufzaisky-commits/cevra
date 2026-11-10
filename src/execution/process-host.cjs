@@ -6,7 +6,7 @@ const maxOutput = 160_000;
 const windows = process.platform === 'win32';
 const windowsHost = path.resolve(__dirname, '..', '..', 'dist', 'cevra-process-host.exe');
 
-function startProcess(root, args, publish, reportPrefix, { executable = process.execPath, environment } = {}) {
+function startProcess(root, args, publish, reportPrefix, { executable = process.execPath, environment, stderrFilter } = {}) {
   const env = { ...process.env, ...environment };
   if (executable === process.execPath) env.ELECTRON_RUN_AS_NODE = '1';
   else delete env.ELECTRON_RUN_AS_NODE;
@@ -44,14 +44,15 @@ function startProcess(root, args, publish, reportPrefix, { executable = process.
 
   const report = reportPrefix && createReportDecoder(reportPrefix, publish, output);
   let stderr = '';
+  function appendStderr(text) {
+    if (!report) stderr = (stderr + text).slice(-maxOutput);
+    output(text);
+  }
   child.stdout.setEncoding('utf8').on('data', text => {
     if (report) report.write(text);
     else output(text);
   });
-  child.stderr.setEncoding('utf8').on('data', text => {
-    if (!report) stderr = (stderr + text).slice(-maxOutput);
-    output(text);
-  });
+  child.stderr.setEncoding('utf8').on('data', text => appendStderr(stderrFilter ? stderrFilter.write(text) : text));
   child.stdin?.on('error', () => {}); // The native supervisor may exit before Stop closes its pipe.
   child.once('error', error => { spawnError = error.message; });
 
@@ -73,6 +74,7 @@ function startProcess(root, args, publish, reportPrefix, { executable = process.
     exited = true;
     clearTimeout(stopTimer);
     report?.finish();
+    if (stderrFilter) appendStderr(stderrFilter.finish());
     flush();
     publish({ type: 'exit', code, signal, stopped, error: spawnError, stderr, elapsed: Math.round(performance.now() - started) });
   });

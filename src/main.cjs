@@ -19,6 +19,7 @@ const { createTestWorkstream } = require('./continuum/workstream.cjs');
 const { readTaskCatalog } = require('./continuum/task-catalog.cjs');
 const { createTaskRunner } = require('./continuum/task-runner.cjs');
 const { createExecutionSessions } = require('./execution/sessions.cjs');
+const { startDebugger } = require('./execution/debugger.cjs');
 const { createPythonProfiles } = require('./execution/python-profiles.cjs');
 const { createTerminalSessions, terminalProfile, validateSize, maxTerminalInput } = require('./execution/terminal-sessions.cjs');
 
@@ -391,6 +392,14 @@ handle('start', (id, file, revision, runId, token, profile) => {
   const project = authorizedWorkspace(id, runId, token);
   const python = pythonProfiles;
   return sessions.start(id, runId, token, (publish, isStopping) => startSourceRun(project, file, revision, profile, python, publish, isStopping));
+});
+handle('debug-start', (id, file, revision, runId, token, breakpoints) => {
+  const project = authorizedWorkspace(id, runId, token);
+  return sessions.start(id, runId, token, (publish, isStopping) => startDebugger(project, file, revision, breakpoints, publish, isStopping));
+});
+handle('debug-command', (id, runId, token, action, pauseId, frame) => {
+  currentWorkspace(id);
+  return sessions.debug(id, runId, token, action, pauseId, frame);
 });
 
 handle('test', (id, retry, runId, token, goal) => {
