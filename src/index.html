@@ -119,6 +119,7 @@
             <button id="show-references" class="dock-view" aria-pressed="false" title="References (Shift+F12 to search)">References</button>
             <button id="show-terminal" class="dock-view" aria-pressed="false" title="Terminal (Ctrl+`)" disabled>Terminal</button>
             <button id="show-flightpath" class="dock-view" aria-pressed="false" disabled>Flightpath</button>
+            <button id="show-tasks" class="dock-view" aria-pressed="false" disabled>Tasks</button>
           </div>
           <span id="run-state" class="run-state" role="status">Ready</span>
           <span id="run-target" class="run-target"></span>
@@ -147,6 +148,9 @@
             <section id="test-results" class="test-results" aria-label="Test failures" hidden>
               <p id="test-empty" class="test-empty"></p>
               <ul id="test-failures" class="test-failures"></ul>
+            </section>
+            <section id="task-results" class="test-results" aria-label="Task results" hidden>
+              <ol id="task-steps" class="task-list" aria-label="Task steps"></ol>
             </section>
             <pre id="run-output" class="run-output" tabindex="0" aria-label="Program output">Run a JavaScript file to see its output here.</pre>
           </div>
@@ -177,6 +181,17 @@
               <button id="flightpath-retention" class="button" disabled>Enable local history</button>
             </div>
             <ol id="flightpath-capsules" aria-label="Run Capsules, newest first"></ol>
+          </section>
+          <section id="task-panel" class="flightpath-panel" aria-label="Task Weave" hidden>
+            <div class="terminal-toolbar">
+              <label for="task-choice">Task</label>
+              <select id="task-choice" disabled><option value="">Choose a task</option></select>
+              <button id="task-refresh" class="button" disabled>Refresh tasks</button>
+              <button id="task-run" class="button" disabled>Run task</button>
+            </div>
+            <p id="task-status" class="task-note" role="status"></p>
+            <p id="task-workspace" class="task-note"></p>
+            <ol id="task-preview" class="task-list" aria-label="Task plan in execution order"></ol>
           </section>
           <section id="terminal-panel" class="terminal-panel" aria-label="Workspace terminal" hidden>
             <div class="terminal-toolbar">

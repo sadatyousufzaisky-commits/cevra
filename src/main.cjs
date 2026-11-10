@@ -16,6 +16,8 @@ const { createSemanticService } = require('./semantic-service.cjs');
 const { createPreferences } = require('./preferences.cjs');
 const { createFlightpathStore } = require('./continuum/flightpath.cjs');
 const { createTestWorkstream } = require('./continuum/workstream.cjs');
+const { readTaskCatalog } = require('./continuum/task-catalog.cjs');
+const { createTaskRunner } = require('./continuum/task-runner.cjs');
 const { createExecutionSessions } = require('./execution/sessions.cjs');
 const { createTerminalSessions, terminalProfile, validateSize, maxTerminalInput } = require('./execution/terminal-sessions.cjs');
 
@@ -34,6 +36,7 @@ const terminals = createTerminalSessions();
 let window;
 let workspace;
 let workstream;
+let taskRunner;
 let flightpath;
 let changingWorkspace = false;
 let runGrant;
@@ -131,6 +134,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
     workspace = next;
     flightpath = flightpathStore.forWorkspace(next);
     workstream = createTestWorkstream(next, tests.start, flightpath);
+    taskRunner = createTaskRunner(next, flightpath);
     return {
       id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable, settings,
       caseInsensitivePaths: process.platform === 'win32',
@@ -374,9 +378,16 @@ handle('test', (id, retry, runId, token, goal) => {
   const current = workstream;
   return sessions.start(project.id, runId, token, (publish, isStopping) => current.start(retry === true, goal, publish, isStopping));
 });
-handle('test-evidence', (id, evidenceId) => {
+handle('task-catalog', id => readTaskCatalog(currentWorkspace(id)));
+handle('run-task', (id, target, revision, runId, token) => {
+  const project = authorizedWorkspace(id, runId, token);
+  const current = taskRunner;
+  return sessions.start(project.id, runId, token, (publish, isStopping) => current.start(target, revision, publish, isStopping));
+});
+handle('run-evidence', async (id, evidenceId) => {
   currentWorkspace(id);
-  return workstream.recheck(evidenceId);
+  const current = taskRunner;
+  return (await workstream.recheck(evidenceId)) ?? current.recheck(evidenceId);
 });
 handle('flightpath', async (id, action) => {
   const project = currentWorkspace(id);

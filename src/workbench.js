@@ -20,6 +20,7 @@ import { createSemanticCompletion } from './semantic-completion.js';
 import { createSignatureHelp } from './signature-help.js';
 import { createSymbolInfo } from './symbol-info.js';
 import { createSymbolPicker } from './symbol-picker.js';
+import { createTaskPanel } from './task-panel.js';
 import { createTestEvidence } from './test-evidence.js';
 import { createTerminalPanel } from './terminal-panel.js';
 import { createTypeProblems } from './type-problems.js';
@@ -36,6 +37,7 @@ const testEvidence = createTestEvidence(api, (evidence, checking) => {
 });
 const byId = id => document.getElementById(id);
 const terminalPanel = createTerminalPanel({ api, errorText });
+const taskPanel = createTaskPanel({ api, errorText, runTask, jump: jumpToTaskSource });
 const tabs = byId('tabs');
 const editor = byId('editor');
 const tree = byId('tree');
@@ -67,7 +69,7 @@ const forwardButton = byId('nav-forward');
 const dock = byId('run-panel');
 const dockButtons = {
   output: byId('show-output'), problems: byId('show-problems'), references: byId('show-references'),
-  terminal: byId('show-terminal'), flightpath: byId('show-flightpath'),
+  terminal: byId('show-terminal'), flightpath: byId('show-flightpath'), tasks: byId('show-tasks'),
 };
 const runnable = /\.(?:js|cjs|mjs)$/i;
 const maxOutput = 160_000;
@@ -167,7 +169,8 @@ function syncCommands() {
   const saving = savingAll || open.some(tab => tab.saving);
   const discarding = open.some(tab => tab.discarding);
   dockButtons.terminal.disabled = !project?.terminalLimit || changingProject;
-  dockButtons.flightpath.disabled = !project || changingProject;
+  dockButtons.flightpath.disabled = dockButtons.tasks.disabled = !project || changingProject;
+  taskPanel.setBusy(Boolean(run || changingProject || saving || discarding));
   terminalPanel.setBusy(changingProject);
   testEvidence.setBusy(Boolean(run || changingProject));
   openButton.disabled = welcomeOpen.disabled = exampleButton.disabled = Boolean(run || changingProject || saving || discarding);
@@ -561,6 +564,7 @@ async function adoptProject(next) {
   semantic.changed();
   project = next;
   terminalPanel.reset(next);
+  taskPanel.reset(next);
   flightpathPanel.reset(next);
   testEvidence.reset(next);
   documents.clear();
@@ -789,16 +793,19 @@ function showDock(name, focus = false) {
   layout.expandDock();
   terminalPanel.show(name === 'terminal', focus);
   flightpathPanel.show(name === 'flightpath');
+  taskPanel.show(name === 'tasks');
   problemsPanel.render();
   if (focus && name !== 'terminal') dockButtons[name].focus();
 }
 
-function resetOutput(target = '', mode = 'file') {
+function resetOutput(target = '', mode = 'file', plan = []) {
   testPass = undefined;
-  testEvidence.clear();
   const testing = mode === 'tests';
+  const tasks = mode === 'tasks';
   dock.dataset.mode = mode;
-  byId('run-heading').textContent = testing ? 'Test results' : 'Run output';
+  testEvidence.clear();
+  taskPanel.start(plan);
+  byId('run-heading').textContent = testing ? 'Test results' : tasks ? 'Task output' : 'Run output';
   byId('test-results').hidden = !testing;
   byId('test-empty').hidden = false;
   byId('test-empty').textContent = 'Waiting for test results…';
@@ -810,9 +817,9 @@ function resetOutput(target = '', mode = 'file') {
   outputText = '';
   outputNotice.hidden = true;
   output.classList.remove('has-output');
-  output.setAttribute('aria-label', testing ? 'Test output' : 'Program output');
+  output.setAttribute('aria-label', testing ? 'Test output' : tasks ? 'Task output' : 'Program output');
   output.textContent = testing ? 'Waiting for test output…' :
-    target ? 'Waiting for program output…' : 'Run a JavaScript file to see its output here.';
+    tasks ? 'Waiting for task output…' : target ? 'Waiting for program output…' : 'Run a JavaScript file to see its output here.';
   setRunState('Ready');
 }
 
@@ -853,14 +860,15 @@ function cancelBeforeStart(attempt) {
   setRunState('Canceled');
   output.textContent = 'Execution canceled.';
   if (attempt.mode === 'tests') byId('test-empty').textContent = 'Execution canceled.';
+  if (attempt.mode === 'tasks') taskPanel.blockWaiting('Run canceled');
   syncCommands();
 }
 
-async function launchRun(mode, target, prepare, start) {
+async function launchRun(mode, target, prepare, start, plan) {
   const attempt = { id: ++runSequence, workspaceId: project.id, mode, stage: 'starting' };
   run = attempt;
   showDock('output');
-  resetOutput(target, mode);
+  resetOutput(target, mode, plan);
   setRunState('Starting', 'running');
   syncCommands();
   try {
@@ -886,6 +894,7 @@ async function launchRun(mode, target, prepare, start) {
     run = undefined;
     setRunState('Could not run', 'error');
     if (mode === 'tests') byId('test-empty').textContent = 'The tests could not start.';
+    if (mode === 'tasks') taskPanel.blockWaiting('Task execution could not start');
     appendOutput(errorText(error));
     syncCommands();
     report(error);
@@ -905,19 +914,27 @@ function runFile() {
   }, attempt => api.start(attempt.workspaceId, tab.path, tab.revision, attempt.id, attempt.sessionId));
 }
 
+async function prepareWorkspaceRun(attempt) {
+  for (const tab of documents.values()) {
+    if (attempt.stage === 'stopping') return;
+    await saveFile(tab);
+  }
+  if ([...documents.values()].some(tab => tab.dirty)) {
+    throw new Error('An open file changed during save. Try again to include the latest edits.');
+  }
+  attempt.sourceVersion = testEvidence.version;
+}
+
 function runTests(retry = false) {
   if (testButton.disabled || (retry && !retryAvailable)) return;
   const goal = testEvidence.goal;
-  return launchRun('tests', retry ? 'Failed tests' : 'Project tests', async attempt => {
-    for (const tab of documents.values()) {
-      if (attempt.stage === 'stopping') return;
-      await saveFile(tab);
-    }
-    if ([...documents.values()].some(tab => tab.dirty)) {
-      throw new Error('An open file changed during save. Run tests again to include the latest edits.');
-    }
-    attempt.sourceVersion = testEvidence.version;
-  }, attempt => api.test(attempt.workspaceId, retry, attempt.id, attempt.sessionId, goal));
+  return launchRun('tests', retry ? 'Failed tests' : 'Project tests', prepareWorkspaceRun,
+    attempt => api.test(attempt.workspaceId, retry, attempt.id, attempt.sessionId, goal));
+}
+
+function runTask(target, revision, plan) {
+  return launchRun('tasks', 'Task Weave · ' + plan.at(-1).id, prepareWorkspaceRun,
+    attempt => api.runTask(attempt.workspaceId, target, revision, attempt.id, attempt.sessionId), plan);
 }
 
 async function stopRun() {
@@ -931,6 +948,14 @@ async function stopRun() {
 
 function locationLabel({ path, line, column }) {
   return `${path}:${line}:${column}`;
+}
+
+function jumpToTaskSource(anchor, isCurrent) {
+  const staleMessage = 'The recorded task source changed or is unavailable. Run the task again to refresh this location.';
+  void jumpToLocation(anchor, {
+    revision: anchor.revision, isCurrent, staleMessage, changedMessage: staleMessage,
+    validate: doc => anchor.line <= doc.lines && anchor.column <= doc.line(anchor.line).length + 1,
+  }).catch(error => { if (isCurrent()) report(error); });
 }
 
 function appendFailure({ name, message, location, anchor }, evidenceId) {
@@ -1011,8 +1036,10 @@ function finishTests(event, elapsed) {
 }
 
 api.onRun(event => {
-  if (event.type !== 'exit' || event.workspaceId !== project?.id || event.runId !== run?.id ||
+  if (event.workspaceId !== project?.id || event.runId !== run?.id ||
       event.sessionId !== run?.sessionId) return;
+  if (event.type === 'task-progress' && run.mode === 'tasks') taskPanel.progress(event);
+  if (event.type !== 'exit') return;
   const { mode, sourceVersion } = run;
   clearTimeout(run.outputTimer);
   run = undefined;
@@ -1022,6 +1049,18 @@ api.onRun(event => {
     testEvidence.finish(event.evidence, sourceVersion);
     for (const failure of event.failures ?? []) appendFailure(failure, event.evidence?.id);
     finishTests(event, elapsed);
+    flightpathPanel.refresh();
+    syncCommands();
+    return;
+  }
+  if (mode === 'tasks') {
+    testEvidence.finish(event.evidence, sourceVersion);
+    if (event.stopped) setRunState('Canceled');
+    else if (event.code === 0) setRunState('Completed · ' + elapsed);
+    else setRunState(event.completedWithFailures ? 'Completed with failures' : 'Task failed', 'error');
+    if (event.error) appendOutput(event.error);
+    if (!outputText) output.textContent = 'The tasks produced no output.';
+    taskPanel.blockWaiting(event.stopped ? 'Run canceled' : 'Task execution could not continue');
     flightpathPanel.refresh();
     syncCommands();
     return;

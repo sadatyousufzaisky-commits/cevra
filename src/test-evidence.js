@@ -20,8 +20,9 @@ export function createTestEvidence(api, onChange) {
     status.dataset.freshness = evidence?.freshness ?? '';
     status.textContent = evidence?.outcome === 'cancelled' ? 'Run canceled' :
       pending ? 'Checking workspace inputs…' : evidence ? description[evidence.freshness] :
-        'Run tests to capture a workspace revision.';
-    status.title = evidence ? [evidence.goal, evidence.revision, evidence.fileCount + ' captured files'].filter(Boolean).join('\n') : '';
+        document.getElementById('run-panel').dataset.mode === 'tasks' ? 'Run a task to capture a workspace revision.' :
+          'Run tests to capture a workspace revision.';
+    status.title = evidence ? [evidence.goal ?? evidence.taskId, evidence.revision, evidence.fileCount + ' captured files'].filter(Boolean).join('\n') : '';
     check.hidden = evidence?.freshness !== 'observed';
     check.disabled = Boolean(pending);
     onChange(evidence, pending);
@@ -33,7 +34,7 @@ export function createTestEvidence(api, onChange) {
     checking = previous;
     render();
     try {
-      const current = await api.testEvidence(project.id, previous.id);
+      const current = await api.runEvidence(project.id, previous.id);
       if (evidence === previous) evidence = current ?? { ...previous, freshness: 'unavailable' };
     } catch {
       if (evidence === previous) evidence = { ...previous, freshness: 'unavailable' };

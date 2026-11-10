@@ -1,4 +1,4 @@
-const outcomes = { passed: 'Passed', failed: 'Failed', cancelled: 'Canceled', empty: 'No tests' };
+const outcomes = { passed: 'Passed', failed: 'Failed', cancelled: 'Canceled', empty: 'No tests', blocked: 'Blocked' };
 
 export function createFlightpathPanel({ api, errorText, checkInputs }) {
   const byId = id => document.getElementById(id);
@@ -23,7 +23,8 @@ export function createFlightpathPanel({ api, errorText, checkInputs }) {
     const freshness = live ? evidence.freshness : capsule.freshness === 'unavailable' ? 'unavailable' : 'historical';
     row.dataset.freshness = live && checking ? 'checking' : freshness;
     const outcome = document.createElement('strong');
-    outcome.textContent = (capsule.retry ? 'Test retry' : 'Project tests') + ' · ' + outcomes[capsule.outcome];
+    const label = capsule.kind === 'task' ? 'Task ' + capsule.taskId : capsule.retry ? 'Test retry' : 'Project tests';
+    outcome.textContent = label + ' · ' + outcomes[capsule.outcome];
     const revision = document.createElement('span');
     revision.textContent = live && checking ? 'Checking inputs…' : {
       observed: 'Workspace inputs observed', historical: 'Historical', unavailable: 'Revision unavailable',
@@ -49,8 +50,8 @@ export function createFlightpathPanel({ api, errorText, checkInputs }) {
     check.disabled = Boolean(checking);
     status.textContent = message || (!snapshot ? 'Loading local history…' : snapshot.unreadable ? 'Local history could not be read.' :
       snapshot.writeFailed ? 'A Run Capsule could not be saved.' : snapshot.enabled ?
-        `Local history is on. CEVRA keeps metadata for up to ${snapshot.limit} test attempts.` :
-        'Local history is off. Enable it to keep metadata for future test attempts.');
+        `Local history is on. CEVRA keeps metadata for up to ${snapshot.limit} test and task results.` :
+        'Local history is off. Enable it to keep metadata for future test and task results.');
     list.replaceChildren(...(snapshot?.capsules.toReversed().map(capsuleRow) ?? []));
   }
 

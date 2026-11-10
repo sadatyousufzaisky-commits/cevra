@@ -45,9 +45,30 @@ The latest result stays available in **Test results** for the open workspace. CE
 
 ### Keep a local Flightpath
 
-Open **Flightpath** in the bottom panel and select **Enable local history** for the workspace. Each completed test attempt adds a **Run Capsule** with its outcome, revision fingerprint when available, duration, exit code, and timestamp. The journal keeps the latest 64 attempts for that workspace on this device. It stores structured metadata. Goals, source, command arguments, environment variables, and raw output stay out of the journal.
+Open **Flightpath** in the bottom panel and select **Enable local history** for the workspace. Each completed test attempt or task step adds a **Run Capsule** with its outcome, revision fingerprint when available, duration, exit code, and timestamp. Task capsules also record the task ID. The journal keeps the latest 64 results for that workspace on this device. It stores structured metadata. Goals, source, command arguments, environment variables, and raw output stay out of the journal.
 
 Earlier attempts with complete revision observations and entries reopened after a restart appear as **Historical**. Incomplete observations show **Revision unavailable**. A successful retry is labeled separately from a full test run. **Clear history** removes saved attempts and leaves retention on. **Turn off and clear** removes them and stops future recording. Both actions exclude in-progress attempts from saved history.
+
+## Run builds and tasks
+
+Open **Tasks**, choose a script from the root `package.json`, review the command, and select **Run task**. CEVRA discovers scripts by reading the manifest and starts the chosen script only after workspace execution is authorized. Use **Refresh tasks** after changing the manifest. The runner uses the installed npm CLI with implicit pre- and post-scripts disabled. It runs from the workspace root and saves open drafts before starting. If saving changes the previewed manifest or graph, refresh and review the new plan before running it.
+
+Add an optional `.cevra-tasks.json` at the workspace root to define dependency graphs. Each `profile` names a script in `package.json`. For example, choose `verify` to run `compile` before the `test` script.
+
+```json
+{
+  "schemaVersion": 1,
+  "outputs": ["dist"],
+  "tasks": [
+    { "id": "compile", "profile": "build", "after": [] },
+    { "id": "verify", "profile": "test", "after": ["compile"] }
+  ]
+}
+```
+
+Task Weave validates all dependencies before launch, runs each prerequisite once, and checks the manifest and graph again before each step. A failed dependency blocks its dependents by default. Set `"continueOnFailure": true` on a dependent to let it run after a failed prerequisite. **Stop run** ends the active process tree and blocks later steps. **Task output** shows each step’s status and recent output. Recognized JavaScript and TypeScript diagnostics can link to the recorded source revision.
+
+Declare generated folders in `outputs` to exclude them from task revision checks. CEVRA still checks the manifest, graph, and other observed workspace inputs. With Flightpath enabled, each step records its outcome, including failures, cancellations, and blocked steps.
 
 ## Search and navigate
 

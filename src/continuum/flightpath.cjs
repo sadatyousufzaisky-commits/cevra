@@ -2,6 +2,7 @@ const { createHash, randomUUID } = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { writeAtomic } = require('../atomic-file.cjs');
+const { isTaskId } = require('./task-plan.cjs');
 
 const limit = 64;
 const maxBytes = 64 * 1024;
@@ -20,9 +21,11 @@ function workstreamKey(workspace) {
   return digest([root, String(dev), String(ino), String(birthtimeNs)]);
 }
 
-function validCapsule(value, workstreamId) {
-  return value && Object.keys(value).length === 10 && typeof value.id === 'string' && uuid.test(value.id) &&
-    value.workstreamId === workstreamId && value.kind === 'test' && outcomes.has(value.outcome) &&
+function validCapsule(value, workstreamId, version) {
+  const task = version === 2 && value?.kind === 'task';
+  return value && Object.keys(value).length === (task ? 11 : 10) && typeof value.id === 'string' && uuid.test(value.id) &&
+    value.workstreamId === workstreamId && (task ? isTaskId(value.taskId) && !value.retry : value.kind === 'test') &&
+    (outcomes.has(value.outcome) || (task && value.outcome === 'blocked')) &&
     freshness.has(value.freshness) && typeof value.retry === 'boolean' &&
     (value.revision === null ? value.freshness === 'unavailable' :
       typeof value.revision === 'string' && revision.test(value.revision)) &&
@@ -30,7 +33,7 @@ function validCapsule(value, workstreamId) {
     Number.isSafeInteger(value.durationMs) && value.durationMs >= 0 &&
     Number.isSafeInteger(value.completedAt) && value.completedAt > 0 && value.completedAt <= 8.64e15 &&
     (value.outcome !== 'passed' || value.exitCode === 0) &&
-    (value.outcome !== 'cancelled' || value.freshness === 'unavailable');
+    (!['cancelled', 'blocked'].includes(value.outcome) || value.freshness === 'unavailable');
 }
 
 function createFlightpathStore(root) {
@@ -67,10 +70,10 @@ function createFlightpathStore(root) {
         }
         if (length !== stat.size) throw new Error('Flightpath changed while reading.');
         const { data, checksum } = JSON.parse(buffer.toString('utf8', 0, length));
-        if (data?.version !== 1 || Object.keys(data).length !== 4 || data.workstreamId !== workstreamId ||
+        if (![1, 2].includes(data?.version) || Object.keys(data).length !== 4 || data.workstreamId !== workstreamId ||
             typeof data.generation !== 'string' || !uuid.test(data.generation) || !Array.isArray(data.capsules) ||
             data.capsules.length > limit || checksum !== digest(data) ||
-            !data.capsules.every(capsule => validCapsule(capsule, workstreamId)) ||
+            !data.capsules.every(capsule => validCapsule(capsule, workstreamId, data.version)) ||
             new Set(data.capsules.map(capsule => capsule.id)).size !== data.capsules.length) {
           throw new Error('Invalid Flightpath journal.');
         }
@@ -103,7 +106,7 @@ function createFlightpathStore(root) {
     }
 
     function empty() {
-      return { version: 1, workstreamId, generation: randomUUID(), capsules: [] };
+      return { version: 2, workstreamId, generation: randomUUID(), capsules: [] };
     }
 
     return {
@@ -143,12 +146,15 @@ function createFlightpathStore(root) {
         void enqueue(async () => {
           const data = await read();
           if (data?.generation !== generation || data.capsules.some(capsule => capsule.id === evidence.id)) return;
+          const kind = evidence.kind ?? 'test';
           const capsule = {
-            id: evidence.id, workstreamId, kind: 'test', revision: evidence.revision ?? null,
+            id: evidence.id, workstreamId, kind, revision: evidence.revision ?? null,
             outcome: evidence.outcome, freshness: evidence.freshness, retry: evidence.retry,
             exitCode: evidence.exitCode ?? null, durationMs: evidence.durationMs, completedAt,
+            ...(kind === 'task' ? { taskId: evidence.taskId } : {}),
           };
-          if (!validCapsule(capsule, workstreamId)) throw new Error('Invalid Run Capsule.');
+          if (!validCapsule(capsule, workstreamId, 2)) throw new Error('Invalid Run Capsule.');
+          data.version = 2;
           data.capsules = [...data.capsules, capsule].slice(-limit);
           await write(data);
         }).catch(() => { writeFailed = true; });

@@ -1,13 +1,13 @@
 const { randomUUID } = require('node:crypto');
-const { captureInputs, inputFreshness, sourceAnchor } = require('./revisions.cjs');
+const { captureInputs, createRunEvidence, inputFreshness, sourceAnchor } = require('./revisions.cjs');
 
 function createTestWorkstream(workspace, startTests, history) {
   const workstreamId = history?.workstreamId ?? randomUUID();
-  let latest;
+  const observed = createRunEvidence(workspace);
 
   async function start(retry, goal, publish, isStopping) {
     if (typeof goal !== 'string' || goal.length > 120 || /[\r\n\0]/.test(goal)) throw new Error('Enter a workstream goal of up to 120 characters.');
-    latest = undefined;
+    observed.clear();
     const id = randomUUID();
     const [before, retention] = await Promise.all([captureInputs(workspace), history?.admit()]);
     const failures = [];
@@ -23,7 +23,7 @@ function createTestWorkstream(workspace, startTests, history) {
         revision: before.revision, fileCount: before.files.size, freshness, outcome, retry,
         exitCode: event.code, durationMs: event.elapsed,
       };
-      latest = { evidence, before };
+      observed.remember(evidence, before);
       history?.record(retention, evidence);
       publish({
         ...event, stopped, evidence,
@@ -51,19 +51,7 @@ function createTestWorkstream(workspace, startTests, history) {
     }, isStopping);
   }
 
-  async function recheck(id) {
-    const observed = latest;
-    if (!observed || observed.evidence.id !== id) return null;
-    if (observed.evidence.freshness === 'observed') {
-      observed.checking ??= captureInputs(workspace).then(current => {
-        observed.evidence = { ...observed.evidence, freshness: inputFreshness(observed.before, current) };
-      }).finally(() => { observed.checking = undefined; });
-      await observed.checking;
-    }
-    return latest === observed ? observed.evidence : null;
-  }
-
-  return { start, recheck };
+  return { start, recheck: observed.recheck };
 }
 
 module.exports = { createTestWorkstream };

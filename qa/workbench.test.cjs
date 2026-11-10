@@ -645,6 +645,112 @@ test('Flightpath keeps opt-in capsules across a crash and shows reopened passes 
     await assert.rejects(fs.stat(journal), { code: 'ENOENT' });
   });
 
+test('Task Weave rejects stale plans, links build errors, and records graph outcomes in Flightpath',
+  { timeout: 45_000 }, async t => {
+    const source = 'nested (QA)/fail café.cjs';
+    const manifest = { scripts: {
+      check: 'node -e "console.log(\'STEP-PREPARED\')"', build: 'node "' + source + '"',
+      test: 'node -e "console.log(\'STEP-VERIFIED\')"', prebuild: 'node -e "console.log(\'IMPLICIT-STEP\')"',
+    } };
+    const workbench = await openWorkbench(t, {
+      'package.json': JSON.stringify(manifest),
+      '.cevra-tasks.json': JSON.stringify({ schemaVersion: 1, tasks: [
+        { id: 'prepare', profile: 'check', after: [] },
+        { id: 'compile', profile: 'build', after: ['prepare'] },
+        { id: 'verify', profile: 'test', after: ['compile'] },
+      ] }),
+      [source]: '\nthrow new Error("nested build failure");\n',
+    });
+    const { page, project, state, output } = workbench;
+    const tasks = page.getByRole('button', { name: 'Tasks', exact: true });
+    const flightpath = page.getByRole('button', { name: 'Flightpath', exact: true });
+    const choose = page.getByLabel('Task', { exact: true });
+    const run = page.getByRole('button', { name: 'Run task', exact: true });
+    const steps = page.getByRole('list', { name: 'Task steps' }).getByRole('listitem');
+    await flightpath.click();
+    await page.getByRole('button', { name: 'Enable local history' }).click();
+    await page.getByText(/^Local history is on/).waitFor();
+    await tasks.click();
+    await choose.selectOption('dag:verify');
+    const plan = page.getByRole('list', { name: 'Task plan in execution order' }).getByRole('listitem');
+    assert.deepEqual(await plan.locator('strong').allTextContents(), [
+      'prepare · npm --ignore-scripts run check', 'compile · npm --ignore-scripts run build', 'verify · npm --ignore-scripts run test',
+    ]);
+    assert.match(await plan.nth(1).innerText(), /After prepare/);
+    await fs.writeFile(path.join(project, 'package.json'), JSON.stringify({ ...manifest, version: '1.0.0' }));
+    await run.click();
+    await state.getByText('Could not run', { exact: true }).waitFor();
+    await output.getByText(/Task scripts or dependencies changed/).waitFor();
+    assert.doesNotMatch(await output.textContent(), /STEP-PREPARED/);
+
+    await tasks.click();
+    await choose.selectOption('dag:verify');
+    await run.click();
+    await state.getByText('Task failed', { exact: true }).waitFor();
+    await steps.nth(0).getByText('Passed', { exact: true }).waitFor();
+    await steps.nth(1).getByText('Failed', { exact: true }).waitFor();
+    await steps.nth(2).getByText('Dependency compile did not pass', { exact: true }).waitFor();
+    assert.match(await output.textContent(), /STEP-PREPARED[\s\S]*nested build failure/);
+    assert.doesNotMatch(await output.textContent(), /STEP-VERIFIED|IMPLICIT-STEP/);
+    const link = steps.nth(1).getByRole('button', { name: /fail café\.cjs:2:7/ });
+    await link.click();
+    await workbench.selected('fail café.cjs').waitFor();
+    await page.locator('#cursor').getByText('Ln 2, Col 7', { exact: true }).waitFor();
+    await replaceEditor(workbench, 'console.log("STEP-COMPILED");\n');
+    await link.click();
+    await page.locator('#message').getByText(/recorded task source changed/).waitFor();
+
+    await tasks.click();
+    await choose.selectOption('dag:verify');
+    await run.click();
+    await state.getByText(/^Completed ·/).waitFor();
+    assert.match(await output.textContent(), /STEP-PREPARED[\s\S]*STEP-COMPILED[\s\S]*STEP-VERIFIED/);
+    await flightpath.click();
+    const capsules = page.getByRole('list', { name: 'Run Capsules, newest first' }).getByRole('listitem');
+    await capsules.first().getByText(/^Workspace inputs observed/).waitFor();
+    assert.deepEqual(await capsules.locator('strong').allTextContents(), [
+      'Task verify · Passed', 'Task compile · Passed', 'Task prepare · Passed',
+      'Task verify · Blocked', 'Task compile · Failed', 'Task prepare · Passed',
+    ]);
+  });
+
+test('Windows Task Weave respects trust and Stop ends detached children and blocks later tasks',
+  { timeout: 35_000, skip: process.platform !== 'win32' }, async t => {
+    const { app, page, state, output } = await openWorkbench(t, {
+      'package.json': JSON.stringify({ scripts: { build: 'node build.cjs', test: 'echo TASK-SHOULD-NOT-RUN' } }),
+      '.cevra-tasks.json': JSON.stringify({ schemaVersion: 1, tasks: [
+        { id: 'build', profile: 'build', after: [] },
+        { id: 'verify', profile: 'test', after: ['build'] },
+      ] }),
+      'build.cjs': terminalTree.replace('TERMINAL-TREE', 'TASK-TREE'),
+    });
+    const tasks = page.getByRole('button', { name: 'Tasks', exact: true });
+    const choose = page.getByLabel('Task', { exact: true });
+    const run = page.getByRole('button', { name: 'Run task', exact: true });
+    await tasks.click();
+    await choose.selectOption('dag:verify');
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 0 }); });
+    await run.click();
+    await state.getByText('Canceled', { exact: true }).waitFor();
+    assert.doesNotMatch(await output.textContent(), /TASK-TREE/);
+
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
+    await tasks.click();
+    await choose.selectOption('dag:verify');
+    await run.click();
+    const marker = /TASK-TREE (\d+) (\d+)/;
+    await output.getByText(marker).waitFor();
+    const pids = marker.exec(await output.textContent()).slice(1).map(Number);
+    for (const pid of pids) process.kill(pid, 0);
+    await page.getByRole('button', { name: 'Stop run', exact: true }).click();
+    await state.getByText('Canceled', { exact: true }).waitFor();
+    await Promise.all(pids.map(assertWindowsProcessStopped));
+    const steps = page.getByRole('list', { name: 'Task steps' }).getByRole('listitem');
+    await steps.nth(0).getByText('Canceled', { exact: true }).waitFor();
+    await steps.nth(1).getByText('Run canceled', { exact: true }).waitFor();
+    assert.doesNotMatch(await output.textContent(), /TASK-SHOULD-NOT-RUN/);
+  });
+
 test('project replacement rejects a changed file, then recovers the entire confirmed batch after a crash',
   { timeout: 35_000 }, async t => {
     const first = 'const token = "token";\n';

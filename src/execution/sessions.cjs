@@ -28,6 +28,8 @@ function createExecutionSessions(publish) {
         if (event.truncated || session.tail.length + event.text.length > maxOutput) session.truncated = true;
         session.tail = (session.tail + event.text).slice(-maxOutput);
         session.cursor += event.text.length;
+      } else if (event.type === 'task-progress') {
+        publish({ ...event, workspaceId, runId, sessionId });
       } else if (event.type === 'exit') {
         active = undefined;
         finish();

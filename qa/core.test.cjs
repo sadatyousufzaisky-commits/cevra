@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { randomUUID } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { test } = require('node:test');
@@ -18,6 +18,9 @@ const { createPreferences } = require('../src/preferences.cjs');
 const { createFlightpathStore } = require('../src/continuum/flightpath.cjs');
 const { captureInputs, inputFreshness, sourceAnchor } = require('../src/continuum/revisions.cjs');
 const { createTestWorkstream } = require('../src/continuum/workstream.cjs');
+const { readTaskCatalog } = require('../src/continuum/task-catalog.cjs');
+const { planTask } = require('../src/continuum/task-plan.cjs');
+const { createTaskRunner } = require('../src/continuum/task-runner.cjs');
 const { createExecutionSessions } = require('../src/execution/sessions.cjs');
 const { createTerminalSessions } = require('../src/execution/terminal-sessions.cjs');
 const { maxOutput } = require('../src/execution/process-host.cjs');
@@ -283,6 +286,144 @@ test('Flightpath clear and opt-out reject late results and unreadable history fa
   assert.equal((await history.disable()).enabled, false);
   await assert.rejects(fs.stat(journal), { code: 'ENOENT' });
   await assert.rejects(fs.stat(path.dirname(journal)), { code: 'ENOENT' });
+});
+
+test('Task Weave discovers scripts read-only and validates an ordered dependency closure', async t => {
+  const { root, workspace } = await fixture(t);
+  const manifest = path.join(root, 'package.json');
+  const config = path.join(root, '.cevra-tasks.json');
+  const script = 'node -e "require(\'node:fs\').writeFileSync(\'ran\', \'yes\')"';
+  await fs.writeFile(manifest, '\uFEFF' + JSON.stringify({ scripts: { check: script, '-unsafe': 'echo ignored' } }));
+  const tasks = [
+    { id: 'all', profile: 'check', after: ['left', 'right'] },
+    { id: 'left', profile: 'check', after: ['base'] },
+    { id: 'right', profile: 'check', after: ['base'] },
+    { id: 'base', profile: 'check', after: [] },
+    { id: 'unrelated', profile: 'check', after: [] },
+  ];
+  const writeGraph = (steps, outputs) => fs.writeFile(config, JSON.stringify({ schemaVersion: 1, tasks: steps, outputs }));
+  await writeGraph(tasks, ['generated']);
+  const catalog = await readTaskCatalog(workspace);
+  assert.deepEqual(catalog.scripts, [{ id: 'check', command: script }]);
+  assert.equal(catalog.omitted, 1);
+  assert.deepEqual(planTask(catalog, 'dag:all').map(task => task.id), ['base', 'left', 'right', 'all']);
+  assert.deepEqual(planTask(catalog, 'npm:check').map(task => task.id), ['check']);
+  assert.throws(() => planTask(catalog, 'npm:-unsafe'), /current catalog/);
+  await assert.rejects(fs.stat(path.join(root, 'ran')), { code: 'ENOENT' });
+
+  await writeGraph(tasks.map(task => task.id === 'base' ? { ...task, after: ['all'] } : task));
+  await assert.rejects(readTaskCatalog(workspace), /Circular task dependency/);
+  await writeGraph(tasks.slice(0, 3));
+  await assert.rejects(readTaskCatalog(workspace), /Missing task dependency base/);
+  await writeGraph([...tasks, tasks[0]]);
+  await assert.rejects(readTaskCatalog(workspace), /unique ID/);
+  await writeGraph([{ ...tasks[3], profile: 'missing' }]);
+  await assert.rejects(readTaskCatalog(workspace), /unavailable script missing/);
+  await writeGraph(tasks, ['../elsewhere']);
+  await assert.rejects(readTaskCatalog(workspace), /relative folder paths/);
+});
+
+test('supervised npm tasks can continue after an opted-in failure and migrate older Flightpath records',
+  { timeout: 25_000 }, async t => {
+    const { folder, root, workspace } = await fixture(t);
+    await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ scripts: {
+      check: 'node steps.cjs check', build: 'node steps.cjs build', test: 'node steps.cjs test', prebuild: 'node steps.cjs implicit',
+    } }));
+    await fs.writeFile(path.join(root, '.cevra-tasks.json'), JSON.stringify({ schemaVersion: 1, outputs: ['dist'], tasks: [
+      { id: 'check', profile: 'check', after: [] },
+      { id: 'build', profile: 'build', after: ['check'], continueOnFailure: true },
+      { id: 'verify', profile: 'test', after: ['build'] },
+    ] }));
+    await fs.writeFile(path.join(root, 'steps.cjs'), `
+      const fs = require('node:fs');
+      const step = process.argv[2];
+      if (step === 'check') {
+        console.error('steps.cjs(2,7): error TS2322: Example task diagnostic');
+        process.exit(7);
+      }
+      if (step === 'implicit') fs.writeFileSync('ran-implicit', 'yes');
+      if (step === 'build') {
+        fs.mkdirSync('dist');
+        fs.writeFileSync('dist/built', 'artifact');
+      }
+      if (step === 'test' && fs.readFileSync('dist/built', 'utf8') !== 'artifact') process.exit(3);
+    `);
+    const storage = path.join(folder, 'flightpath');
+    const store = createFlightpathStore(storage);
+    const history = store.forWorkspace(workspace);
+    await history.enable();
+    const legacyId = randomUUID();
+    history.record(await history.admit(), {
+      id: legacyId, revision: 'a'.repeat(64), outcome: 'passed', freshness: 'observed', retry: false, exitCode: 0, durationMs: 5,
+    });
+    await store.flush();
+    const journal = path.join(storage, history.workstreamId, 'journal.json');
+    const { data } = JSON.parse(await fs.readFile(journal, 'utf8'));
+    data.version = 1;
+    await fs.writeFile(journal, JSON.stringify({ data, checksum: createHash('sha256').update(JSON.stringify(data)).digest('hex') }));
+    assert.equal((await history.view()).capsules[0].id, legacyId);
+
+    const catalog = await readTaskCatalog(workspace);
+    const runner = createTaskRunner(workspace, history);
+    const events = [];
+    const { promise, resolve } = Promise.withResolvers();
+    const controller = await runner.start('dag:verify', catalog.revision, event => {
+      events.push(event);
+      if (event.type === 'exit') resolve(event);
+    }, () => false);
+    t.after(() => controller.stop());
+    const exit = await promise;
+    assert.equal(exit.code, 7, events.map(event => event.text || event.reason || '').join('').slice(-3000));
+    assert.equal(exit.completedWithFailures, true);
+    assert.equal(exit.evidence.freshness, 'observed');
+    assert.deepEqual(events.filter(event => event.type === 'task-progress').map(event => [event.id, event.outcome]), [
+      ['check', 'running'], ['check', 'failed'], ['build', 'running'], ['build', 'passed'], ['verify', 'running'], ['verify', 'passed'],
+    ]);
+    const { anchor } = events.find(event => event.id === 'check' && event.outcome === 'failed');
+    assert.deepEqual([anchor.path, anchor.line, anchor.column], ['steps.cjs', 2, 7]);
+    assert.match(anchor.revision, /^[a-f0-9]{64}$/);
+    await assert.rejects(fs.stat(path.join(root, 'ran-implicit')), { code: 'ENOENT' });
+    await store.flush();
+    const migrated = JSON.parse(await fs.readFile(journal, 'utf8'));
+    assert.equal(migrated.data.version, 2);
+    assert.deepEqual((await history.view()).capsules.map(item => item.taskId ?? item.id), [legacyId, 'check', 'build', 'verify']);
+    assert.equal((await runner.recheck(exit.evidence.id)).freshness, 'observed');
+    await fs.writeFile(path.join(root, 'steps.cjs'), '// Changed after verification.');
+    assert.equal((await runner.recheck(exit.evidence.id)).freshness, 'historical');
+  });
+
+test('Task Weave stops the graph if a running script changes the approved manifest', { timeout: 15_000 }, async t => {
+  const { folder, root, workspace } = await fixture(t);
+  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ scripts: {
+    build: 'node rewrite.cjs', verify: 'echo ORIGINAL-STEP', finish: 'echo FINAL-STEP',
+  } }));
+  await fs.writeFile(path.join(root, 'rewrite.cjs'), `
+    const fs = require('node:fs');
+    const data = require('./package.json');
+    data.scripts.verify = 'echo CHANGED-STEP';
+    fs.writeFileSync('package.json', JSON.stringify(data));
+  `);
+  await fs.writeFile(path.join(root, '.cevra-tasks.json'), JSON.stringify({ schemaVersion: 1, tasks: [
+    { id: 'build', profile: 'build', after: [] },
+    { id: 'verify', profile: 'verify', after: ['build'] },
+    { id: 'finish', profile: 'finish', after: ['verify'], continueOnFailure: true },
+  ] }));
+  const history = createFlightpathStore(path.join(folder, 'history')).forWorkspace(workspace);
+  const runner = createTaskRunner(workspace, history);
+  const { revision } = await readTaskCatalog(workspace);
+  const { promise, resolve } = Promise.withResolvers();
+  const events = [];
+  const controller = await runner.start('dag:finish', revision, event => {
+    events.push(event);
+    if (event.type === 'exit') resolve(event);
+  }, () => false);
+  t.after(() => controller.stop());
+  assert.equal((await promise).code, null);
+  assert.deepEqual(events.filter(event => event.type === 'task-progress').map(event => [event.id, event.outcome]), [
+    ['build', 'running'], ['build', 'passed'], ['verify', 'failed'], ['finish', 'blocked'],
+  ]);
+  assert.match(events.find(event => event.id === 'verify').reason, /changed/);
+  assert.doesNotMatch(events.map(event => event.text ?? '').join(''), /ORIGINAL-STEP|CHANGED-STEP|FINAL-STEP/);
 });
 
 test('theme preferences default safely and persist concurrent changes in order', async t => {
