@@ -362,7 +362,7 @@ test('Windows bounds a 12 MiB output flood and cancels the detached process tree
     });
     await open('flood.cjs');
     await editor.press('F5');
-    const notice = page.getByText('Earlier output was truncated.', { exact: true });
+    const notice = page.locator('#output-truncated');
     await notice.waitFor();
     assert.equal(await page.locator('#open-folder').isDisabled(), true);
     const refused = await page.evaluate(() => window.cevra.chooseFolder(false).then(() => '', error => error.message));
@@ -374,6 +374,12 @@ test('Windows bounds a 12 MiB output flood and cancels the detached process tree
     assert.equal(await editor.textContent(), 'Can still edit while output streams');
     await output.getByText(/FLOOD-TAIL café/).waitFor();
     assert.ok((await output.textContent()).length <= 160_000);
+    await page.getByRole('button', { name: 'Failure Lens', exact: true }).click();
+    await page.locator('#failure-truncated').waitFor();
+    const failureOutput = page.locator('#failure-output');
+    await failureOutput.getByText(/FLOOD-TAIL café/).waitFor();
+    assert.ok((await failureOutput.textContent()).length <= 160_000);
+    await page.getByRole('button', { name: 'Run output', exact: true }).click();
     const pids = JSON.parse(await fs.readFile(path.join(project, 'tree.json'), 'utf8'));
     assert.ok(pids.every(pid => Number.isSafeInteger(pid) && pid > 0));
     for (const pid of pids) process.kill(pid, 0);
