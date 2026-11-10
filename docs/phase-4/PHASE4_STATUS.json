@@ -9,8 +9,16 @@
     {
       "id": "G0",
       "name": "Architecture & Threat Model",
-      "status": "in_progress",
-      "review": "awaiting_owner_signoff",
+      "status": "passed",
+      "review": "signed_off",
+      "signoff": {
+        "reviewer": "Codex",
+        "authorization": "Project owner requested G0 design signoff",
+        "reviewedAt": "2026-11-10",
+        "reviewBaseCommit": "09af5de6cf58c5684d8e417dd7db0d32425c4c0b",
+        "scope": "Architecture and threat model",
+        "remainingEvidence": ["G3 Windows host isolation", "G5 broker enforcement"]
+      },
       "evidence": ["g0-architecture.md"],
       "verification": {
         "specifiedTestCases": 17,

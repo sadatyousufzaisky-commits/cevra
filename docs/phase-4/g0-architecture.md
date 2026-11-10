@@ -1,6 +1,6 @@
 # Phase 4 G0 — Architecture and threat model
 
-**Review status** · Ready for owner review. G0 remains in progress until signoff.
+**Review status** · G0 design signed off on 2026-11-10. [Phase 4 status ledger](PHASE4_STATUS.json)
 
 **Baseline** · `f2048ffda5a02e21acfe8d6d39632070c5557961`. This design derives from the Phase 4 Extensibility package and the CEVRA code at that revision. [Phase 3 Windows reliability run](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42784806345)
 
@@ -15,13 +15,14 @@ Protect project files, unsaved drafts, credentials and future provider keys, Git
 ```mermaid
 flowchart TD
     Package["User-selected local package (untrusted)"] -->|"Bounded read"| Inspect["Package inspector"]
-    Inspect -->|"Descriptor and digest"| Manager["Sandboxed workbench and Extension Manager"]
-    Manager -->|"Explicit install or enable intent"| Broker["Trusted Electron main and extension broker"]
+    Inspect -->|"Descriptor and digest"| Broker["Trusted Electron main and extension broker"]
+    Manager["Sandboxed workbench and Extension Manager"] -->|"Inspect, install or enable intent"| Broker
     Broker -->|"Verified bytes, atomic registry commit"| Store["App-owned package store"]
-    Store -->|"Validated contributions"| Broker
-    Broker -->|"Typed palette and snippet data"| Manager
-    Store -->|"Verified Wasm bytes after G3 and G5"| Host["Restricted Windows extension host"]
-    Host <-->|"Private, bounded RPC"| Broker
+    Store -->|"Package bytes for verification"| Broker
+    Broker -->|"Review descriptor and typed contributions"| Manager
+    Broker -->|"Verified Wasm bytes over private channel after G3 and G5"| Host["Restricted Windows extension host"]
+    Host -->|"Bounded requests"| Broker
+    Broker -->|"Authorized, bounded responses"| Host
     Broker -->|"Authorized reads and reviewed edits"| Workspace["Existing workspace and draft services"]
 ```
 
@@ -30,7 +31,7 @@ flowchart TD
 | Package → inspector | Parse as bounded, inert data. Reject ambiguous or unsupported input before offering installation. No hooks or extraction during inspection. |
 | Workbench → Electron main | Use enumerated manager intents on the existing preload bridge. Validate the current top-level workbench sender, workspace, action, and payload in main. Obtain sensitive consent in trusted UI. |
 | Store → contribution registry | Recheck the installed digest and enabled state before registering contributions. The renderer receives palette values and snippet text through typed adapters, using existing editor rendering. Inserting a snippet is an explicit editor action. |
-| Store → executable host | Start only a confined host. Deliver verified module bytes over its private channel after isolation succeeds. The host receives no workspace root, Electron bridge, credential store handle, or project environment. |
+| Store → broker → executable host | The broker verifies package bytes and delivers the module over a private channel after confinement succeeds. The host receives no store handle, workspace root, Electron bridge, credential store handle, or project environment. |
 | Host → broker → workspace | Authenticate the host by its channel. Authorize each call by capability, scope, and current epoch before accessing existing workspace services. Recheck after asynchronous reads and before returning data or applying an edit. |
 
 ### Integration with the Phase 3 baseline
@@ -51,7 +52,9 @@ flowchart TD
 
 Store installed version and digest separately from the enablement preference and live session state. A package can remain installed and enabled while suspended. Only an active session may call the broker. Keep durable consent, if offered, separate from the session grant. Mint session grants from current consent after explicit activation.
 
-A session grant binds extension ID, exact digest, verified workspace directory identity, opaque workspace session, capability, narrow scope, authenticated host instance, and current epoch. Treat request IDs as correlation only. Revocation invalidates pending and future results. For an edit, a final grant and source-revision check immediately precedes the authorized commit point. Once an approved commit has completed, use the ordinary editor undo or recovery flow.
+Safe start overrides both declarative and executable enablement. In a normal start, declarative contributions require the installed digest to be enabled. Executable activation also requires a build that enables the feature after G3 and G5, a verified host for the running Windows build, and explicit approval for that digest and workspace.
+
+A session grant binds extension ID, exact digest, verified workspace directory identity, opaque workspace session, capability, narrow scope, authenticated host instance, and current epoch. Treat request IDs as correlation only. Revocation invalidates pending and future results. Serialize an edit's final grant check and revision-checked commit with epoch changes. If revocation takes effect first, reject the edit. If the approved edit commits first, the ordinary editor undo or recovery flow applies.
 
 ## Capability map
 
@@ -97,19 +100,21 @@ These are test specifications for the indicated gates. Use disposable packages, 
 | EXT-05 · Input budget | G1 | Inspect a fixture exceeding an archive, manifest, or decompression limit. | The scan stops within its configured budget and produces no package files. |
 | EXT-06 · Package changes after review | G2, G7 | Replace reviewed bytes before install or change an installed package before enablement. | Digest mismatch prevents installation or activation. The old committed generation stays available. |
 | EXT-07 · Interrupted install and update | G2, G7 | Interrupt the install at each durable-write and registry-commit checkpoint. Restart. | The registry points to either the prior valid digest or the complete new digest. No partial registration or grant appears. |
-| EXT-08 · Guest and OS confinement | G3 | Under disposable host and workspace profiles, check synthetic private files, environment and clipboard sentinels, native process and handle facilities, and controlled loopback and non-loopback listeners. | Guest imports offer no ambient access. The restricted host cannot access the private test assets or reach either listener. No extra process or inherited privileged handle is present. |
+| EXT-08 · Guest and OS confinement | G3 | Under disposable host and workspace profiles, check synthetic private files, environment and clipboard sentinels, native process and handle facilities, and controlled loopback and non-loopback listeners. | Guest imports offer no ambient access. The restricted host cannot access the package store or private test assets or reach either listener. No extra process or inherited privileged handle is present. |
 | EXT-09 · Host lifetime and budgets | G3 | Use a controlled host that stalls or crosses a configured memory, output, or request limit. Stop it or close the supervising app. | The supervisor reports the bounded fault, reaps the host, and the workbench remains responsive. |
 | EXT-10 · Crash during an edit | G3, G6 | Back up an unsaved edit and induce a host failure. Repeat until quarantine. Restart CEVRA. | The latest backed-up draft remains recoverable. Registrations disappear and the quarantined host stays stopped. |
 | EXT-11 · Grant scope and replay | G5 | Deny a capability, then exercise a granted scope and try the old handle after workspace switch, replacement, or restart. | Denied, cross-scope, and stale calls return no data. Authorized in-scope calls return only bounded, revision-tagged data. |
-| EXT-12 · Revoke while a request is pending | G5 | Hold a read or proposal open, revoke permission, then release the pending result. | The broker discards the late result, and no edit, data delivery, or new call succeeds. Host and registrations are removed. |
+| EXT-12 · Revoke while a request is pending | G5 | Hold a read or proposal open, revoke permission, then release the pending result. Repeat with revocation and edit commit arriving in both orders. | The broker discards stale results. Only an already committed, approved edit may survive revocation. Host and registrations are removed. |
 | EXT-13 · Stale proposal | G4, G5 | Review a proposal, then edit the draft or change the saved file before approval. | The exact-revision check rejects the proposal without overwriting either version. |
 | EXT-14 · Digest and publisher changes | G5, G7 | Review a same-ID update with changed bytes or capabilities, then try to reuse its prior approval. | The package requires fresh review and grants. Self-reported publisher metadata confers no authority. |
-| EXT-15 · Inert contribution lifecycle | G4, G6 | Enable and disable a declarative theme and snippet, then start in safe mode. | Only supported data reaches the editor. Disable and safe mode leave no registrations or host processes. |
+| EXT-15 · Inert contribution lifecycle | G4, G6 | Enable and disable a declarative theme and snippet, then start in safe mode with enablement and stored approval present. | Only supported data reaches the editor. Safe mode overrides both forms of enablement and leaves no registrations or host processes. |
 | EXT-16 · Audit privacy | G5 | Allow and deny calls using synthetic paths, source and credential markers. Inspect persisted logs. | Correlation metadata remains useful while all sentinel values are absent. |
 | EXT-17 · Core regression and latency | G9 | Run the existing Continuum desktop flow with zero extensions and with declarative extensions installed. Benchmark the zero-extension path on the same machine and fixture as Phase 3. | Windows regressions pass. Publish matched p50/p95 timings, test counts and any unresolved regression. |
 
-## Review and next gate
+## Design signoff and next gate
 
-Review the executable host decision, capability map, lifecycle and acceptance tests together. A critical unresolved threat blocks the affected feature and gate. Keep the status ledger in progress until owner signoff and track any required change against its test case.
+Codex reviewed the design at the project owner's direction against the Phase 4 package and the current repository. The review confirmed the boundaries, capability vocabulary, lifecycle, compatibility and failure rules, and mapped all 17 test cases to later gates. It clarified who delivers verified module bytes, when safe start overrides enablement, and how revocation orders against edits. The ledger records the review base and the 55 passing baseline core tests.
+
+The signoff approves the architecture for implementation. Executable isolation and enforcement remain G3 and G5 acceptance work. Record any failed confinement or consent test against its case, keep the affected feature blocked, and escalate the scope decision to the owner.
 
 The next implementation slice is G1's read-only inspector. Freeze the v1 archive and compatibility grammar, accept the two inert fixtures, and reject malformed packages before adding storage, preload wiring, or activation.
