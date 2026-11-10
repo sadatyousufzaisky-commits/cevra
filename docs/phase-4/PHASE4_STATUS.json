@@ -50,8 +50,21 @@
     {
       "id": "G2",
       "name": "Registry & Transactional Storage",
-      "status": "in_progress",
-      "evidence": ["g2-registry-storage.md", "../../qa/extension-registry.test.cjs"]
+      "status": "passed",
+      "evidence": ["g2-registry-storage.md", "../../qa/extension-registry.test.cjs"],
+      "verification": {
+        "reviewer": "Codex",
+        "implementationCommit": "7a6094b3c5491af774cb9d2e599e9f77652fa404",
+        "testCommand": "npm test",
+        "windowsBuild": "26300",
+        "nodeVersion": "24.15.0",
+        "corePassed": 77,
+        "registryTestsIncluded": 10,
+        "processInterruptionScenarios": 12,
+        "desktopPassed": 63,
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42848334190",
+        "scope": "Internal declarative-package registry with one owning process per app-data profile"
+      }
     },
     { "id": "G3", "name": "Extension Host Isolation", "status": "unverified", "evidence": [] },
     { "id": "G4", "name": "Contribution APIs", "status": "unverified", "evidence": [] },
