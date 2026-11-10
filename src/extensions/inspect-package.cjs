@@ -23,12 +23,12 @@ function selectedPath(filename) {
   return target;
 }
 
-async function checkedFile(file) {
+async function checkedFile(file, limit) {
   const stat = await fs.lstat(file, { bigint: true });
   if (!stat.isFile() || stat.nlink !== 1n || path.relative(file, await fs.realpath(file)) !== '') {
     throw new InspectionError('INVALID_PACKAGE_PATH', 'Choose a regular package file without links.');
   }
-  if (stat.size > BigInt(maxPackageBytes)) throw new InspectionError('PACKAGE_TOO_LARGE', 'The ZIP exceeds 256 KiB.');
+  if (stat.size > BigInt(limit)) throw new InspectionError('PACKAGE_TOO_LARGE', 'The selected file exceeds its size limit.');
   return stat;
 }
 
@@ -41,8 +41,8 @@ function changedFile() {
   throw new InspectionError('PACKAGE_CHANGED', 'The package changed during inspection. Select it again.');
 }
 
-async function readPackage(file) {
-  const before = await checkedFile(file);
+async function readCheckedFile(file, limit) {
+  const before = await checkedFile(file, limit);
   const handle = await fs.open(file, readFlags);
   try {
     if (!sameFile(before, await handle.stat({ bigint: true }))) changedFile();
@@ -54,7 +54,7 @@ async function readPackage(file) {
       length += bytesRead;
     }
     if (BigInt(length) !== before.size || !sameFile(before, await handle.stat({ bigint: true })) ||
-        !sameFile(before, await checkedFile(file))) changedFile();
+        !sameFile(before, await checkedFile(file, limit))) changedFile();
     return bytes.subarray(0, length);
   } finally {
     await handle.close();
@@ -63,12 +63,8 @@ async function readPackage(file) {
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-async function inspectExtensionPackage(filename) {
-  const file = selectedPath(filename);
-  const archive = await readPackage(file).catch(error => {
-    if (error instanceof InspectionError) throw error;
-    throw new InspectionError('PACKAGE_READ_FAILED', 'The selected package could not be read.');
-  });
+function describePackage(archive) {
+  if (archive.length > maxPackageBytes) throw new InspectionError('PACKAGE_TOO_LARGE', 'The ZIP exceeds 256 KiB.');
   const bytes = unpackManifest(archive);
   const manifest = parseManifest(bytes, engineVersion);
   return {
@@ -81,4 +77,17 @@ async function inspectExtensionPackage(filename) {
   };
 }
 
-module.exports = { inspectExtensionPackage };
+async function loadExtensionPackage(filename) {
+  const file = selectedPath(filename);
+  const archive = await readCheckedFile(file, maxPackageBytes).catch(error => {
+    if (error instanceof InspectionError) throw error;
+    throw new InspectionError('PACKAGE_READ_FAILED', 'The selected package could not be read.');
+  });
+  return { archive, report: describePackage(archive) };
+}
+
+async function inspectExtensionPackage(filename) {
+  return (await loadExtensionPackage(filename)).report;
+}
+
+module.exports = { describePackage, inspectExtensionPackage, loadExtensionPackage, readCheckedFile, sha256 };

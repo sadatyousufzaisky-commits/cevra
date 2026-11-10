@@ -144,4 +144,4 @@ function parseManifest(bytes, currentVersion) {
   return data;
 }
 
-module.exports = { parseManifest };
+module.exports = { packageId, parseManifest, versionPattern };

@@ -47,7 +47,12 @@
         "scope": "Read-only CLI and internal API for single-manifest declarative ZIPs"
       }
     },
-    { "id": "G2", "name": "Registry & Transactional Storage", "status": "unverified", "evidence": [] },
+    {
+      "id": "G2",
+      "name": "Registry & Transactional Storage",
+      "status": "in_progress",
+      "evidence": ["g2-registry-storage.md", "../../qa/extension-registry.test.cjs"]
+    },
     { "id": "G3", "name": "Extension Host Isolation", "status": "unverified", "evidence": [] },
     { "id": "G4", "name": "Contribution APIs", "status": "unverified", "evidence": [] },
     { "id": "G5", "name": "Capability & Consent Broker", "status": "unverified", "evidence": [] },
