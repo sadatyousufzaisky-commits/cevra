@@ -1,0 +1,33 @@
+{
+  "project": "CEVRA",
+  "phase": 4,
+  "name": "Extensibility",
+  "status": "in_progress",
+  "baselineCommit": "f2048ffda5a02e21acfe8d6d39632070c5557961",
+  "lastVerifiedPhase3Ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42784806345",
+  "gates": [
+    {
+      "id": "G0",
+      "name": "Architecture & Threat Model",
+      "status": "in_progress",
+      "review": "awaiting_owner_signoff",
+      "evidence": ["g0-architecture.md"],
+      "verification": {
+        "specifiedTestCases": 17,
+        "baselineCoreCommand": "npm run test:core",
+        "baselineCorePassed": 55,
+        "windowsBuild": "26300",
+        "nodeVersion": "24.15.0"
+      }
+    },
+    { "id": "G1", "name": "Package & Manifest Inspection", "status": "unverified", "evidence": [] },
+    { "id": "G2", "name": "Registry & Transactional Storage", "status": "unverified", "evidence": [] },
+    { "id": "G3", "name": "Extension Host Isolation", "status": "unverified", "evidence": [] },
+    { "id": "G4", "name": "Contribution APIs", "status": "unverified", "evidence": [] },
+    { "id": "G5", "name": "Capability & Consent Broker", "status": "unverified", "evidence": [] },
+    { "id": "G6", "name": "Extension Manager UI", "status": "unverified", "evidence": [] },
+    { "id": "G7", "name": "Local Distribution & Update", "status": "unverified", "evidence": [] },
+    { "id": "G8", "name": "Author SDK & Documentation", "status": "unverified", "evidence": [] },
+    { "id": "G9", "name": "Final Integration & Benchmark", "status": "unverified", "evidence": [] }
+  ]
+}
