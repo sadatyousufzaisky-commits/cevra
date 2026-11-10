@@ -9,6 +9,8 @@ const { test } = require('node:test');
 const { setTimeout: delay } = require('node:timers/promises');
 const { promisify } = require('node:util');
 const { _electron } = require('playwright');
+const { createWorkspace } = require('../src/workspace.cjs');
+const { createPythonProfiles } = require('../src/execution/python-profiles.cjs');
 
 const repo = path.resolve(__dirname, '..');
 const execute = promisify(execFile);
@@ -753,6 +755,133 @@ test('Windows Task Weave respects trust and Stop ends detached children and bloc
     await steps.nth(0).getByText('Canceled', { exact: true }).waitFor();
     await steps.nth(1).getByText('Run canceled', { exact: true }).waitFor();
     assert.doesNotMatch(await output.textContent(), /TASK-SHOULD-NOT-RUN/);
+  });
+
+test('Runtime Fabric runs TypeScript and maps transformed runtime and syntax errors to original files',
+  { timeout: 35_000 }, async t => {
+    const childFile = 'nested (TS) & café/error # %.ts';
+    const specifier = './' + childFile.split('/').map(encodeURIComponent).join('/');
+    const workbench = await openWorkbench(t, {
+      'package.json': '{"type":"module"}',
+      'entry.mts': 'import { fail } from ' + JSON.stringify(specifier) + ';\nfail();\n',
+      [childFile]: 'enum Mode { Ready = "ready" }\nexport function fail(): void {\n  throw new Error("TS runtime " + Mode.Ready);\n}\n',
+      'hold.cts': [
+        'const { spawn } = require("node:child_process");',
+        'const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"],',
+        '  { stdio: "ignore", detached: true, windowsHide: true });',
+        'child.once("spawn", () => console.log(`TS-TREE ${process.pid} ${child.pid}`));',
+        'const interval: number = 1000;',
+        'setInterval(() => {}, interval);',
+      ].join('\n'),
+    });
+    const { page, editor, output, state } = workbench;
+    const link = page.locator('#jump-to-error');
+    await workbench.open('entry.mts');
+    await editor.press('F5');
+    await state.getByText(/^Failed/).waitFor();
+    await output.getByText(/TS runtime ready/).waitFor();
+    await link.getByText(/error # %\.ts:3:9/).waitFor().catch(async error => {
+      throw new Error(await output.textContent(), { cause: error });
+    });
+    await link.click();
+    await workbench.selected('error # %.ts').waitFor();
+    await page.locator('#cursor').getByText('Ln 3, Col 9', { exact: true }).waitFor();
+    await replaceEditor(workbench, '// line one\nconst value: number = ;\n');
+    await link.click();
+    await page.locator('#message').getByText(/recorded runtime source changed/).waitFor();
+    await editor.press('F5');
+    await state.getByText(/^Failed/).waitFor();
+    await output.getByText(/ERR_INVALID_TYPESCRIPT_SYNTAX/).waitFor();
+    await link.getByText(/error # %\.ts:2:/).waitFor().catch(async error => {
+      throw new Error(await output.textContent(), { cause: error });
+    });
+    await link.click();
+    await page.locator('#cursor').getByText(/^Ln 2, Col /).waitFor();
+    await replaceEditor(workbench, 'const value: number = 4;\nconsole.log("TS-SUCCESS", value);\n');
+    await editor.press('F5');
+    await state.getByText(/^Passed/).waitFor();
+    await output.getByText(/TS-SUCCESS 4/).waitFor();
+
+    await workbench.open('hold.cts');
+    await editor.press('F5');
+    const tree = /TS-TREE (\d+) (\d+)/;
+    await output.getByText(tree).waitFor();
+    const pids = tree.exec(await output.textContent()).slice(1).map(Number);
+    await page.getByRole('button', { name: 'Stop run', exact: true }).click();
+    await state.getByText('Canceled', { exact: true }).waitFor();
+    await Promise.all(pids.map(assertWindowsProcessStopped));
+  });
+
+test('Runtime Fabric uses an explicitly selected Python virtual environment and supervises its runs',
+  { timeout: 45_000 }, async t => {
+    const entry = 'entry (#%) & café.py';
+    const source = path.join('nested (PY)', 'failure café.py');
+    const workbench = await openWorkbench(t, {
+      [entry]: 'import runpy, sys\nprint("PY-PREFIX", sys.prefix)\nrunpy.run_path(' +
+        JSON.stringify(source.replaceAll('\\', '/')) + ')\n',
+      [source]: 'def fail():\n    raise ValueError("python café")\n\nfail()\n',
+      'done.py': 'import sys\nprint("PY-SUCCESS", sys.executable)\n',
+      'hold.py': [
+        'import os, subprocess, sys, time',
+        'flags = subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0',
+        'child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], creationflags=flags)',
+        'print("PY-TREE", os.getpid(), child.pid)',
+        'time.sleep(60)',
+      ].join('\n'),
+    });
+    const { app, page, project, editor, output, state } = workbench;
+    const profiles = await createPythonProfiles(await createWorkspace(project)).list();
+    assert.ok(profiles.length, 'Install Python 3 and put its executable on PATH for the desktop suite.');
+    const venv = path.join(project, '.venv');
+    await execute(profiles[0].file, ['-m', 'venv', '--without-pip', venv], { timeout: 15_000, windowsHide: true });
+    const python = page.getByLabel('Python interpreter', { exact: true });
+    await workbench.open(entry);
+    await editor.press('F5');
+    await page.locator('#message').getByText(/Choose a Python interpreter/).waitFor();
+    assert.doesNotMatch(await output.textContent(), /PY-PREFIX/);
+    await python.selectOption({ label: 'Workspace .venv · ' + path.join(venv, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python3') });
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 0 }); });
+    await editor.press('F5');
+    await state.getByText('Canceled', { exact: true }).waitFor();
+    assert.doesNotMatch(await output.textContent(), /PY-PREFIX/);
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
+    await editor.press('F5');
+    await state.getByText(/^Failed/).waitFor();
+    await output.getByText(/ValueError: python café/).waitFor();
+    assert.ok((await output.textContent()).includes('PY-PREFIX ' + venv));
+    const link = page.locator('#jump-to-error');
+    await link.getByText(/failure café\.py:2:/).waitFor();
+    await link.click();
+    await workbench.selected('failure café.py').waitFor();
+    await page.locator('#cursor').getByText(/^Ln 2, Col /).waitFor();
+    await replaceEditor(workbench, '# line one\nvalue =\n');
+    await editor.press('F5');
+    await state.getByText(/^Failed/).waitFor();
+    await output.getByText(/SyntaxError:/).waitFor();
+    await link.getByText(/failure café\.py:2:/).waitFor();
+
+    await workbench.open('hold.py');
+    await editor.press('F5');
+    const tree = /PY-TREE (\d+) (\d+)/;
+    await output.getByText(tree).waitFor();
+    const pids = tree.exec(await output.textContent()).slice(1).map(Number);
+    await page.getByRole('button', { name: 'Stop run', exact: true }).click();
+    await state.getByText('Canceled', { exact: true }).waitFor();
+    await Promise.all(pids.map(assertWindowsProcessStopped));
+    const selectedExe = path.join(venv, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python3');
+    await fs.rename(selectedExe, selectedExe + '.removed');
+    await editor.press('F5');
+    await state.getByText('Could not run', { exact: true }).waitFor();
+    await output.getByText(/Python interpreter changed or is unavailable/).waitFor();
+    await app.evaluate(({ dialog }, file) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
+    }, profiles[0].file);
+    await page.getByRole('button', { name: 'Choose Python executable', exact: true }).click();
+    await page.locator('#python-status').getByText(profiles[0].file, { exact: true }).waitFor();
+    await workbench.open('done.py');
+    await editor.press('F5');
+    await state.getByText(/^Passed/).waitFor();
+    await output.getByText(/PY-SUCCESS/).waitFor();
   });
 
 test('project replacement rejects a changed file, then recovers the entire confirmed batch after a crash',

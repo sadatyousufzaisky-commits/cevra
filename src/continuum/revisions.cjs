@@ -6,7 +6,7 @@ const { sourceFileKey } = require('../source-files.cjs');
 
 const limits = { files: 256, folders: 128, entries: 4096, bytes: 16 * 1024 * 1024 };
 
-async function captureInputs(workspace, outputs = []) {
+async function captureInputs(workspace, outputs = [], include) {
   const files = new Map();
   const keys = new Set();
   const excluded = new Set(outputs.map(sourceFileKey));
@@ -36,6 +36,7 @@ async function captureInputs(workspace, outputs = []) {
           if (!excluded.has(sourceFileKey(file))) folders.push(file);
         }
         else if (entry.isFile()) {
+          if (include && !include(file)) continue;
           if (++attempted > limits.files) {
             complete = false;
             break scan;

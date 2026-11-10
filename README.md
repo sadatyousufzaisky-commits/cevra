@@ -15,13 +15,21 @@ Choose **Open example** to try the built-in JavaScript project, or choose **Open
 
 - **Ctrl+S** saves the active file. The editor accepts UTF-8 text files up to 2 MiB.
 - **Ctrl+Shift+S** saves all open drafts. CEVRA reports where the save stopped if a file fails its revision check.
-- **F5** saves the active file and runs it from the project root. The first milestone supports `.js`, `.mjs`, and `.cjs` through Electron's bundled Node runtime. Other files on disk are read as saved.
+- **F5** saves the active file and runs it from the project root. CEVRA supports JavaScript, TypeScript, and Python entry files. Other files on disk are read as saved.
 - **Stop** cancels a run during preparation or execution. Its recent output remains visible in the run panel, with a notice when earlier output was truncated.
 - **Source location** takes you to the first project location CEVRA finds in a failed run's error output.
 
 The workbench uses Electron for the desktop shell and CodeMirror for the editor. CEVRA owns the project explorer, file state, and run workflow. Before the first file or test run in an untrusted workspace, choose **Run Once**, **Trust Workspace**, or **Cancel**. CEVRA asks before saving or running code. Programs execute with your user account's permissions. Workspace trust is stored locally and can be revoked in **Settings**.
 
 On Windows, CEVRA starts programs and tests inside a Job Object and waits for the process tree to stop before releasing its execution session. This covers detached children after a script exits and cleanup after the app's main process dies. Finish or cancel the active run before switching workspaces. [Windows Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)
+
+## Run TypeScript and Python
+
+**TypeScript** `.ts`, `.mts`, and `.cts` entry files run through the bundled Node.js runtime. The direct profile uses Node's TypeScript transform and source maps. Use **Problems** for type checking and **Tasks** for project-specific builds, including TSX and projects that need `tsconfig.json` compilation settings. TypeScript imports in direct runs use explicit file extensions. [Node.js TypeScript support](https://nodejs.org/docs/latest-v24.x/api/typescript.html)
+
+**Python** `.py` entry files use the interpreter you choose in **Run output**. CEVRA lists Python executables from workspace `.venv` and `venv` directories and from PATH. **Choose Python executable** lets you select a different Python 3 installation. The selection applies to the open workspace. Use **Refresh interpreters** and choose again after replacing or rebuilding the selected environment. [Python virtual environments](https://docs.python.org/3/library/venv.html)
+
+TypeScript errors and Python tracebacks link to the recorded source when CEVRA can confirm its revision. An edited source requires a new run before you can use the link. **Stop run** uses the same process-tree cleanup for all three languages.
 
 ## Use the integrated terminal
 
@@ -158,7 +166,7 @@ Use **Settings** or **Ctrl+,** for font size and family, indentation, wrapping, 
 
 ## Verify CEVRA
 
-Run `npm test` on Windows before expanding the workbench. The core suite exercises JavaScript process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.
+Run `npm test` on Windows before expanding the workbench. Put Python 3 with `venv` support on PATH for the desktop suite. The core suite exercises process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks JavaScript, TypeScript, and Python execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.
 
 GitHub Actions runs the same checks on Windows for every push and pull request.
 

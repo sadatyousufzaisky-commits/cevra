@@ -6,11 +6,13 @@ const maxOutput = 160_000;
 const windows = process.platform === 'win32';
 const windowsHost = path.resolve(__dirname, '..', '..', 'dist', 'cevra-process-host.exe');
 
-function startProcess(root, args, publish, reportPrefix) {
-  const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
+function startProcess(root, args, publish, reportPrefix, { executable = process.execPath, environment } = {}) {
+  const env = { ...process.env, ...environment };
+  if (executable === process.execPath) env.ELECTRON_RUN_AS_NODE = '1';
+  else delete env.ELECTRON_RUN_AS_NODE;
   if (reportPrefix) env.CEVRA_TEST_REPORT_PREFIX = reportPrefix;
   else delete env.CEVRA_TEST_REPORT_PREFIX;
-  const child = spawn(windows ? windowsHost : process.execPath, windows ? [String(process.pid), process.execPath, ...args] : args, {
+  const child = spawn(windows ? windowsHost : executable, windows ? [String(process.pid), executable, ...args] : args, {
     cwd: root, env, detached: !windows, windowsHide: true,
     stdio: [windows ? 'pipe' : 'ignore', 'pipe', 'pipe'],
   });

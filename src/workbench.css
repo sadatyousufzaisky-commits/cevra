@@ -196,7 +196,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .welcome-actions .button { min-height: 39px; padding-inline: 13px; }
 
 .run-panel { --dock-default: clamp(155px, 25vh, 250px); flex: 0 0 min(var(--dock-size, var(--dock-default)), 48%); min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--dock); }
-.run-panel:is([data-mode="tests"], [data-mode="tasks"], [data-pane="terminal"], [data-pane="flightpath"], [data-pane="tasks"]) { --dock-default: clamp(208px, 35vh, 340px); }
+.run-panel:is([data-mode="tests"], [data-mode="tasks"], [data-runtime="python"], [data-pane="terminal"], [data-pane="flightpath"], [data-pane="tasks"]) { --dock-default: clamp(208px, 35vh, 340px); }
 .run-panel[data-collapsed="true"] { flex-basis: 41px; }
 .run-panel[data-collapsed="true"] :is(#rerun-failures, #problems-retry) { display: none; }
 .dock-resizer { flex: 0 0 6px; cursor: ns-resize; touch-action: none; }
@@ -210,7 +210,10 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .dock-view:hover { background: var(--raised); color: var(--text); }
 .dock-view[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--mint); }
 .problems-count { border-radius: 8px; padding: 0 5px; background: var(--raised); color: var(--danger); font-size: 11px; }
-.run-panel:not([data-pane="output"]) :is(#run-state, #run-target, #test-totals, #rerun-failures, .test-evidence, .run-diagnostic, .output-notice, .run-body) { display: none; }
+.run-panel:not([data-pane="output"]) :is(#run-state, #run-target, #test-totals, #rerun-failures, .runtime-controls, .test-evidence, .run-diagnostic, .output-notice, .run-body) { display: none; }
+.runtime-controls { flex: none; border-bottom: 1px solid var(--line); }
+#python-profile { max-width: min(100%, 350px); }
+#python-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .problems-panel { min-height: 0; flex: 1; overflow: auto; }
 .problem-list, .problem-list ul { list-style: none; margin: 0; padding: 0; }
 .problem-file { margin: 0; padding: 7px 15px; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--text); font: 12px var(--mono); overflow-wrap: anywhere; }

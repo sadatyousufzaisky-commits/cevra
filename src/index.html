@@ -130,6 +130,18 @@
           <button id="toggle-dock" class="sidebar-action dock-toggle" aria-label="Show bottom panel" aria-controls="dock-content" aria-expanded="false" title="Show bottom panel (Ctrl+J)"><svg aria-hidden="true"><use href="#panel-layout"></use></svg></button>
         </header>
         <div id="dock-content" class="dock-content" hidden>
+          <section id="runtime-controls" class="runtime-controls" aria-label="File runtime" hidden>
+            <p id="runtime-typescript" class="task-note" hidden>TypeScript · Bundled Node.js · Direct transform</p>
+            <div id="runtime-python" hidden>
+              <div class="terminal-toolbar">
+                <label for="python-profile">Python interpreter</label>
+                <select id="python-profile" disabled><option value="">Choose an interpreter</option></select>
+                <button id="python-refresh" class="button">Refresh interpreters</button>
+                <button id="python-browse" class="button">Choose Python executable</button>
+              </div>
+              <p id="python-status" class="task-note" role="status"></p>
+            </div>
+          </section>
           <section id="test-evidence" class="test-evidence" aria-label="Test workstream" hidden>
             <label for="workstream-goal">Workstream</label>
             <input id="workstream-goal" maxlength="120" placeholder="Project tests" autocomplete="off">

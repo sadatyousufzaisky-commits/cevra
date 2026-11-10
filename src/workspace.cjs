@@ -163,12 +163,16 @@ async function readSource(workspace, relative) {
   return decodeSource((await readBytes(workspace, relative)).bytes);
 }
 
+function inputStamp(stat) {
+  return [stat.dev, stat.ino, stat.mtimeNs, stat.ctimeNs].join(':');
+}
+
 async function readInputRevision(workspace, relative) {
   const { bytes, stat } = await readBytes(workspace, relative);
   return {
     revision: fingerprint(bytes),
     bytes: bytes.length,
-    stamp: [stat.dev, stat.ino, stat.mtimeNs, stat.ctimeNs].join(':'),
+    stamp: inputStamp(stat),
   };
 }
 
@@ -257,5 +261,5 @@ async function saveRecoveryCopy(workspace, relative, text) {
 
 module.exports = {
   checkedEntrySync, createWorkspace, inside, isSourceDirectory, listFolder, maxFileBytes, readSource, readSourceSync, resolveEntry, saveSource, saveRecoveryCopy,
-  readInputRevision, verifyRevision, workspacePath,
+  inputStamp, readInputRevision, verifyRevision, workspacePath,
 };

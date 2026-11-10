@@ -6,7 +6,7 @@ const { randomUUID } = require('node:crypto');
 const { createWorkspace, listFolder, maxFileBytes, readSource, saveSource, saveRecoveryCopy,
   resolveEntry, verifyRevision, workspacePath } = require('./workspace.cjs');
 const { sourceFileKey } = require('./source-files.cjs');
-const { startNodeRun } = require('./runner.cjs');
+const { startSourceRun } = require('./runner.cjs');
 const { createTestSession } = require('./project-tests.cjs');
 const { createDraftStore } = require('./drafts.cjs');
 const { searchProject } = require('./project-search.cjs');
@@ -19,6 +19,7 @@ const { createTestWorkstream } = require('./continuum/workstream.cjs');
 const { readTaskCatalog } = require('./continuum/task-catalog.cjs');
 const { createTaskRunner } = require('./continuum/task-runner.cjs');
 const { createExecutionSessions } = require('./execution/sessions.cjs');
+const { createPythonProfiles } = require('./execution/python-profiles.cjs');
 const { createTerminalSessions, terminalProfile, validateSize, maxTerminalInput } = require('./execution/terminal-sessions.cjs');
 
 app.setName('CEVRA');
@@ -37,6 +38,7 @@ let window;
 let workspace;
 let workstream;
 let taskRunner;
+let pythonProfiles;
 let flightpath;
 let changingWorkspace = false;
 let runGrant;
@@ -135,6 +137,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
     flightpath = flightpathStore.forWorkspace(next);
     workstream = createTestWorkstream(next, tests.start, flightpath);
     taskRunner = createTaskRunner(next, flightpath);
+    pythonProfiles = createPythonProfiles(next);
     return {
       id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable, settings,
       caseInsensitivePaths: process.platform === 'win32',
@@ -368,9 +371,26 @@ function authorizedWorkspace(id, runId, token) {
   return project;
 }
 
-handle('start', (id, file, revision, runId, token) => {
+handle('python-profiles', id => {
+  currentWorkspace(id);
+  return pythonProfiles.list();
+});
+handle('choose-python', async id => {
+  currentWorkspace(id);
+  const profiles = pythonProfiles;
+  const choice = await dialog.showOpenDialog(window, {
+    title: 'Choose a Python 3 interpreter', properties: ['openFile'],
+    ...(process.platform === 'win32' ? { filters: [{ name: 'Executables', extensions: ['exe'] }] } : {}),
+  });
+  currentWorkspace(id);
+  if (choice.canceled || !choice.filePaths[0]) return null;
+  return profiles.choose(choice.filePaths[0]);
+});
+
+handle('start', (id, file, revision, runId, token, profile) => {
   const project = authorizedWorkspace(id, runId, token);
-  return sessions.start(id, runId, token, (publish, isStopping) => startNodeRun(project, file, revision, publish, isStopping));
+  const python = pythonProfiles;
+  return sessions.start(id, runId, token, (publish, isStopping) => startSourceRun(project, file, revision, profile, python, publish, isStopping));
 });
 
 handle('test', (id, retry, runId, token, goal) => {

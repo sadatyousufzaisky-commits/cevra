@@ -1,10 +1,9 @@
 const path = require('node:path');
 const { fileURLToPath } = require('node:url');
 const { inside } = require('./workspace.cjs');
+const { nodeFile } = require('./runtime-kind.cjs');
 
-const nodeFile = /\.(?:js|cjs|mjs)$/i;
-
-function projectLocation(root, file, line, column = 1) {
+function projectLocation(root, file, line, column = 1, extensions = nodeFile) {
   if (!file || !Number.isInteger(line) || line < 1) return null;
   if (file.startsWith('file://')) {
     try {
@@ -15,11 +14,11 @@ function projectLocation(root, file, line, column = 1) {
   }
   if (!path.isAbsolute(file) || !inside(root, file)) return null;
   const relative = path.relative(root, file);
-  if (!nodeFile.test(relative) || relative.split(path.sep).includes('node_modules')) return null;
+  if (!extensions.test(relative) || relative.split(path.sep).includes('node_modules')) return null;
   return { path: relative, line, column };
 }
 
-function sourceLocation(root, text) {
+function sourceLocation(root, text, extensions = nodeFile) {
   const lines = text.split(/\r?\n/);
   let header = null;
   for (const [index, line] of lines.entries()) {
@@ -35,7 +34,7 @@ function sourceLocation(root, text) {
     if (!match) continue;
     const [, file, row, column] = match;
     const caret = /^\s*\^/.test(lines[index + 2] || '') ? lines[index + 2].indexOf('^') + 1 : 1;
-    const location = projectLocation(root, file, Number(row), column ? Number(column) : caret);
+    const location = projectLocation(root, file, Number(row), column ? Number(column) : caret, extensions);
     if (!location) continue;
     if (!header) {
       if (column) return location;

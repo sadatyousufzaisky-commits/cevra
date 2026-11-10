@@ -14,6 +14,7 @@ import { indentGuides } from './indent-guides.js';
 import { createNavigationHistory } from './navigation-history.js';
 import { createProblemsPanel } from './problems-panel.js';
 import { createReferencesPanel } from './references-panel.js';
+import { createRuntimePanel } from './runtime-panel.js';
 import { createSearchPanel } from './search-panel.js';
 import { createSemanticContext } from './semantic-context.js';
 import { createSemanticCompletion } from './semantic-completion.js';
@@ -26,6 +27,7 @@ import { createTerminalPanel } from './terminal-panel.js';
 import { createTypeProblems } from './type-problems.js';
 import { createWorkspaceLayout } from './workspace-layout.js';
 import { sourceLanguage } from './source-language.cjs';
+import { runtimeKind } from './runtime-kind.cjs';
 import { normalizeSource } from './source-text.cjs';
 import { changeLineEnding, detectLineEnding, lineEnding, lineEndingHistory } from './line-endings.js';
 
@@ -37,6 +39,7 @@ const testEvidence = createTestEvidence(api, (evidence, checking) => {
 });
 const byId = id => document.getElementById(id);
 const terminalPanel = createTerminalPanel({ api, errorText });
+const runtimePanel = createRuntimePanel({ api, errorText });
 const taskPanel = createTaskPanel({ api, errorText, runTask, jump: jumpToTaskSource });
 const tabs = byId('tabs');
 const editor = byId('editor');
@@ -71,7 +74,6 @@ const dockButtons = {
   output: byId('show-output'), problems: byId('show-problems'), references: byId('show-references'),
   terminal: byId('show-terminal'), flightpath: byId('show-flightpath'), tasks: byId('show-tasks'),
 };
-const runnable = /\.(?:js|cjs|mjs)$/i;
 const maxOutput = 160_000;
 
 const documents = new Map();
@@ -168,6 +170,9 @@ function syncCommands() {
   const open = [...documents.values()];
   const saving = savingAll || open.some(tab => tab.saving);
   const discarding = open.some(tab => tab.discarding);
+  const runtime = runtimeKind(active?.path);
+  dock.dataset.runtime = runtime ?? '';
+  runtimePanel.sync(project, runtime, Boolean(run || changingProject));
   dockButtons.terminal.disabled = !project?.terminalLimit || changingProject;
   dockButtons.flightpath.disabled = dockButtons.tasks.disabled = !project || changingProject;
   taskPanel.setBusy(Boolean(run || changingProject || saving || discarding));
@@ -183,7 +188,7 @@ function syncCommands() {
   renameButton.disabled = !active?.language || changingProject || Boolean(run || saving || discarding);
   settingsButton.disabled = Boolean(changingProject || run || saving || discarding);
   symbolButton.disabled = !project || changingProject;
-  runButton.disabled = !active || !runnable.test(active.path) || Boolean(changingProject || run || discarding || savingAll);
+  runButton.disabled = !runtime || Boolean(changingProject || run || discarding || savingAll);
   runButton.hidden = Boolean(run);
   testButton.disabled = !project || Boolean(changingProject || run || discarding || savingAll);
   retryButton.hidden = !retryAvailable || byId('run-panel').dataset.mode !== 'tests';
@@ -204,7 +209,7 @@ function syncCursor() {
   }
   const position = view.state.selection.main.head;
   const line = view.state.doc.lineAt(position);
-  byId('language').textContent = active.language?.name ?? 'Plain text';
+  byId('language').textContent = active.language?.name ?? (runtimeKind(active.path) === 'python' ? 'Python' : 'Plain text');
   const ending = view.state.field(lineEnding);
   byId('line-ending').textContent = ending === '\r\n' ? 'CRLF' : ending === '\r' ? 'CR' : 'LF';
   byId('cursor').textContent = `Ln ${line.number}, Col ${position - line.from + 1}`;
@@ -908,10 +913,18 @@ async function launchRun(mode, target, prepare, start, plan) {
 function runFile() {
   if (runButton.disabled) return;
   const tab = active;
+  const language = runtimeKind(tab.path);
+  const profile = runtimePanel.profile(language);
+  if (language === 'python' && !profile) {
+    showDock('output');
+    runtimePanel.focusPython();
+    notify('Choose a Python interpreter before running this file.');
+    return;
+  }
   return launchRun('file', tab.path, async () => {
     await saveFile(tab);
     if (tab.dirty) throw new Error('The file changed during save. Run it again to include the latest edits.');
-  }, attempt => api.start(attempt.workspaceId, tab.path, tab.revision, attempt.id, attempt.sessionId));
+  }, attempt => api.start(attempt.workspaceId, tab.path, tab.revision, attempt.id, attempt.sessionId, profile));
 }
 
 async function prepareWorkspaceRun(attempt) {
@@ -951,7 +964,10 @@ function locationLabel({ path, line, column }) {
 }
 
 function jumpToTaskSource(anchor, isCurrent) {
-  const staleMessage = 'The recorded task source changed or is unavailable. Run the task again to refresh this location.';
+  jumpToRecordedSource(anchor, isCurrent, 'The recorded task source changed or is unavailable. Run the task again to refresh this location.');
+}
+
+function jumpToRecordedSource(anchor, isCurrent, staleMessage) {
   void jumpToLocation(anchor, {
     revision: anchor.revision, isCurrent, staleMessage, changedMessage: staleMessage,
     validate: doc => anchor.line <= doc.lines && anchor.column <= doc.line(anchor.line).length + 1,
@@ -1342,7 +1358,12 @@ runButton.onclick = runFile;
 testButton.onclick = () => runTests();
 retryButton.onclick = () => runTests(true);
 stopButton.onclick = () => stopRun().catch(report);
-diagnosticButton.onclick = () => { if (diagnostic) jumpToLocation(diagnostic).catch(report); };
+diagnosticButton.onclick = () => {
+  const target = diagnostic;
+  if (target?.revision) jumpToRecordedSource(target, () => diagnostic === target,
+    'The recorded runtime source changed or is unavailable. Run the file again to refresh this location.');
+  else if (target) void jumpToLocation(target).catch(report);
+};
 
 api.beforeClose(async () => {
   document.body.inert = true;

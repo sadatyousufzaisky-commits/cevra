@@ -22,6 +22,8 @@ const { readTaskCatalog } = require('../src/continuum/task-catalog.cjs');
 const { planTask } = require('../src/continuum/task-plan.cjs');
 const { createTaskRunner } = require('../src/continuum/task-runner.cjs');
 const { createExecutionSessions } = require('../src/execution/sessions.cjs');
+const { createPythonProfiles } = require('../src/execution/python-profiles.cjs');
+const { pythonColumn, pythonDiagnostic } = require('../src/execution/runtime-location.cjs');
 const { createTerminalSessions } = require('../src/execution/terminal-sessions.cjs');
 const { maxOutput } = require('../src/execution/process-host.cjs');
 const { createReportDecoder, encodeReport } = require('../src/execution/test-report.cjs');
@@ -32,6 +34,54 @@ async function fixture(t) {
   await fs.mkdir(root);
   return { folder, root, workspace: await createWorkspace(root) };
 }
+
+test('Python profiles discover workspace environments without running them and reject changed selections', async t => {
+  const { root, workspace } = await fixture(t);
+  const profiles = createPythonProfiles(workspace, '');
+  assert.deepEqual(await profiles.list(), []);
+  await assert.rejects(profiles.resolve('missing'), /Choose a Python interpreter/);
+  const venv = path.join(root, '.venv');
+  const bin = path.join(venv, process.platform === 'win32' ? 'Scripts' : 'bin');
+  const python = path.join(bin, process.platform === 'win32' ? 'python.exe' : 'python3');
+  const config = path.join(venv, 'pyvenv.cfg');
+  await fs.mkdir(bin, { recursive: true });
+  await fs.writeFile(python, 'this file is deliberately not executable Python', { mode: 0o700 });
+  assert.deepEqual(await profiles.list(), []);
+  await fs.writeFile(config, 'home = first\n');
+  const [local] = await profiles.list();
+  assert.equal(local.label, 'Workspace .venv');
+  assert.equal((await profiles.resolve(local.id)).file, python);
+  await fs.writeFile(config, 'home = second\n');
+  await assert.rejects(profiles.resolve(local.id), /interpreter changed or is unavailable/);
+  const [updated] = await profiles.list();
+  assert.notEqual(updated.id, local.id);
+  await fs.rename(python, python + '.removed');
+  await assert.rejects(profiles.resolve(updated.id), /interpreter changed or is unavailable/);
+});
+
+test('Python traceback navigation uses the latest exception and maps a proven caret', async t => {
+  const { root, folder } = await fixture(t);
+  const outside = path.join(folder, 'outside.py');
+  const traceback = [
+    'Traceback (most recent call last):',
+    '  File "first.py", line 9, in <module>',
+    'RuntimeError: earlier failure',
+    '',
+    'The above exception was the direct cause of the following exception:',
+    '',
+    'Traceback (most recent call last):',
+    '  File "nested (QA)/target café.py", line 3, in <module>',
+    '    raise ValueError("final")',
+    '          ^^^^^^^^^^',
+    '  File "' + outside + '", line 99, in runtime',
+    'ValueError: final failure',
+  ].join('\r\n');
+  const { location, pointer, summary } = pythonDiagnostic(root, traceback);
+  assert.deepEqual(location, { path: path.join('nested (QA)', 'target café.py'), line: 3, column: 1 });
+  assert.equal(summary, 'ValueError: final failure');
+  assert.equal(pythonColumn('  raise ValueError("final")', pointer), 9);
+  assert.equal(pythonColumn('  unrelated source', pointer), 1);
+});
 
 test('Windows terminal sessions enforce scope and bound input and output reads',
   { timeout: 12_000, skip: process.platform !== 'win32' }, async t => {
