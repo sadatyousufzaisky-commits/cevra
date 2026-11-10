@@ -86,6 +86,14 @@ Task Weave validates all dependencies before launch, runs each prerequisite once
 
 Declare generated folders in `outputs` to exclude them from task revision checks. CEVRA still checks the manifest, graph, and other observed workspace inputs. With Flightpath enabled, each step records its outcome, including failures, cancellations, and blocked steps.
 
+## Review and commit with Change Lens
+
+Open the repository root as a workspace, then select **Change Lens**. With Git on PATH, CEVRA shows the current branch, recent local commits, and separate lists of staged and working changes. Select a file to preview its diff. **Stage file** checks the reviewed disk contents before updating the index. **Unstage file** changes the index and keeps the working copy. Save a file's open draft before staging it.
+
+Run the full test suite to compare its observed workspace inputs with the staged paths and blob bytes. Change Lens labels different snapshots **Historical**. The comparison is byte-for-byte, so Git line-ending conversion and files present only in the working directory can affect it. Review the staged diff and enter a message before choosing **Commit staged changes**. The confirmation names the branch and warns about unsaved drafts. CEVRA commits the reviewed tree and keeps working changes and drafts outside it.
+
+**Create branch** creates a local branch at the current commit. **Switch branch** requires a clean working tree and saved drafts, then reopens the checkout. Change Lens writes unsigned local commits using Git's configured author identity. Linked worktrees can be reviewed in read-only mode. Git hooks and external filters are kept out of Change Lens actions. [Git status](https://git-scm.com/docs/git-status) and [Git commit objects](https://git-scm.com/docs/git-commit-tree)
+
 ## Search and navigate
 
 - **Ctrl+F** finds and replaces text in the current file. Use the case, whole-word, and regular-expression options to narrow a search. Replacements can be undone in the editor.
@@ -174,7 +182,7 @@ Use **Settings** or **Ctrl+,** for font size and family, indentation, wrapping, 
 
 ## Verify CEVRA
 
-Run `npm test` on Windows before expanding the workbench. Put Python 3 with `venv` support on PATH for the desktop suite. The core suite exercises process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks JavaScript, TypeScript, and Python execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.
+Run `npm test` on Windows before expanding the workbench. Put Git and Python 3 with `venv` support on PATH. The core suite exercises process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks JavaScript, TypeScript, and Python execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.
 
 GitHub Actions runs the same checks on Windows for every push and pull request.
 

@@ -197,7 +197,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 
 .run-panel { --dock-default: clamp(155px, 25vh, 250px); flex: 0 0 min(var(--dock-size, var(--dock-default)), 48%); min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--dock); }
 .run-panel:is([data-mode="tests"], [data-mode="tasks"], [data-runtime="python"], [data-pane="terminal"], [data-pane="flightpath"], [data-pane="tasks"]) { --dock-default: clamp(208px, 35vh, 340px); }
-.run-panel[data-pane="failure"] { --dock-default: clamp(238px, 42vh, 390px); }
+.run-panel:is([data-pane="failure"], [data-pane="changes"]) { --dock-default: clamp(238px, 42vh, 390px); }
 .run-panel[data-collapsed="true"] { flex-basis: 41px; }
 .run-panel[data-collapsed="true"] :is(#rerun-failures, #problems-retry) { display: none; }
 .dock-resizer { flex: 0 0 6px; cursor: ns-resize; touch-action: none; }
@@ -246,6 +246,14 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .debug-marker { color: var(--danger); }
 .debug-marker[data-state="disabled"], .debug-marker[data-state="spacer"] { color: var(--muted); }
 .debug-marker[title="Paused here"] { color: var(--mint); }
+.git-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr) minmax(0, 1fr); }
+.git-grid > section { min-width: 0; overflow: auto; border-right: 1px solid var(--line); }
+.git-grid > section:last-child { border-right: 0; }
+.git-grid h3 { position: sticky; top: 0; margin: 0; padding: 5px 9px; background: var(--dock); border-bottom: 1px solid var(--line); font-size: 12px; overflow-wrap: anywhere; }
+.git-form { display: grid; gap: 4px; padding: 6px 9px; font-size: 12px; }
+.git-form :is(input, select, textarea) { min-width: 0; max-width: 100%; background: var(--base); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; font: inherit; }
+.git-form button { justify-self: start; font-size: 12px; }
+#git-proof[data-state="matches"] { color: var(--mint); }
 .task-note { margin: 0; padding: 2px 10px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .task-list { overflow: auto; list-style: none; margin: 0; padding: 0; }
 .task-list li { display: grid; gap: 3px; padding: 6px 10px; border-top: 1px solid var(--line); font-size: 12px; overflow-wrap: anywhere; }

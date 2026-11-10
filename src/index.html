@@ -121,6 +121,7 @@
             <button id="show-flightpath" class="dock-view" aria-pressed="false" disabled>Flightpath</button>
             <button id="show-tasks" class="dock-view" aria-pressed="false" disabled>Tasks</button>
             <button id="show-failure" class="dock-view" aria-pressed="false" disabled>Failure Lens</button>
+            <button id="show-changes" class="dock-view" aria-pressed="false" disabled>Change Lens</button>
           </div>
           <span id="run-state" class="run-state" role="status">Ready</span>
           <span id="run-target" class="run-target"></span>
@@ -253,6 +254,46 @@
                 <h3>Output</h3>
                 <p id="failure-truncated" class="task-note" hidden>Earlier output was truncated.</p>
                 <pre id="failure-output" class="run-output" tabindex="0" aria-label="Failure output"></pre>
+              </section>
+            </div>
+          </section>
+          <section id="change-panel" class="flightpath-panel" aria-label="Change Lens" hidden>
+            <div class="references-tools">
+              <p id="git-status" role="status"></p>
+              <button id="git-refresh" class="button" disabled>Refresh Git</button>
+              <button id="git-stage-action" class="button" hidden>Stage file</button>
+              <button id="git-review" class="button" disabled>Review commit</button>
+            </div>
+            <p id="git-proof" class="task-note" role="status"></p>
+            <p id="git-drafts" class="task-note" hidden></p>
+            <div class="git-grid">
+              <section aria-label="Changed files">
+                <h3>Staged changes</h3>
+                <ul id="git-staged" class="debug-list" aria-label="Staged changes"></ul>
+                <h3>Working changes</h3>
+                <ul id="git-working" class="debug-list" aria-label="Working changes"></ul>
+              </section>
+              <section aria-label="Diff review">
+                <h3 id="git-patch-title"></h3>
+                <div id="git-commit-box" class="git-form" hidden>
+                  <label for="git-commit-message">Commit message</label>
+                  <textarea id="git-commit-message" rows="2" maxlength="4096"></textarea>
+                  <button id="git-commit" class="button primary" disabled>Commit staged changes</button>
+                </div>
+                <pre id="git-patch" class="run-output" tabindex="0" aria-label="Git diff"></pre>
+              </section>
+              <section aria-label="Local branches and history">
+                <h3>Local branches</h3>
+                <div class="git-form">
+                  <label for="git-branches">Local branch</label>
+                  <select id="git-branches"></select>
+                  <button id="git-switch" class="button" disabled>Switch branch</button>
+                  <label for="git-branch-name">New branch name</label>
+                  <input id="git-branch-name" maxlength="120" autocomplete="off">
+                  <button id="git-create-branch" class="button" disabled>Create branch</button>
+                </div>
+                <h3>Commit history</h3>
+                <ol id="git-history" class="debug-list" aria-label="Commit history"></ol>
               </section>
             </div>
           </section>

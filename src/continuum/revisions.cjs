@@ -72,13 +72,17 @@ async function captureInputs(workspace, outputs = [], include) {
     const { revision, stamp } = files.get(key);
     return [key, revision, stamp];
   });
-  const revision = createHash('sha256').update(JSON.stringify({
-    runtime: process.versions.node,
-    ...(excluded.size ? { outputs: [...excluded].sort() } : {}),
-    files: records.map(([key, revision]) => [key, revision]),
-  })).digest('hex');
+  const revision = revisionDigest(records.map(([key, revision]) => [key, revision]), excluded);
   const stamp = createHash('sha256').update(JSON.stringify(records)).digest('hex');
   return { files, revision, stamp };
+}
+
+function revisionDigest(records, excluded = new Set()) {
+  return createHash('sha256').update(JSON.stringify({
+    runtime: process.versions.node,
+    ...(excluded.size ? { outputs: [...excluded].sort() } : {}),
+    files: records,
+  })).digest('hex');
 }
 
 function inputFreshness(before, after) {
@@ -120,4 +124,4 @@ function createRunEvidence(workspace) {
   };
 }
 
-module.exports = { captureInputs, createRunEvidence, inputFreshness, sourceAnchor };
+module.exports = { captureInputs, createRunEvidence, inputFreshness, revisionDigest, sourceAnchor };

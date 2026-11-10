@@ -9,6 +9,7 @@ import { createDefinitionNavigation } from './definition-navigation.js';
 import { createEditPreview } from './edit-preview.js';
 import { createEditorSettings, editorOptions, optionExtensions } from './editor-settings.js';
 import { colorModeExtension, editorColorMode, editorTheme } from './editor-theme.js';
+import { createChangeLensPanel } from './change-lens-panel.js';
 import { createFailureLens, refreshDebugGutter } from './failure-lens.js';
 import { createFlightpathPanel } from './flightpath-panel.js';
 import { indentGuides } from './indent-guides.js';
@@ -44,6 +45,8 @@ const runtimePanel = createRuntimePanel({ api, errorText });
 const taskPanel = createTaskPanel({ api, errorText, runTask, jump: jumpToTaskSource });
 const failureLens = createFailureLens({ start: () => runDebug(), stop: () => void stopRun().catch(report), restart: () => void restartDebug().catch(report),
   command: sendDebugCommand, jump: jumpToDebugSource, redraw: redrawDebugGutter, errorText });
+const changePanel = createChangeLensPanel({ api, mutate: applyGitAction, errorText,
+  getDirty: () => [...documents.values()].filter(tab => tab.dirty).map(tab => tab.path) });
 const tabs = byId('tabs');
 const editor = byId('editor');
 const tree = byId('tree');
@@ -76,6 +79,7 @@ const dock = byId('run-panel');
 const dockButtons = {
   output: byId('show-output'), problems: byId('show-problems'), references: byId('show-references'),
   terminal: byId('show-terminal'), flightpath: byId('show-flightpath'), tasks: byId('show-tasks'), failure: byId('show-failure'),
+  changes: byId('show-changes'),
 };
 const maxOutput = 160_000;
 
@@ -85,6 +89,7 @@ const navigation = createNavigationHistory();
 let project;
 let active;
 let changingProject = true;
+let changingGit = false;
 let fileRequest = 0;
 let documentSequence = 0;
 let navigating = false;
@@ -178,15 +183,16 @@ function syncCommands() {
   dock.dataset.runtime = runtime ?? '';
   runtimePanel.sync(project, runtime, Boolean(run || changingProject));
   dockButtons.terminal.disabled = !project?.terminalLimit || changingProject;
-  dockButtons.flightpath.disabled = dockButtons.tasks.disabled = dockButtons.failure.disabled = !project || changingProject;
-  const canDebug = !changingProject && !saving && !discarding;
+  dockButtons.flightpath.disabled = dockButtons.tasks.disabled = dockButtons.failure.disabled = dockButtons.changes.disabled = !project || changingProject;
+  const canDebug = !changingProject && !changingGit && !saving && !discarding;
+  changePanel.sync(Boolean(run || changingProject || changingGit || saving || discarding));
   failureLens.setAvailable(canDebug && !run && runtime === 'javascript',
     canDebug && Boolean(debugEntry) && (!run || run.mode === 'debug'));
-  taskPanel.setBusy(Boolean(run || changingProject || saving || discarding));
+  taskPanel.setBusy(Boolean(run || changingProject || changingGit || saving || discarding));
   terminalPanel.setBusy(changingProject);
   testEvidence.setBusy(Boolean(run || changingProject));
-  openButton.disabled = welcomeOpen.disabled = exampleButton.disabled = Boolean(run || changingProject || saving || discarding);
-  saveButton.disabled = !active?.dirty || Boolean(active.saving || active.discarding || changingProject);
+  openButton.disabled = welcomeOpen.disabled = exampleButton.disabled = Boolean(run || changingProject || changingGit || saving || discarding);
+  saveButton.disabled = !active?.dirty || Boolean(active.saving || active.discarding || changingProject || changingGit);
   saveButton.hidden = Boolean(active?.recoveryConflict);
   recoveryButton.hidden = !active?.recoveryConflict;
   recoveryButton.disabled = !active?.dirty || Boolean(active.saving || changingProject);
@@ -195,9 +201,9 @@ function syncCommands() {
   renameButton.disabled = !active?.language || changingProject || Boolean(run || saving || discarding);
   settingsButton.disabled = Boolean(changingProject || run || saving || discarding);
   symbolButton.disabled = !project || changingProject;
-  runButton.disabled = !runtime || Boolean(changingProject || run || discarding || savingAll);
+  runButton.disabled = !runtime || Boolean(changingProject || changingGit || run || discarding || savingAll);
   runButton.hidden = Boolean(run);
-  testButton.disabled = !project || Boolean(changingProject || run || discarding || savingAll);
+  testButton.disabled = !project || Boolean(changingProject || changingGit || run || discarding || savingAll);
   retryButton.hidden = !retryAvailable || byId('run-panel').dataset.mode !== 'tests';
   retryButton.disabled = testButton.disabled;
   stopButton.hidden = !run;
@@ -577,6 +583,7 @@ async function adoptProject(next) {
   symbolPicker.close();
   semantic.changed();
   project = next;
+  changePanel.reset(next);
   terminalPanel.reset(next);
   taskPanel.reset(next);
   debugEntry = undefined;
@@ -811,8 +818,30 @@ function showDock(name, focus = false) {
   flightpathPanel.show(name === 'flightpath');
   taskPanel.show(name === 'tasks');
   failureLens.show(name === 'failure');
+  changePanel.show(name === 'changes');
   problemsPanel.render();
   if (focus && name !== 'terminal') dockButtons[name].focus();
+}
+
+async function applyGitAction(action, details) {
+  if (!project || changingGit || changingProject || run) throw new Error('Wait for the current workspace action to finish.');
+  const scope = project;
+  changingGit = true;
+  editor.inert = true;
+  syncCommands();
+  try {
+    await Promise.all([...documents.values()].map(tab => tab.draftTask));
+    const result = await api.gitWrite(scope.id, action, details);
+    if (result?.switched && project === scope) {
+      const files = await api.list(scope.id, '');
+      await adoptProject({ ...scope, files, recovered: [], entry: undefined, unreadable: false });
+    }
+    return result;
+  } finally {
+    changingGit = false;
+    editor.inert = false;
+    syncCommands();
+  }
 }
 
 function resetOutput(target = '', mode = 'file', plan = []) {
@@ -949,7 +978,7 @@ function redrawDebugGutter() {
 }
 
 function runDebug(tab = active) {
-  if (!tab || runtimeKind(tab.path) !== 'javascript' || run || changingProject || savingAll ||
+  if (!tab || runtimeKind(tab.path) !== 'javascript' || run || changingProject || changingGit || savingAll ||
       [...documents.values()].some(item => item.saving || item.discarding)) return;
   debugEntry = tab.path;
   return launchRun('debug', tab.path, prepareWorkspaceRun,
@@ -1531,6 +1560,7 @@ document.addEventListener('keydown', event => {
     openProject(api.chooseFolder).catch(report);
   } else if (command && key === 's') {
     event.preventDefault();
+    if (changingGit) return;
     if (event.shiftKey) saveAll();
     else if (!changingProject) saveFile(active).catch(report);
   } else if (command && key === 'w' && active) {

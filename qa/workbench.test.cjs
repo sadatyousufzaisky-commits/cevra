@@ -1032,6 +1032,136 @@ test('Windows debugger requires workspace trust and Pause, Restart, and Stop sup
     assert.ok(await recovered.getByRole('button', { name: 'Continue', exact: true }).isDisabled());
   });
 
+test('Change Lens reviews staged test inputs and commits reviewed bytes while preserving a draft',
+  { timeout: 65_000 }, async t => {
+    const file = 'total café [#%].cjs';
+    const workbench = await openWorkbench(t, {
+      [file]: 'module.exports = 1;\n',
+      'totals.test.cjs': `const { test } = require('node:test');\nconst assert = require('node:assert/strict');\n` +
+        `test('a positive total', () => assert.ok(require(${JSON.stringify('./' + file)}) > 0));\n`,
+    });
+    const { app, page, project, editor, state } = workbench;
+    const git = async (...args) => (await execute('git', args, { cwd: project, windowsHide: true })).stdout.trim();
+    await git('init', '-b', 'main');
+    await git('config', 'user.name', 'CEVRA Desktop QA');
+    await git('config', 'user.email', 'desktop@example.invalid');
+    await git('config', 'core.autocrlf', 'false');
+    await git('add', '--', file, 'totals.test.cjs');
+    await git('commit', '-m', 'Seed Change Lens');
+    const initial = await git('rev-parse', 'HEAD');
+    const changes = page.getByRole('button', { name: 'Change Lens', exact: true });
+    const panel = page.getByRole('region', { name: 'Change Lens', exact: true });
+    const action = name => panel.getByRole('button', { name, exact: true });
+    const working = panel.getByRole('list', { name: 'Working changes' });
+    const staged = panel.getByRole('list', { name: 'Staged changes' });
+    const patch = panel.getByLabel('Git diff', { exact: true });
+    const proof = page.locator('#git-proof');
+    const run = page.getByRole('button', { name: 'Run tests', exact: true });
+    await workbench.open(file);
+    await replaceEditor(workbench, 'module.exports = 2;\n');
+    await changes.click();
+    await panel.getByText(/unsaved draft\(s\)/).waitFor();
+    assert.equal(await working.getByRole('listitem').count(), 0);
+    await editor.press('Control+s');
+    await page.locator('#message').getByText('Saved ' + file, { exact: true }).waitFor();
+    await action('Refresh Git').click();
+    await working.getByRole('button', { name: file + ' · M', exact: true }).click();
+    await patch.getByText(/\+module\.exports = 2/).waitFor();
+    await action('Stage file').click();
+    await staged.getByRole('button', { name: file + ' · M', exact: true }).waitFor();
+    assert.equal(await git('show', ':' + file), 'module.exports = 2;');
+
+    await run.click();
+    await state.getByText(/^Passed/).waitFor();
+    await changes.click();
+    await proof.getByText(/match the latest full test pass/).waitFor();
+    await replaceEditor(workbench, 'module.exports = 3;\n');
+    await run.click();
+    await state.getByText(/^Passed/).waitFor();
+    await changes.click();
+    await proof.getByText(/^Historical/).waitFor();
+    await replaceEditor(workbench, 'module.exports = 4;\n');
+    await working.getByRole('button', { name: file + ' · M', exact: true }).click();
+    await patch.getByText(/\+module\.exports = 3/).waitFor();
+    assert.ok(await action('Stage file').isDisabled());
+    await action('Review commit').click();
+    await patch.getByText(/\+module\.exports = 2/).waitFor();
+    await panel.getByLabel('Commit message', { exact: true }).fill('Review staged total café');
+
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 0 }); });
+    await action('Commit staged changes').click();
+    await page.waitForFunction(() => !document.getElementById('git-commit').disabled);
+    assert.equal(await git('rev-parse', 'HEAD'), initial);
+    const reviewedBlob = await git('rev-parse', ':' + file);
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => new Promise(resolve => {
+        globalThis.cevraConfirmGit = () => resolve({ response: 1 });
+      });
+    });
+    await action('Commit staged changes').click();
+    let waiting = false;
+    for (let attempt = 0; attempt < 240 && !waiting; attempt++) {
+      waiting = await app.evaluate(() => Boolean(globalThis.cevraConfirmGit));
+      if (!waiting) await delay(25);
+    }
+    assert.ok(waiting, 'Commit review reached its native confirmation');
+    await git('add', '--', file);
+    await app.evaluate(() => globalThis.cevraConfirmGit());
+    await page.locator('#git-status').getByText(/Git snapshot changed/).waitFor();
+    assert.equal(await git('rev-parse', 'HEAD'), initial);
+    await git('update-index', '--cacheinfo', '100644', reviewedBlob, file);
+    await action('Refresh Git').click();
+    await action('Review commit').click();
+    await patch.getByText(/\+module\.exports = 2/).waitFor();
+
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async (_window, options) => { globalThis.cevraGitPrompt = options; return { response: 1 }; };
+    });
+    await action('Commit staged changes').click();
+    await panel.getByRole('list', { name: 'Commit history' }).getByText(/Review staged total café/).waitFor();
+    const prompt = await app.evaluate(() => globalThis.cevraGitPrompt);
+    assert.match(prompt.detail, /Unsaved editor drafts are excluded/);
+    assert.match(prompt.detail, /no matching current full test pass/);
+    assert.equal(await git('show', 'HEAD:' + file), 'module.exports = 2;');
+    assert.equal(await fs.readFile(path.join(project, file), 'utf8'), 'module.exports = 3;\n');
+    assert.match(await editor.textContent(), /module\.exports = 4/);
+  });
+
+test('Change Lens creates local branches and switches only after an explicit clean-checkout confirmation',
+  { timeout: 35_000 }, async t => {
+    const workbench = await openWorkbench(t, { 'notes.txt': 'main checkout\n' });
+    const { app, page, project, editor } = workbench;
+    const git = async (...args) => (await execute('git', args, { cwd: project, windowsHide: true })).stdout.trim();
+    await git('init', '-b', 'main');
+    await git('config', 'user.name', 'CEVRA Desktop QA');
+    await git('config', 'user.email', 'desktop@example.invalid');
+    await git('config', 'core.autocrlf', 'false');
+    await git('add', '--', 'notes.txt');
+    await git('commit', '-m', 'Main checkout');
+    await page.getByRole('button', { name: 'Change Lens', exact: true }).click();
+    const panel = page.getByRole('region', { name: 'Change Lens', exact: true });
+    const branch = panel.getByLabel('Local branch', { exact: true });
+    const change = panel.getByRole('button', { name: 'Switch branch', exact: true });
+    await panel.getByLabel('New branch name', { exact: true }).fill('review/desktop');
+    await panel.getByRole('button', { name: 'Create branch', exact: true }).click();
+    await branch.selectOption('review/desktop');
+    await workbench.open('notes.txt');
+    await replaceEditor(workbench, 'unsaved local note\n');
+    assert.ok(await change.isDisabled());
+    await editor.press('Control+z');
+    await page.waitForFunction(() => !document.getElementById('git-switch').disabled);
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 0 }); });
+    await change.click();
+    await page.waitForFunction(() => !document.getElementById('git-switch').disabled);
+    assert.equal(await git('branch', '--show-current'), 'main');
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
+    await change.click();
+    await page.locator('#git-status').getByText(/^review\/desktop ·/).waitFor();
+    assert.equal(await git('branch', '--show-current'), 'review/desktop');
+    await workbench.open('notes.txt');
+    assert.match(await editor.textContent(), /main checkout/);
+  });
+
 test('project replacement rejects a changed file, then recovers the entire confirmed batch after a crash',
   { timeout: 35_000 }, async t => {
     const first = 'const token = "token";\n';

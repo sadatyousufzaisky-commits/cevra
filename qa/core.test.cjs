@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
 const { createHash, randomUUID } = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -16,6 +17,7 @@ const { createFormatService } = require('../src/format-service.cjs');
 const { createSemanticService } = require('../src/semantic-service.cjs');
 const { createPreferences } = require('../src/preferences.cjs');
 const { createFlightpathStore } = require('../src/continuum/flightpath.cjs');
+const { createChangeLens } = require('../src/continuum/change-lens.cjs');
 const { captureInputs, inputFreshness, sourceAnchor } = require('../src/continuum/revisions.cjs');
 const { createTestWorkstream } = require('../src/continuum/workstream.cjs');
 const { readTaskCatalog } = require('../src/continuum/task-catalog.cjs');
@@ -35,6 +37,106 @@ async function fixture(t) {
   await fs.mkdir(root);
   return { folder, root, workspace: await createWorkspace(root) };
 }
+
+test('Change Lens distinguishes working and staged bytes and commits the exact reviewed tree', { timeout: 35_000 }, async t => {
+  const { folder, root, workspace } = await fixture(t);
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
+  git('init', '-b', 'main');
+  git('config', 'user.name', 'CEVRA QA');
+  git('config', 'user.email', 'qa@example.invalid');
+  git('config', 'core.autocrlf', 'false');
+  const history = createFlightpathStore(path.join(folder, 'history')).forWorkspace(workspace);
+  let evidence;
+  const lens = createChangeLens(workspace, history, () => evidence);
+  const file = 'nested (QA)/café [#%].cjs';
+  await fs.mkdir(path.join(root, 'nested (QA)'));
+  await fs.writeFile(path.join(root, file), 'module.exports = 1;\n');
+  let status = await lens.status();
+  assert.equal(status.branch, 'main');
+  assert.deepEqual(status.rows.map(row => row.path), [file]);
+  const working = await lens.diff(status.id, file, 'working');
+  assert.match(working.text, /\+module\.exports = 1/);
+  await fs.writeFile(path.join(root, file), 'module.exports = 2;\n');
+  await assert.rejects(lens.stage(status.id, file, 'working', working.id), /snapshot changed/);
+  await fs.writeFile(path.join(root, file), 'module.exports = 1;\n');
+  await lens.stage(status.id, file, 'working', working.id);
+  status = await lens.status();
+  let staged = await lens.diff(status.id, file, 'staged');
+  await lens.stage(status.id, file, 'staged', staged.id);
+  status = await lens.status();
+  assert.equal(status.rows[0].index, '?');
+  await lens.stage(status.id, file, 'working', (await lens.diff(status.id, file, 'working')).id);
+  evidence = { revision: (await captureInputs(workspace)).revision, freshness: 'observed', outcome: 'passed', hasPasses: true };
+  status = await lens.status();
+  assert.equal(status.verification.state, 'matches');
+  let review = await lens.review(status.id);
+  assert.deepEqual(review.files, [file]);
+  await fs.writeFile(path.join(root, file), 'module.exports = 3;\n');
+  git('add', '--', file);
+  await assert.rejects(lens.commit(review.id, 'Stale review'), /snapshot changed/);
+  status = await lens.status();
+  assert.equal(status.verification.state, 'historical');
+  await fs.writeFile(path.join(root, file), 'module.exports = 4;\n');
+  status = await lens.status();
+  staged = await lens.diff(status.id, file, 'staged');
+  assert.match(staged.text, /\+module\.exports = 3/);
+  review = await lens.review(status.id);
+  const commit = await lens.commit(review.id, 'Review exact bytes café');
+  assert.equal(git('show', 'HEAD:' + file), 'module.exports = 3;');
+  assert.equal(await fs.readFile(path.join(root, file), 'utf8'), 'module.exports = 4;\n');
+  status = await lens.status();
+  assert.equal(status.history[0].id, commit);
+  assert.equal(status.history[0].subject, 'Review exact bytes café');
+  await lens.branch(status.id, 'create', 'review/local');
+  await assert.rejects(lens.branch((await lens.status()).id, 'switch', 'review/local'), /working changes/);
+  await fs.writeFile(path.join(root, file), 'module.exports = 3;\n');
+  await lens.branch((await lens.status()).id, 'switch', 'review/local');
+  assert.equal((await lens.status()).branch, 'review/local');
+  const nested = createChangeLens(await createWorkspace(path.join(root, 'nested (QA)')), history, () => evidence);
+  assert.match((await nested.status()).message, /repository root/);
+});
+
+test('Change Lens keeps reads read-only and leaves occupied indexes and active Git operations alone',
+  { timeout: 25_000 }, async t => {
+    const { folder, root, workspace } = await fixture(t);
+    const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
+    git('init', '-b', 'main');
+    git('config', 'user.name', 'CEVRA QA');
+    git('config', 'user.email', 'qa@example.invalid');
+    git('config', 'core.autocrlf', 'false');
+    await fs.writeFile(path.join(root, 'notes.txt'), 'original\n');
+    await fs.writeFile(path.join(root, '.gitattributes'), '*.txt filter=cevra-qa\n');
+    git('add', '--', 'notes.txt', '.gitattributes');
+    git('commit', '-m', 'Baseline');
+    const index = path.join(root, '.git', 'index');
+    const original = await fs.readFile(index);
+    await fs.writeFile(path.join(root, 'notes.txt'), 'working\n');
+    git('config', 'filter.cevra-qa.clean', 'echo ran > filter-ran; cat');
+    const history = createFlightpathStore(path.join(folder, 'history')).forWorkspace(workspace);
+    const lens = createChangeLens(workspace, history, () => undefined);
+    let status = await lens.status();
+    let preview = await lens.diff(status.id, 'notes.txt', 'working');
+    assert.match(preview.text, /\+working/);
+    assert.deepEqual(await fs.readFile(index), original);
+    await assert.rejects(fs.stat(path.join(root, 'filter-ran')), { code: 'ENOENT' });
+    await assert.rejects(lens.stage(status.id, 'notes.txt', 'working', preview.id), /external Git filter/);
+    await assert.rejects(fs.stat(path.join(root, 'filter-ran')), { code: 'ENOENT' });
+    assert.deepEqual(await fs.readFile(index), original);
+
+    git('config', '--unset', 'filter.cevra-qa.clean');
+    status = await lens.status();
+    preview = await lens.diff(status.id, 'notes.txt', 'working');
+    const lock = index + '.lock';
+    await fs.writeFile(lock, 'another Git client owns this');
+    await assert.rejects(lens.stage(status.id, 'notes.txt', 'working', preview.id), /owns the index lock/);
+    assert.equal(await fs.readFile(lock, 'utf8'), 'another Git client owns this');
+    assert.deepEqual(await fs.readFile(index), original);
+    await fs.unlink(lock);
+    await fs.writeFile(path.join(root, '.git', 'MERGE_HEAD'), git('rev-parse', 'HEAD') + '\n');
+    status = await lens.status();
+    assert.equal(status.writable, false);
+    await assert.rejects(lens.stage(status.id, 'notes.txt', 'working', preview.id), /active Git operation/);
+  });
 
 test('Node debugger binds a nested breakpoint, reads paused variables, and releases after an exception',
   { timeout: 20_000 }, async t => {

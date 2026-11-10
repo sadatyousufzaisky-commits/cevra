@@ -4,10 +4,12 @@ const { captureInputs, createRunEvidence, inputFreshness, sourceAnchor } = requi
 function createTestWorkstream(workspace, startTests, history) {
   const workstreamId = history?.workstreamId ?? randomUUID();
   const observed = createRunEvidence(workspace);
+  let latestFull;
 
   async function start(retry, goal, publish, isStopping) {
     if (typeof goal !== 'string' || goal.length > 120 || /[\r\n\0]/.test(goal)) throw new Error('Enter a workstream goal of up to 120 characters.');
     observed.clear();
+    if (!retry) latestFull = undefined;
     const id = randomUUID();
     const [before, retention] = await Promise.all([captureInputs(workspace), history?.admit()]);
     const failures = [];
@@ -24,6 +26,7 @@ function createTestWorkstream(workspace, startTests, history) {
         exitCode: event.code, durationMs: event.elapsed,
       };
       observed.remember(evidence, before);
+      if (!retry) latestFull = { ...evidence, hasPasses: event.counts?.passed > 0 && event.counts.cached === 0 };
       history?.record(retention, evidence);
       publish({
         ...event, stopped, evidence,
@@ -51,7 +54,7 @@ function createTestWorkstream(workspace, startTests, history) {
     }, isStopping);
   }
 
-  return { start, recheck: observed.recheck };
+  return { start, recheck: observed.recheck, latestFull: () => latestFull };
 }
 
 module.exports = { createTestWorkstream };

@@ -15,6 +15,7 @@ const { createFormatService } = require('./format-service.cjs');
 const { createSemanticService } = require('./semantic-service.cjs');
 const { createPreferences } = require('./preferences.cjs');
 const { createFlightpathStore } = require('./continuum/flightpath.cjs');
+const { createChangeLens } = require('./continuum/change-lens.cjs');
 const { createTestWorkstream } = require('./continuum/workstream.cjs');
 const { readTaskCatalog } = require('./continuum/task-catalog.cjs');
 const { createTaskRunner } = require('./continuum/task-runner.cjs');
@@ -41,6 +42,8 @@ let workstream;
 let taskRunner;
 let pythonProfiles;
 let flightpath;
+let changeLens;
+let gitWrite;
 let changingWorkspace = false;
 let runGrant;
 let authorizingRun = false;
@@ -106,6 +109,7 @@ async function readDrafts() {
 function ensureWorkspaceAvailable(recovering = false) {
   if (changingWorkspace) throw new Error('A workspace is already opening.');
   if (sessions.busy && (!recovering || rendererReady)) throw new Error('Stop the current run before opening another project.');
+  if (gitWrite && !recovering) throw new Error('Wait for the Git action to finish.');
 }
 
 async function openWorkspace(folder, { entry, discard, recovering = false } = {}) {
@@ -113,7 +117,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
   changingWorkspace = true;
   runGrant = undefined;
   try {
-    if (recovering) await sessions.cancel();
+    if (recovering) await Promise.all([sessions.cancel(), gitWrite?.catch(() => {})]);
     const next = await createWorkspace(folder);
     const files = await listFolder(next);
     const settings = await preferences.getEditor(next);
@@ -137,6 +141,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
     workspace = next;
     flightpath = flightpathStore.forWorkspace(next);
     workstream = createTestWorkstream(next, tests.start, flightpath);
+    changeLens = createChangeLens(next, flightpath, workstream.latestFull);
     taskRunner = createTaskRunner(next, flightpath);
     pythonProfiles = createPythonProfiles(next);
     return {
@@ -183,7 +188,7 @@ handle('revoke-trust', async id => {
 
 async function authorizeExecution(project, prompt, start) {
   if (authorizingRun) throw new Error('An execution request is already active.');
-  if (changingWorkspace || closePending || allowClose) throw new Error('The workspace is changing.');
+  if (changingWorkspace || closePending || allowClose || gitWrite) throw new Error('The workspace is changing.');
   const owner = window.webContents;
   authorizingRun = true;
   try {
@@ -206,7 +211,7 @@ async function authorizeExecution(project, prompt, start) {
     }
     const root = await resolveEntry(project, '');
     currentWorkspace(project.id);
-    if (changingWorkspace || closePending || allowClose || window?.webContents !== owner || !rendererReady) {
+    if (changingWorkspace || closePending || allowClose || gitWrite || window?.webContents !== owner || !rendererReady) {
       throw new Error('The execution request expired.');
     }
     return start(root);
@@ -368,7 +373,7 @@ function authorizedWorkspace(id, runId, token) {
   const project = currentWorkspace(id);
   if (runGrant?.id !== id || runGrant.runId !== runId || runGrant.token !== token) throw new Error('Authorize workspace execution first.');
   runGrant = undefined;
-  if (changingWorkspace || closePending || allowClose) throw new Error('The workspace is changing.');
+  if (changingWorkspace || closePending || allowClose || gitWrite) throw new Error('The workspace is changing.');
   return project;
 }
 
@@ -417,6 +422,82 @@ handle('run-evidence', async (id, evidenceId) => {
   currentWorkspace(id);
   const current = taskRunner;
   return (await workstream.recheck(evidenceId)) ?? current.recheck(evidenceId);
+});
+handle('git-status', id => { currentWorkspace(id); return changeLens.status(); });
+handle('git-diff', (id, snapshot, file, side) => { currentWorkspace(id); return changeLens.diff(snapshot, file, side); });
+handle('git-review', (id, snapshot) => { currentWorkspace(id); return changeLens.review(snapshot); });
+
+handle('git-write', (id, action, details) => {
+  const project = currentWorkspace(id);
+  const lens = changeLens;
+  const owner = window;
+  const { snapshot, file, side, diff, message, branch } = details ?? {};
+  if (typeof snapshot !== 'string' || !/^[a-f0-9]{64}$/.test(snapshot)) throw new Error('Review a Git snapshot before making changes.');
+  if (gitWrite || sessions.busy || authorizingRun || runGrant || changingWorkspace || closePending || allowClose) {
+    throw new Error('Wait for the current workspace action to finish.');
+  }
+  const assertCurrent = () => {
+    currentWorkspace(id);
+    if (changingWorkspace || closePending || allowClose || window !== owner || !rendererReady) throw new Error('The workspace is changing.');
+  };
+  async function workspaceDrafts() {
+    const { entries, unreadable } = await drafts.list();
+    return { pending: entries.filter(draft => draft.root === project.root), unreadable };
+  }
+  async function perform() {
+    if (action === 'stage') {
+      if (typeof file !== 'string') throw new Error('Select a changed file.');
+      const { pending, unreadable } = await workspaceDrafts();
+      if (side === 'working' && (unreadable || pending.some(item => sourceFileKey(item.path) === sourceFileKey(file)))) {
+        throw new Error('Save this file and refresh its diff before staging.');
+      }
+      assertCurrent();
+      await lens.stage(snapshot, file, side, diff);
+      return { changed: true };
+    }
+    if (action === 'commit') {
+      if (typeof message !== 'string' || !message.trim() || message.includes('\0') || Buffer.byteLength(message) > 4096) {
+        throw new Error('Enter a commit message of up to 4096 bytes.');
+      }
+      const review = await lens.review(snapshot);
+      const { pending, unreadable } = await workspaceDrafts();
+      assertCurrent();
+      const { response } = await dialog.showMessageBox(owner, {
+        type: 'question', title: 'Commit reviewed changes', message: `Commit ${review.files.length} staged path(s) to ${review.branch}?`,
+        detail: message.trim().slice(0, 500) + '\n\n' + (review.verification.state === 'matches' ?
+          'Staged source bytes match the latest full test pass.' : 'This staged snapshot has no matching current full test pass.') +
+          (pending.length || unreadable ? '\nUnsaved editor drafts are excluded.' : ''),
+        buttons: ['Cancel', 'Commit'], defaultId: 0, cancelId: 0, noLink: true,
+      });
+      if (response !== 1) return null;
+      assertCurrent();
+      return { commit: await lens.commit(snapshot, message) };
+    }
+    if (action === 'create' || action === 'switch') {
+      if (typeof branch !== 'string' || !branch || branch.length > 120 || /[\0\r\n]/.test(branch)) throw new Error('Choose a local branch.');
+      if (action === 'switch') {
+        const checkDrafts = async () => {
+          const { pending, unreadable } = await workspaceDrafts();
+          if (pending.length || unreadable) throw new Error('Save or close unsaved drafts before switching branches.');
+        };
+        await checkDrafts();
+        assertCurrent();
+        const { response } = await dialog.showMessageBox(owner, {
+          type: 'question', title: 'Switch local branch', message: `Switch to ${branch}?`,
+          detail: 'CEVRA will reopen the workspace with the checked-out files.',
+          buttons: ['Cancel', 'Switch Branch'], defaultId: 0, cancelId: 0, noLink: true,
+        });
+        if (response !== 1) return null;
+        await checkDrafts();
+      }
+      assertCurrent();
+      await lens.branch(snapshot, action, branch);
+      return { changed: true, switched: action === 'switch' };
+    }
+    throw new Error('Unknown Git action.');
+  }
+  gitWrite = perform().finally(() => { gitWrite = undefined; });
+  return gitWrite;
 });
 handle('flightpath', async (id, action) => {
   const project = currentWorkspace(id);
@@ -469,7 +550,7 @@ handle('close-ready', async (hasDrafts, backupFailed) => {
     window.webContents.send('cevra:close-canceled');
   } else {
     runGrant = undefined;
-    await Promise.all([sessions.cancel(), terminals.closeAll()]);
+    await Promise.all([sessions.cancel(), terminals.closeAll(), gitWrite?.catch(() => {})]);
     await flightpathStore.flush();
     if (!closePending || window !== closing) return;
     closePending = false;
