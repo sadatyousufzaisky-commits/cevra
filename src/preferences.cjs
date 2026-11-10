@@ -41,7 +41,8 @@ function workspaceKey(workspace) {
 }
 
 function directoryIdentity(workspace) {
-  return String(workspace.identity.dev) + ':' + String(workspace.identity.ino);
+  const { dev, ino, birthtimeNs } = workspace.identity;
+  return [dev, ino, birthtimeNs].join(':');
 }
 
 function createPreferences(directory) {
@@ -107,13 +108,14 @@ function createPreferences(directory) {
     },
     async isTrusted(workspace) {
       const { trusted } = await current();
-      return trusted?.[workspaceKey(workspace)] === directoryIdentity(workspace);
+      const record = trusted?.[workspaceKey(workspace)];
+      return record?.schemaVersion === 2 && record.identity === directoryIdentity(workspace);
     },
     async setTrusted(workspace, enabled) {
       await save(data => {
         const trusted = { ...data.trusted };
         const root = workspaceKey(workspace);
-        if (enabled) trusted[root] = directoryIdentity(workspace);
+        if (enabled) trusted[root] = { schemaVersion: 2, identity: directoryIdentity(workspace) };
         else delete trusted[root];
         return { ...data, trusted };
       });

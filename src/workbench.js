@@ -15,6 +15,7 @@ import { createFlightpathPanel } from './flightpath-panel.js';
 import { indentGuides } from './indent-guides.js';
 import { createNavigationHistory } from './navigation-history.js';
 import { createProblemsPanel } from './problems-panel.js';
+import { createRecipesPanel } from './recipes-panel.js';
 import { createReferencesPanel } from './references-panel.js';
 import { createRuntimePanel } from './runtime-panel.js';
 import { createSearchPanel } from './search-panel.js';
@@ -43,6 +44,8 @@ const byId = id => document.getElementById(id);
 const terminalPanel = createTerminalPanel({ api, errorText });
 const runtimePanel = createRuntimePanel({ api, errorText });
 const taskPanel = createTaskPanel({ api, errorText, runTask, jump: jumpToTaskSource });
+const recipeFile = '.cevra-recipes.json';
+const recipesPanel = createRecipesPanel({ api, errorText, edit: () => openFile(recipeFile), updateFile: updateRecipeFile, runRecipe });
 const failureLens = createFailureLens({ start: () => runDebug(), stop: () => void stopRun().catch(report), restart: () => void restartDebug().catch(report),
   command: sendDebugCommand, jump: jumpToDebugSource, redraw: redrawDebugGutter, errorText });
 const changePanel = createChangeLensPanel({ api, mutate: applyGitAction, errorText,
@@ -79,7 +82,7 @@ const dock = byId('run-panel');
 const dockButtons = {
   output: byId('show-output'), problems: byId('show-problems'), references: byId('show-references'),
   terminal: byId('show-terminal'), flightpath: byId('show-flightpath'), tasks: byId('show-tasks'), failure: byId('show-failure'),
-  changes: byId('show-changes'),
+  changes: byId('show-changes'), recipes: byId('show-recipes'),
 };
 const maxOutput = 160_000;
 
@@ -96,6 +99,7 @@ let navigating = false;
 let runSequence = 0;
 let run;
 let debugEntry;
+let debugRecipe;
 let diagnostic;
 let retryAvailable = false;
 let testPass;
@@ -184,11 +188,13 @@ function syncCommands() {
   runtimePanel.sync(project, runtime, Boolean(run || changingProject));
   dockButtons.terminal.disabled = !project?.terminalLimit || changingProject;
   dockButtons.flightpath.disabled = dockButtons.tasks.disabled = dockButtons.failure.disabled = dockButtons.changes.disabled = !project || changingProject;
+  dockButtons.recipes.disabled = !project || changingProject;
   const canDebug = !changingProject && !changingGit && !saving && !discarding;
   changePanel.sync(Boolean(run || changingProject || changingGit || saving || discarding));
   failureLens.setAvailable(canDebug && !run && runtime === 'javascript',
     canDebug && Boolean(debugEntry) && (!run || run.mode === 'debug'));
   taskPanel.setBusy(Boolean(run || changingProject || changingGit || saving || discarding));
+  recipesPanel.setBusy(Boolean(run || changingProject || changingGit || saving || discarding));
   terminalPanel.setBusy(changingProject);
   testEvidence.setBusy(Boolean(run || changingProject));
   openButton.disabled = welcomeOpen.disabled = exampleButton.disabled = Boolean(run || changingProject || changingGit || saving || discarding);
@@ -586,7 +592,8 @@ async function adoptProject(next) {
   changePanel.reset(next);
   terminalPanel.reset(next);
   taskPanel.reset(next);
-  debugEntry = undefined;
+  recipesPanel.reset(next);
+  debugEntry = debugRecipe = undefined;
   failureLens.reset(next);
   flightpathPanel.reset(next);
   testEvidence.reset(next);
@@ -817,6 +824,7 @@ function showDock(name, focus = false) {
   terminalPanel.show(name === 'terminal', focus);
   flightpathPanel.show(name === 'flightpath');
   taskPanel.show(name === 'tasks');
+  recipesPanel.show(name === 'recipes');
   failureLens.show(name === 'failure');
   changePanel.show(name === 'changes');
   problemsPanel.render();
@@ -844,15 +852,40 @@ async function applyGitAction(action, details) {
   }
 }
 
+async function updateRecipeFile(action, revision) {
+  const tab = findDocument(recipeFile);
+  if (tab?.dirty) throw new Error('Save or close the edited recipe file before upgrading.');
+  changingProject = true;
+  editor.inert = true;
+  syncCommands();
+  try {
+    const scope = project;
+    await tab?.draftTask;
+    const file = await api.recipeFile(scope.id, action, revision);
+    testEvidence.changed();
+    searchPanel.changed();
+    scope.files = await api.list(scope.id, '');
+    renderTree();
+    if (tab) await removeTab(tab);
+    await openFile(file);
+  } finally {
+    changingProject = false;
+    editor.inert = false;
+    syncCommands();
+  }
+}
+
 function resetOutput(target = '', mode = 'file', plan = []) {
   testPass = undefined;
   const testing = mode === 'tests';
   const tasks = mode === 'tasks';
+  const recipe = mode === 'recipe';
   const debug = mode === 'debug';
   dock.dataset.mode = mode;
   testEvidence.clear();
   taskPanel.start(plan);
-  byId('run-heading').textContent = testing ? 'Test results' : tasks ? 'Task output' : debug ? 'Debug output' : 'Run output';
+  byId('run-heading').textContent = testing ? 'Test results' : tasks ? 'Task output' :
+    recipe ? 'Recipe output' : debug ? 'Debug output' : 'Run output';
   byId('test-results').hidden = !testing;
   byId('test-empty').hidden = false;
   byId('test-empty').textContent = 'Waiting for test results…';
@@ -865,9 +898,10 @@ function resetOutput(target = '', mode = 'file', plan = []) {
   outputNotice.hidden = true;
   failureLens.begin(debug);
   output.classList.remove('has-output');
-  output.setAttribute('aria-label', testing ? 'Test output' : tasks ? 'Task output' : 'Program output');
+  output.setAttribute('aria-label', testing ? 'Test output' : tasks ? 'Task output' : recipe ? 'Recipe output' : 'Program output');
   output.textContent = testing ? 'Waiting for test output…' :
-    tasks ? 'Waiting for task output…' : target ? 'Waiting for program output…' : 'Run a JavaScript file to see its output here.';
+    tasks ? 'Waiting for task output…' : recipe ? 'Waiting for recipe output…' :
+    target ? 'Waiting for program output…' : 'Run a JavaScript file to see its output here.';
   setRunState('Ready');
 }
 
@@ -909,12 +943,12 @@ function cancelBeforeStart(attempt) {
   setRunState('Canceled');
   output.textContent = 'Execution canceled.';
   if (attempt.mode === 'tests') byId('test-empty').textContent = 'Execution canceled.';
-  if (attempt.mode === 'tasks') taskPanel.blockWaiting('Run canceled');
+  if (attempt.mode === 'tasks' || attempt.mode === 'recipe') taskPanel.blockWaiting('Run canceled');
   failureLens.exit({ stopped: true });
   syncCommands();
 }
 
-async function launchRun(mode, target, prepare, start, plan) {
+async function launchRun(mode, target, prepare, start, plan, authorize = attempt => api.authorizeRun(attempt.workspaceId, attempt.id)) {
   const attempt = { id: ++runSequence, workspaceId: project.id, mode, stage: 'starting' };
   run = attempt;
   showDock(mode === 'debug' ? 'failure' : 'output');
@@ -922,7 +956,7 @@ async function launchRun(mode, target, prepare, start, plan) {
   setRunState('Starting', 'running');
   syncCommands();
   try {
-    const token = await api.authorizeRun(attempt.workspaceId, attempt.id);
+    const token = await authorize(attempt);
     if (!token) return cancelBeforeStart(attempt);
     attempt.sessionId = token;
     if (attempt.stage === 'stopping') return cancelBeforeStart(attempt);
@@ -944,7 +978,7 @@ async function launchRun(mode, target, prepare, start, plan) {
     run = undefined;
     setRunState('Could not run', 'error');
     if (mode === 'tests') byId('test-empty').textContent = 'The tests could not start.';
-    if (mode === 'tasks') taskPanel.blockWaiting('Task execution could not start');
+    if (mode === 'tasks' || mode === 'recipe') taskPanel.blockWaiting('Execution could not start');
     appendOutput(errorText(error));
     failureLens.exit({ error: errorText(error) });
     syncCommands();
@@ -981,6 +1015,7 @@ function runDebug(tab = active) {
   if (!tab || runtimeKind(tab.path) !== 'javascript' || run || changingProject || changingGit || savingAll ||
       [...documents.values()].some(item => item.saving || item.discarding)) return;
   debugEntry = tab.path;
+  debugRecipe = undefined;
   return launchRun('debug', tab.path, prepareWorkspaceRun,
     attempt => api.debugStart(attempt.workspaceId, tab.path, tab.revision, attempt.id, attempt.sessionId, failureLens.requestBreakpoints()));
 }
@@ -992,6 +1027,7 @@ async function restartDebug() {
     run.restart = true;
     await stopRun();
   } else if (!run) {
+    if (debugRecipe) return runRecipe(debugRecipe);
     const current = project;
     const tab = await openFile(file);
     if (project === current && tab && !run) void runDebug(tab);
@@ -1029,6 +1065,27 @@ function runTests(retry = false) {
 function runTask(target, revision, plan) {
   return launchRun('tasks', 'Task Weave · ' + plan.at(-1).id, prepareWorkspaceRun,
     attempt => api.runTask(attempt.workspaceId, target, revision, attempt.id, attempt.sessionId), plan);
+}
+
+function runRecipe(plan) {
+  if (!project || run || changingProject || changingGit || savingAll ||
+      [...documents.values()].some(tab => tab.saving || tab.discarding)) return;
+  if (findDocument(recipeFile)?.dirty) {
+    notify('Save the recipe file and refresh Recipes before running.', true);
+    return;
+  }
+  const debugging = Boolean(plan.entry);
+  if (debugging) {
+    debugEntry = plan.entry;
+    debugRecipe = plan;
+  }
+  return launchRun(debugging ? 'debug' : 'recipe', 'Recipe · ' + plan.name, prepareWorkspaceRun,
+    attempt => {
+      if (plan.preview.some(step => step.kind === 'test')) retryAvailable = false;
+      return api.recipeStart(attempt.workspaceId, attempt.id, attempt.sessionId,
+        debugging ? failureLens.requestBreakpoints() : []);
+    }, debugging ? [] : plan.preview,
+    attempt => api.authorizeRecipe(attempt.workspaceId, attempt.id, plan.id, plan.digest));
 }
 
 async function stopRun() {
@@ -1136,7 +1193,7 @@ function finishTests(event, elapsed) {
 api.onRun(event => {
   if (event.workspaceId !== project?.id || event.runId !== run?.id ||
       event.sessionId !== run?.sessionId) return;
-  if (event.type === 'task-progress' && run.mode === 'tasks') taskPanel.progress(event);
+  if (event.type === 'task-progress' && (run.mode === 'tasks' || run.mode === 'recipe')) taskPanel.progress(event);
   if (event.type === 'debug-state' && run.mode === 'debug') failureLens.state(event);
   if (event.type === 'debug-breakpoint' && run.mode === 'debug') failureLens.verified(event);
   if (event.type !== 'exit') return;
@@ -1154,14 +1211,22 @@ api.onRun(event => {
     syncCommands();
     return;
   }
-  if (mode === 'tasks') {
+  if (event.location) {
+    diagnostic = event.location;
+    diagnosticButton.querySelector('span').textContent = locationLabel(diagnostic);
+    const summary = byId('run-error-summary');
+    summary.textContent = summary.title = event.summary ?? '';
+    byId('run-diagnostic').hidden = false;
+  }
+  if (mode === 'tasks' || mode === 'recipe') {
     testEvidence.finish(event.evidence, sourceVersion);
     if (event.stopped) setRunState('Canceled');
     else if (event.code === 0) setRunState('Completed · ' + elapsed);
-    else setRunState(event.completedWithFailures ? 'Completed with failures' : 'Task failed', 'error');
+    else setRunState(event.completedWithFailures && mode === 'tasks' ? 'Completed with failures' :
+      mode === 'recipe' ? 'Recipe failed' : 'Task failed', 'error');
     if (event.error) appendOutput(event.error);
-    if (!outputText) output.textContent = 'The tasks produced no output.';
-    taskPanel.blockWaiting(event.stopped ? 'Run canceled' : 'Task execution could not continue');
+    if (!outputText) output.textContent = mode === 'recipe' ? 'The recipe produced no output.' : 'The tasks produced no output.';
+    taskPanel.blockWaiting(event.stopped ? 'Run canceled' : 'Execution could not continue');
     flightpathPanel.refresh();
     syncCommands();
     return;
@@ -1171,13 +1236,6 @@ api.onRun(event => {
   else setRunState(`Failed · ${event.code ?? event.signal ?? 'launch'}`, 'error');
   if (event.error) appendOutput(event.error);
   if (!outputText) output.textContent = 'The program produced no output.';
-  if (event.location) {
-    diagnostic = event.location;
-    diagnosticButton.querySelector('span').textContent = locationLabel(diagnostic);
-    const summary = byId('run-error-summary');
-    summary.textContent = summary.title = event.summary ?? '';
-    byId('run-diagnostic').hidden = false;
-  }
   syncCommands();
   if (restart) void restartDebug().catch(report);
 });

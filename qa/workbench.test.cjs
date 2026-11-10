@@ -779,6 +779,226 @@ test('Windows Task Weave respects trust and Stop ends detached children and bloc
     assert.doesNotMatch(await output.textContent(), /TASK-SHOULD-NOT-RUN/);
   });
 
+const recipesFile = '.cevra-recipes.json';
+const recipeDefinition = (...steps) => JSON.stringify({ schemaVersion: 2, recipes: [{ id: 'verify', name: 'Verify', steps }] });
+
+async function selectRecipe(page) {
+  await page.getByRole('button', { name: 'Recipes', exact: true }).click();
+  await page.getByLabel('Recipe', { exact: true }).selectOption('verify');
+  await page.locator('#recipe-status').getByText(/^Review the steps/).waitFor();
+  return page.getByRole('button', { name: 'Run recipe', exact: true });
+}
+
+test('Recipes review and run task, saved source, and tests in order, with persistent and revocable trust',
+  { timeout: 50_000 }, async t => {
+    const source = 'nested (Recipe) & café/verify # %.cjs';
+    const order = 'order.txt';
+    const workbench = await openWorkbench(t, {
+      [recipesFile]: recipeDefinition({ kind: 'task', target: 'npm:build' }, { kind: 'run', file: source }, { kind: 'test' }),
+      'package.json': JSON.stringify({ scripts: { build: 'node build.cjs', prebuild: 'node unexpected.cjs' } }),
+      'build.cjs': 'require("node:fs").writeFileSync("order.txt", "build");',
+      'unexpected.cjs': 'throw new Error("implicit npm hook should never run");',
+      [source]: 'throw new Error("save the open draft first");',
+      'recipe.test.cjs': 'require("node:test")("recipe order", () => {\n' +
+        '  require("node:assert/strict").equal(require("node:fs").readFileSync("order.txt", "utf8"), "build run");\n' +
+        '  console.log("RECIPE-TEST-PASSED");\n});\n',
+    });
+    const { page, app, state, output, project } = workbench;
+    const marker = path.join(project, order);
+    await workbench.file('nested (Recipe) & café').click();
+    await workbench.open('verify # %.cjs');
+    const saved = 'require("node:fs").appendFileSync("order.txt", " run");\n';
+    await replaceEditor(workbench, saved);
+    let run = await selectRecipe(page);
+    const preview = page.getByRole('list', { name: 'Recipe steps in execution order' });
+    assert.match(await preview.innerText(), /npm --ignore-scripts run build[\s\S]*node build\.cjs[\s\S]*verify # %\.cjs[\s\S]*Full JavaScript test suite/);
+    await assert.rejects(fs.access(marker), { code: 'ENOENT' });
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async (_window, options) => {
+        globalThis.cevraRecipePrompt = options;
+        return { response: 0 };
+      };
+    });
+    await run.click();
+    await state.getByText('Canceled', { exact: true }).waitFor();
+    await assert.rejects(fs.access(marker), { code: 'ENOENT' });
+    assert.match(await fs.readFile(path.join(project, source), 'utf8'), /save the open draft first/);
+    assert.deepEqual((await app.evaluate(() => globalThis.cevraRecipePrompt)).buttons, ['Cancel', 'Run Once', 'Trust Workspace']);
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 2 }); });
+    run = await selectRecipe(page);
+    await run.click();
+    await state.getByText(/^Completed ·/).waitFor();
+    await output.getByText(/RECIPE-TEST-PASSED/).waitFor();
+    assert.equal(await fs.readFile(path.join(project, source), 'utf8'), saved);
+    assert.equal(await fs.readFile(marker, 'utf8'), 'build run');
+    const steps = page.locator('#task-steps li');
+    assert.deepEqual(await steps.evaluateAll(rows => rows.map(row => row.dataset.outcome)), ['passed', 'passed', 'passed']);
+
+    const reopened = await workbench.restart();
+    await reopened.page.locator('#open-folder').click();
+    run = await selectRecipe(reopened.page);
+    const trust = reopened.page.locator('#recipe-trust');
+    await trust.getByText(/^Trusted workspace/).waitFor();
+    await reopened.app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async (_window, options) => {
+        globalThis.cevraRecipePrompt = options;
+        return { response: 0 };
+      };
+    });
+    await run.click();
+    await reopened.state.getByText('Canceled', { exact: true }).waitFor();
+    assert.deepEqual((await reopened.app.evaluate(() => globalThis.cevraRecipePrompt)).buttons, ['Cancel', 'Run Recipe']);
+    await selectRecipe(reopened.page);
+    await reopened.page.getByRole('button', { name: 'Revoke workspace trust', exact: true }).click();
+    await trust.getByText(/^Untrusted workspace/).waitFor();
+  });
+
+test('Recipes reject edits made before confirmation, during consent, or while saving the approved run',
+  { timeout: 45_000 }, async t => {
+    const manifest = command => JSON.stringify({ scripts: { build: 'node ' + command + '.cjs' } });
+    const definition = recipeDefinition({ kind: 'task', target: 'npm:build' });
+    const workbench = await openWorkbench(t, {
+      [recipesFile]: definition, 'package.json': manifest('original'),
+      'original.cjs': 'require("node:fs").writeFileSync("ran.txt", "original");',
+      'changed.cjs': 'require("node:fs").writeFileSync("ran.txt", "changed");',
+    });
+    const { page, app, project, state, output } = workbench;
+    const packageFile = path.join(project, 'package.json');
+    let run = await selectRecipe(page);
+    await fs.writeFile(packageFile, manifest('changed'));
+    await run.click();
+    await state.getByText('Could not run', { exact: true }).waitFor();
+    await output.getByText(/references changed/).waitFor();
+
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => new Promise(resolve => {
+        globalThis.cevraConfirmRecipe = () => resolve({ response: 2 });
+      });
+    });
+    run = await selectRecipe(page);
+    await run.click();
+    let waiting = false;
+    for (let attempt = 0; attempt < 240 && !waiting; attempt++) {
+      waiting = await app.evaluate(() => Boolean(globalThis.cevraConfirmRecipe));
+      if (!waiting) await delay(25);
+    }
+    assert.ok(waiting, 'Recipe reached its native confirmation');
+    await fs.writeFile(path.join(project, recipesFile), definition + '\n');
+    await app.evaluate(() => globalThis.cevraConfirmRecipe());
+    await state.getByText('Could not run', { exact: true }).waitFor();
+    await output.getByText(/references changed/).waitFor();
+
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
+    await workbench.open('package.json');
+    await replaceEditor(workbench, manifest('original'));
+    run = await selectRecipe(page);
+    await page.locator('#recipe-trust').getByText(/^Untrusted workspace/).waitFor();
+    await run.click();
+    await state.getByText('Could not run', { exact: true }).waitFor();
+    await output.getByText(/references changed/).waitFor();
+    assert.equal(await fs.readFile(packageFile, 'utf8'), manifest('original'));
+    await assert.rejects(fs.access(path.join(project, 'ran.txt')), { code: 'ENOENT' });
+
+    const grants = await page.evaluate(async () => {
+      const api = window.cevra;
+      const { project: { id } } = await api.initial();
+      const plan = await api.recipePreview(id, 'verify');
+      const runToken = await api.authorizeRun(id, 701);
+      const wrongRecipe = await api.recipeStart(id, 701, runToken, []).catch(error => error.message);
+      await api.stop(id, 701, runToken);
+      const recipeToken = await api.authorizeRecipe(id, 702, plan.id, plan.digest);
+      const wrongRunner = await api.start(id, 'original.cjs', '', 702, recipeToken).catch(error => error.message);
+      await api.revokeTrust(id);
+      const revokedRecipe = await api.recipeStart(id, 702, recipeToken, []).catch(error => error.message);
+      return [wrongRecipe, wrongRunner, revokedRecipe];
+    });
+    for (const error of grants) assert.match(error, /Authorize workspace execution first/);
+    await assert.rejects(fs.access(path.join(project, 'ran.txt')), { code: 'ENOENT' });
+  });
+
+test('Recipes revalidate between steps and stop a Windows process tree before starting the next step',
+  { timeout: 40_000, skip: process.platform !== 'win32' }, async t => {
+    const definition = recipeDefinition({ kind: 'run', file: 'first.cjs' }, { kind: 'task', target: 'npm:next' });
+    const { page, project, state, output } = await openWorkbench(t, {
+      [recipesFile]: definition,
+      'first.cjs': 'require("node:fs").appendFileSync(".cevra-recipes.json", "\\n");',
+      'package.json': JSON.stringify({ scripts: { next: 'echo RECIPE-NEXT-MUST-NOT-RUN' } }),
+    });
+    let run = await selectRecipe(page);
+    await run.click();
+    await state.getByText('Recipe failed', { exact: true }).waitFor();
+    const steps = page.locator('#task-steps li');
+    await steps.nth(0).getByText('Passed', { exact: true }).waitFor();
+    await steps.nth(1).getByText(/references changed/).waitFor();
+    assert.doesNotMatch(await output.textContent(), /RECIPE-NEXT-MUST-NOT-RUN/);
+
+    await fs.writeFile(path.join(project, 'first.cjs'), terminalTree.replace('TERMINAL-TREE', 'RECIPE-TREE'));
+    run = await selectRecipe(page);
+    await run.click();
+    const marker = /RECIPE-TREE (\d+) (\d+)/;
+    await output.getByText(marker).waitFor();
+    const pids = marker.exec(await output.textContent()).slice(1).map(Number);
+    await page.getByRole('button', { name: 'Stop run', exact: true }).click();
+    await state.getByText('Canceled', { exact: true }).waitFor();
+    await Promise.all(pids.map(assertWindowsProcessStopped));
+    await steps.nth(0).getByText('Canceled', { exact: true }).waitFor();
+    await steps.nth(1).getByText('Blocked', { exact: true }).waitFor();
+    assert.doesNotMatch(await output.textContent(), /RECIPE-NEXT-MUST-NOT-RUN/);
+  });
+
+test('Recipes create and migrate definitions explicitly and a debug recipe opens a controllable session',
+  { timeout: 35_000 }, async t => {
+    const workbench = await openWorkbench(t, { 'debug.cjs': 'console.log("RECIPE-DEBUG-COMPLETE");\n' });
+    const { page, project } = workbench;
+    const manifest = path.join(project, recipesFile);
+    await page.getByRole('button', { name: 'Recipes', exact: true }).click();
+    await page.getByRole('button', { name: 'Create recipe file', exact: true }).click();
+    await workbench.selected(recipesFile).waitFor();
+    assert.equal(JSON.parse(await fs.readFile(manifest, 'utf8')).schemaVersion, 2);
+    const legacy = JSON.stringify({ schemaVersion: 1, recipes: [
+      { id: 'verify', name: 'Debug checkout', kind: 'debug', file: 'debug.cjs' },
+    ] });
+    await fs.writeFile(manifest, legacy);
+    await page.getByRole('button', { name: 'Refresh recipes', exact: true }).click();
+    const upgrade = page.getByRole('button', { name: 'Upgrade recipe file', exact: true });
+    await upgrade.waitFor();
+    assert.equal(await fs.readFile(manifest, 'utf8'), legacy);
+    await upgrade.click();
+    await upgrade.waitFor({ state: 'hidden' });
+    assert.deepEqual(JSON.parse(await fs.readFile(manifest, 'utf8')), { schemaVersion: 2, recipes: [
+      { id: 'verify', name: 'Debug checkout', steps: [{ kind: 'debug', file: 'debug.cjs' }] },
+    ] });
+    const run = await selectRecipe(page);
+    await run.click();
+    await page.locator('#debug-status').getByText('Paused · Entry', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await page.locator('#debug-status').getByText('Debug session completed', { exact: true }).waitFor();
+    await page.locator('#failure-output').getByText(/RECIPE-DEBUG-COMPLETE/).waitFor();
+  });
+
+test('Recipes link a failed test to its nested source and block the next action',
+  { timeout: 25_000 }, async t => {
+    const folder = 'nested # % & café';
+    const file = 'invoice.cjs';
+    const workbench = await openWorkbench(t, {
+      [recipesFile]: recipeDefinition({ kind: 'test' }, { kind: 'run', file: 'later.cjs' }),
+      'later.cjs': 'console.log("RECIPE-LATER");\n',
+      [folder + '/' + file]: 'exports.calculate = () => {\n  throw new Error("nested recipe test failure");\n};\n',
+      'invoice.test.cjs': 'const { calculate } = require(' + JSON.stringify('./' + folder + '/' + file) + ');\n' +
+        'require("node:test")("calculates invoice", calculate);\n',
+    });
+    const { page, state, output } = workbench;
+    const run = await selectRecipe(page);
+    await run.click();
+    await state.getByText('Recipe failed', { exact: true }).waitFor();
+    const steps = page.locator('#task-steps li');
+    await steps.nth(1).getByText('Blocked', { exact: true }).waitFor();
+    assert.doesNotMatch(await output.textContent(), /RECIPE-LATER/);
+    await steps.nth(0).getByRole('button', { name: /invoice\.cjs:2:9/ }).click();
+    await workbench.selected(file).waitFor();
+    await page.locator('#cursor').getByText('Ln 2, Col 9', { exact: true }).waitFor();
+  });
+
 test('Runtime Fabric runs TypeScript and maps transformed runtime and syntax errors to original files',
   { timeout: 35_000 }, async t => {
     const childFile = 'nested (TS) & café/error # %.ts';

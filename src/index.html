@@ -120,6 +120,7 @@
             <button id="show-terminal" class="dock-view" aria-pressed="false" title="Terminal (Ctrl+`)" disabled>Terminal</button>
             <button id="show-flightpath" class="dock-view" aria-pressed="false" disabled>Flightpath</button>
             <button id="show-tasks" class="dock-view" aria-pressed="false" disabled>Tasks</button>
+            <button id="show-recipes" class="dock-view" aria-pressed="false" disabled>Recipes</button>
             <button id="show-failure" class="dock-view" aria-pressed="false" disabled>Failure Lens</button>
             <button id="show-changes" class="dock-view" aria-pressed="false" disabled>Change Lens</button>
           </div>
@@ -206,6 +207,21 @@
             <p id="task-status" class="task-note" role="status"></p>
             <p id="task-workspace" class="task-note"></p>
             <ol id="task-preview" class="task-list" aria-label="Task plan in execution order"></ol>
+          </section>
+          <section id="recipes-panel" class="flightpath-panel" aria-label="Recipes" hidden>
+            <div class="terminal-toolbar">
+              <label for="recipe-choice">Recipe</label>
+              <select id="recipe-choice" disabled><option value="">Choose a recipe</option></select>
+              <button id="recipe-run" class="button" disabled>Run recipe</button>
+              <button id="recipe-refresh" class="button" disabled>Refresh recipes</button>
+              <button id="recipe-create" class="button" hidden>Create recipe file</button>
+              <button id="recipe-edit" class="button" hidden>Edit recipes</button>
+              <button id="recipe-upgrade" class="button" hidden>Upgrade recipe file</button>
+              <button id="recipe-revoke" class="button" hidden>Revoke workspace trust</button>
+            </div>
+            <p id="recipe-status" class="task-note" role="status"></p>
+            <p id="recipe-trust" class="task-note"></p>
+            <ol id="recipe-preview" class="task-list" aria-label="Recipe steps in execution order"></ol>
           </section>
           <section id="terminal-panel" class="terminal-panel" aria-label="Workspace terminal" hidden>
             <div class="terminal-toolbar">

@@ -19,6 +19,8 @@ const { createChangeLens } = require('./continuum/change-lens.cjs');
 const { createTestWorkstream } = require('./continuum/workstream.cjs');
 const { readTaskCatalog } = require('./continuum/task-catalog.cjs');
 const { createTaskRunner } = require('./continuum/task-runner.cjs');
+const { createRecipeFile, recipeCatalog, recipeFile, requireRecipe, resolveRecipe, upgradeRecipes } = require('./continuum/recipes.cjs');
+const { startRecipe } = require('./continuum/recipe-runner.cjs');
 const { createExecutionSessions } = require('./execution/sessions.cjs');
 const { startDebugger } = require('./execution/debugger.cjs');
 const { createPythonProfiles } = require('./execution/python-profiles.cjs');
@@ -46,6 +48,7 @@ let changeLens;
 let gitWrite;
 let changingWorkspace = false;
 let runGrant;
+let trustEpoch = 0;
 let authorizingRun = false;
 let activeSearch;
 let rendererReady = false;
@@ -182,7 +185,9 @@ handle('set-editor-settings', (id, scope, values) =>
 handle('workspace-trust', id => preferences.isTrusted(currentWorkspace(id)));
 handle('revoke-trust', async id => {
   const project = currentWorkspace(id);
+  trustEpoch++;
   runGrant = undefined;
+  void sessions.cancel();
   await preferences.setTrusted(project, false);
 });
 
@@ -190,30 +195,38 @@ async function authorizeExecution(project, prompt, start) {
   if (authorizingRun) throw new Error('An execution request is already active.');
   if (changingWorkspace || closePending || allowClose || gitWrite) throw new Error('The workspace is changing.');
   const owner = window.webContents;
+  const epoch = trustEpoch;
+  function checkConsent() {
+    currentWorkspace(project.id);
+    if (changingWorkspace || closePending || allowClose || gitWrite || window?.webContents !== owner ||
+        !rendererReady || trustEpoch !== epoch) throw new Error('The execution request expired.');
+  }
   authorizingRun = true;
   try {
     await resolveEntry(project, '');
-    if (!await preferences.isTrusted(project)) {
+    const trusted = await preferences.isTrusted(project);
+    checkConsent();
+    let trust = false;
+    if (!trusted || prompt.confirmTrusted) {
       const { response } = await dialog.showMessageBox(window, {
-        type: 'warning',
-        title: 'Workspace execution',
+        type: trusted ? 'question' : 'warning',
+        title: prompt.title ?? 'Workspace execution',
         message: prompt.message,
         detail: project.root + '\n\n' + prompt.detail,
-        buttons: ['Cancel', 'Run Once', 'Trust Workspace'],
+        buttons: trusted ? ['Cancel', 'Run Recipe'] : ['Cancel', 'Run Once', 'Trust Workspace'],
         defaultId: 0,
         cancelId: 0,
         noLink: true,
       });
-      if (response !== 1 && response !== 2) return null;
-      currentWorkspace(project.id);
-      await resolveEntry(project, '');
-      if (response === 2) await preferences.setTrusted(project, true);
+      trust = !trusted && response === 2;
+      if (response !== 1 && !trust) return null;
+      checkConsent();
+      await prompt.recheck?.();
     }
     const root = await resolveEntry(project, '');
-    currentWorkspace(project.id);
-    if (changingWorkspace || closePending || allowClose || gitWrite || window?.webContents !== owner || !rendererReady) {
-      throw new Error('The execution request expired.');
-    }
+    checkConsent();
+    if (trust) await preferences.setTrusted(project, true);
+    checkConsent();
     return start(root);
   } finally {
     authorizingRun = false;
@@ -369,9 +382,10 @@ handle('draft', (id, file, text, revision) => {
   return drafts.set(project.root, file, text, revision);
 });
 
-function authorizedWorkspace(id, runId, token) {
+function authorizedWorkspace(id, runId, token, kind = 'run') {
   const project = currentWorkspace(id);
-  if (runGrant?.id !== id || runGrant.runId !== runId || runGrant.token !== token) throw new Error('Authorize workspace execution first.');
+  if (runGrant?.id !== id || runGrant.runId !== runId || runGrant.token !== token ||
+      (runGrant.kind ?? 'run') !== kind) throw new Error('Authorize workspace execution first.');
   runGrant = undefined;
   if (changingWorkspace || closePending || allowClose || gitWrite) throw new Error('The workspace is changing.');
   return project;
@@ -417,6 +431,77 @@ handle('run-task', (id, target, revision, runId, token) => {
   const project = authorizedWorkspace(id, runId, token);
   const current = taskRunner;
   return sessions.start(project.id, runId, token, (publish, isStopping) => current.start(target, revision, publish, isStopping));
+});
+handle('recipes', id => recipeCatalog(currentWorkspace(id)));
+handle('recipe-preview', async (id, recipeId) => {
+  const { name, digest, preview, steps } = await resolveRecipe(currentWorkspace(id), pythonProfiles, recipeId);
+  currentWorkspace(id);
+  return { id: recipeId, name, digest, preview, entry: steps[0].kind === 'debug' ? steps[0].file : undefined };
+});
+handle('recipe-file', async (id, action, revision) => {
+  const project = currentWorkspace(id);
+  const ensureIdle = () => {
+    currentWorkspace(id);
+    if (sessions.busy || authorizingRun || runGrant || gitWrite || changingWorkspace || closePending || allowClose) {
+      throw new Error('Wait for the current workspace action to finish.');
+    }
+  };
+  ensureIdle();
+  const { entries, unreadable } = await drafts.list();
+  ensureIdle();
+  if (unreadable || entries.some(draft => draft.root === project.root && sourceFileKey(draft.path) === recipeFile)) {
+    throw new Error('Resolve any recovery drafts and save the recipe file before changing it.');
+  }
+  if (action === 'create') await createRecipeFile(project);
+  else if (action === 'upgrade') await upgradeRecipes(project, revision);
+  else throw new Error('Unknown recipe file action.');
+  return recipeFile;
+});
+handle('authorize-recipe', async (id, runId, recipeId, digest) => {
+  const project = currentWorkspace(id);
+  if (!Number.isSafeInteger(runId) || runId < 1) throw new Error('Invalid execution request.');
+  const python = pythonProfiles;
+  const epoch = trustEpoch;
+  const plan = await requireRecipe(project, python, recipeId, digest);
+  currentWorkspace(id);
+  if (authorizingRun || sessions.busy || runGrant || trustEpoch !== epoch) {
+    throw new Error('The recipe request expired or another execution is active.');
+  }
+  return authorizeExecution(project, {
+    title: 'Recipe confirmation',
+    confirmTrusted: true,
+    message: 'Run ' + plan.name + '?',
+    detail: plan.preview.map(step => step.id).join('\n') + '\n\nThese steps run with your Windows user permissions.',
+    recheck: () => requireRecipe(project, python, recipeId, digest),
+  }, () => {
+    const token = randomUUID();
+    runGrant = { id, runId, token, kind: 'recipe', recipeId, digest, epoch };
+    return token;
+  });
+});
+handle('recipe-start', (id, runId, token, breakpoints) => {
+  const grant = runGrant;
+  const project = authorizedWorkspace(id, runId, token, 'recipe');
+  const python = pythonProfiles;
+  const tasks = taskRunner;
+  const tests = workstream;
+  async function refresh() {
+    const plan = await requireRecipe(project, python, grant.recipeId, grant.digest);
+    if (trustEpoch !== grant.epoch) throw new Error('Workspace trust was revoked. Review the recipe before running again.');
+    return plan;
+  }
+  return sessions.start(id, runId, token, async (publish, isStopping) => {
+    const plan = await refresh();
+    if (plan.steps[0].kind === 'debug') {
+      const { file, revision } = plan.steps[0];
+      return startDebugger(project, file, revision, breakpoints, publish, isStopping);
+    }
+    return startRecipe(plan, refresh, (step, emit, stopping) => {
+      if (step.kind === 'test') return tests.start(false, step.goal, emit, stopping);
+      if (step.kind === 'task') return tasks.start(step.target, step.pin, emit, stopping);
+      return startSourceRun(project, step.file, step.revision, step.runtime, python, emit, stopping);
+    }, publish, isStopping);
+  });
 });
 handle('run-evidence', async (id, evidenceId) => {
   currentWorkspace(id);

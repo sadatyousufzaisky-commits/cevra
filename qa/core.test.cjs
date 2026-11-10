@@ -23,6 +23,8 @@ const { createTestWorkstream } = require('../src/continuum/workstream.cjs');
 const { readTaskCatalog } = require('../src/continuum/task-catalog.cjs');
 const { planTask } = require('../src/continuum/task-plan.cjs');
 const { createTaskRunner } = require('../src/continuum/task-runner.cjs');
+const { createRecipeFile, recipeCatalog, recipeFile, requireRecipe, resolveRecipe, upgradeRecipes } = require('../src/continuum/recipes.cjs');
+const { startRecipe } = require('../src/continuum/recipe-runner.cjs');
 const { createExecutionSessions } = require('../src/execution/sessions.cjs');
 const { startDebugger } = require('../src/execution/debugger.cjs');
 const { createPythonProfiles } = require('../src/execution/python-profiles.cjs');
@@ -37,6 +39,117 @@ async function fixture(t) {
   await fs.mkdir(root);
   return { folder, root, workspace: await createWorkspace(root) };
 }
+
+test('recipe files are opt-in, validate their schema, and migrate only the reviewed version', async t => {
+  const { root, workspace } = await fixture(t);
+  const file = path.join(root, recipeFile);
+  assert.deepEqual(await recipeCatalog(workspace), { recipes: [], missing: true });
+  await createRecipeFile(workspace);
+  const starter = await fs.readFile(file, 'utf8');
+  await assert.rejects(createRecipeFile(workspace), /already exists/);
+  assert.equal(await fs.readFile(file, 'utf8'), starter);
+  const legacy = '\uFEFF' + JSON.stringify({ schemaVersion: 1, recipes: [
+    { id: 'verify', name: 'Verify', kind: 'test', goal: 'Run checks' },
+  ] }, null, 2).replaceAll('\n', '\r\n') + '\r\n';
+  await fs.writeFile(file, legacy);
+  const catalog = await recipeCatalog(workspace);
+  assert.deepEqual(catalog.recipes[0].steps, [{ kind: 'test', goal: 'Run checks' }]);
+  assert.equal(await fs.readFile(file, 'utf8'), legacy);
+  await fs.writeFile(file, legacy + '\r\n');
+  await assert.rejects(upgradeRecipes(workspace, catalog.revision), /changed/);
+  assert.equal(await fs.readFile(file, 'utf8'), legacy + '\r\n');
+  await upgradeRecipes(workspace, (await recipeCatalog(workspace)).revision);
+  const migrated = await fs.readFile(file, 'utf8');
+  assert.ok(migrated.startsWith('\uFEFF'));
+  assert.ok(!migrated.replaceAll('\r\n', '').includes('\n'));
+  assert.deepEqual(JSON.parse(migrated.slice(1)), { schemaVersion: 2, recipes: catalog.recipes });
+
+  const testStep = { kind: 'test' };
+  for (const [steps, pattern] of [
+    [[], /one to eight/], [Array(9).fill(testStep), /one to eight/],
+    [[{ kind: 'task', target: 'npm:build && other' }], /supported/],
+    [[{ kind: 'run', file: '..\\outside.cjs' }], /relative workspace/],
+    [[{ kind: 'run', file: path.join(root, 'entry.cjs') }], /relative workspace|Invalid workspace path/],
+    [[{ kind: 'run', file: '.git/entry.cjs' }], /Invalid workspace path/],
+    [[{ kind: 'run', file: 'entry.py', profile: 'C:/other/python.exe' }], /supported entry/],
+    [[{ kind: 'debug', file: 'entry.ts' }], /supported entry/],
+    [[{ kind: 'debug', file: 'entry.cjs' }, testStep], /only step/],
+    [[{ kind: 'test', command: 'echo other' }], /supported/],
+  ]) {
+    await fs.writeFile(file, JSON.stringify({ schemaVersion: 2, recipes: [{ id: 'verify', name: 'Verify', steps }] }));
+    await assert.rejects(recipeCatalog(workspace), pattern);
+  }
+  const verify = { id: 'verify', name: 'Verify', steps: [testStep] };
+  await fs.writeFile(file, JSON.stringify({ schemaVersion: 2, recipes: [verify, verify] }));
+  await assert.rejects(recipeCatalog(workspace), /unique ID/);
+  await fs.writeFile(file, JSON.stringify({ schemaVersion: 99, recipes: [verify] }));
+  await assert.rejects(recipeCatalog(workspace), /unsupported/);
+});
+
+test('a recipe pins referenced scripts and interpreters while accepting newly saved source', async t => {
+  const { root, workspace } = await fixture(t);
+  const source = 'nested # % & café/check.py';
+  const target = path.join(root, source);
+  const manifest = path.join(root, 'package.json');
+  await fs.mkdir(path.dirname(target));
+  await fs.writeFile(target, 'print("first")\n');
+  await fs.writeFile(manifest, JSON.stringify({ scripts: { build: 'echo original' } }));
+  await fs.writeFile(path.join(root, recipeFile), JSON.stringify({ schemaVersion: 2, recipes: [
+    { id: 'verify', name: 'Verify', steps: [
+      { kind: 'task', target: 'npm:build' }, { kind: 'run', file: source, profile: '.venv' },
+    ] },
+  ] }));
+  let interpreter = { id: 'original', label: 'Workspace .venv', file: path.join(root, '.venv', 'python.exe') };
+  const python = { list: async () => interpreter ? [interpreter] : [] };
+  const plan = await resolveRecipe(workspace, python, 'verify');
+  assert.match(plan.preview[0].details[0], /--ignore-scripts run build\necho original/);
+  assert.equal(plan.preview[1].details[0], interpreter.file);
+  await fs.writeFile(target, 'print("saved edit")\n');
+  const samePlan = await requireRecipe(workspace, python, plan.id, plan.digest);
+  assert.notEqual(samePlan.steps[1].revision, plan.steps[1].revision);
+  interpreter = { ...interpreter, id: 'replacement' };
+  await assert.rejects(requireRecipe(workspace, python, plan.id, plan.digest), /changed/);
+  const refreshed = await resolveRecipe(workspace, python, plan.id);
+  await fs.writeFile(manifest, JSON.stringify({ scripts: { build: 'echo changed' } }));
+  await assert.rejects(requireRecipe(workspace, python, refreshed.id, refreshed.digest), /changed/);
+  interpreter = null;
+  await assert.rejects(resolveRecipe(workspace, python, plan.id), /interpreter is unavailable/);
+});
+
+test('a recipe blocks later steps when no test passes or launch validation fails', async () => {
+  const plan = { steps: [{ id: 'one', kind: 'test' }, { id: 'two', kind: 'run' }] };
+  for (const result of [{ code: 0, counts: { tests: 1, passed: 0 } }, new Error('Launch rejected')]) {
+    const progress = [];
+    const event = await new Promise(resolve => startRecipe(plan,
+      () => assert.fail('The second step must stay blocked'), async (_step, emit) => {
+        if (result instanceof Error) throw result;
+        emit({ type: 'exit', ...result });
+      }, event => {
+        if (event.type === 'task-progress') progress.push([event.id, event.outcome]);
+        if (event.type === 'exit') resolve(event);
+      }, () => false));
+    assert.deepEqual(progress, [['one', 'running'], ['one', 'failed'], ['two', 'blocked']]);
+    assert.notEqual(event.code, 0);
+    assert.match(event.error, /No tests passed|Launch rejected/);
+  }
+});
+
+test('legacy workspace trust requires fresh consent and preserves unrelated preferences', async t => {
+  const { folder, root, workspace } = await fixture(t);
+  const key = process.platform === 'win32' ? root.toLowerCase() : root;
+  await fs.writeFile(path.join(folder, 'preferences.json'), JSON.stringify({
+    theme: 'light', editor: { fontSize: 18 }, trusted: { [key]: workspace.identity.dev + ':' + workspace.identity.ino },
+  }));
+  const preferences = createPreferences(folder);
+  assert.equal(await preferences.isTrusted(workspace), false);
+  await preferences.setTrusted(workspace, true);
+  const reopened = createPreferences(folder);
+  assert.equal(await reopened.isTrusted(await createWorkspace(root)), true);
+  assert.equal(await reopened.getTheme(), 'light');
+  assert.equal((await reopened.getEditor(workspace)).effective.fontSize, 18);
+  await reopened.setTrusted(workspace, false);
+  assert.equal(await createPreferences(folder).isTrusted(workspace), false);
+});
 
 test('Change Lens distinguishes working and staged bytes and commits the exact reviewed tree', { timeout: 35_000 }, async t => {
   const { folder, root, workspace } = await fixture(t);

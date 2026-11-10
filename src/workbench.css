@@ -196,7 +196,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .welcome-actions .button { min-height: 39px; padding-inline: 13px; }
 
 .run-panel { --dock-default: clamp(155px, 25vh, 250px); flex: 0 0 min(var(--dock-size, var(--dock-default)), 48%); min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--dock); }
-.run-panel:is([data-mode="tests"], [data-mode="tasks"], [data-runtime="python"], [data-pane="terminal"], [data-pane="flightpath"], [data-pane="tasks"]) { --dock-default: clamp(208px, 35vh, 340px); }
+.run-panel:is([data-mode="tests"], [data-mode="tasks"], [data-mode="recipe"], [data-runtime="python"], [data-pane="terminal"], [data-pane="flightpath"], [data-pane="tasks"], [data-pane="recipes"]) { --dock-default: clamp(208px, 35vh, 340px); }
 .run-panel:is([data-pane="failure"], [data-pane="changes"]) { --dock-default: clamp(238px, 42vh, 390px); }
 .run-panel[data-collapsed="true"] { flex-basis: 41px; }
 .run-panel[data-collapsed="true"] :is(#rerun-failures, #problems-retry) { display: none; }
@@ -301,7 +301,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .run-error-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .output-notice { margin: 0; padding: 4px 13px; border-bottom: 1px solid var(--line); color: var(--warning); font-size: 12px; }
 .run-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-.run-panel:is([data-mode="tests"], [data-mode="tasks"]) .run-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.run-panel:is([data-mode="tests"], [data-mode="tasks"], [data-mode="recipe"]) .run-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .run-output { margin: 0; padding: 10px 14px 15px; min-height: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.5 var(--mono); color: var(--muted); }
 .run-output.has-output { color: var(--text); }
 .test-results { min-height: 0; overflow: auto; border-right: 1px solid var(--line); }

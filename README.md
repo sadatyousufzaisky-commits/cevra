@@ -86,6 +86,35 @@ Task Weave validates all dependencies before launch, runs each prerequisite once
 
 Declare generated folders in `outputs` to exclude them from task revision checks. CEVRA still checks the manifest, graph, and other observed workspace inputs. With Flightpath enabled, each step records its outcome, including failures, cancellations, and blocked steps.
 
+## Save and run workspace recipes
+
+Open **Recipes** in the bottom panel and choose **Create recipe file** to add a starter `.cevra-recipes.json` to the workspace root. Edit and save the file, choose **Refresh recipes**, then select a recipe to see the ordered steps, resolved task commands, and runtime. Share the file with your project when the workflow applies to other contributors.
+
+```json
+{
+  "schemaVersion": 2,
+  "recipes": [
+    {
+      "id": "verify",
+      "name": "Build and verify",
+      "steps": [
+        { "kind": "task", "target": "npm:build" },
+        { "kind": "test", "goal": "Verify the project" }
+      ]
+    }
+  ]
+}
+```
+
+- **Task** accepts `npm:<script>` for a package script or `dag:<id>` for a Task Weave graph.
+- **Test** runs the full JavaScript test suite and requires at least one passing test.
+- **Run** accepts a workspace-relative `file` for JavaScript, TypeScript, or Python. Python requires a `profile` of `.venv`, `venv`, or `path`, resolved to a discovered interpreter.
+- **Debug** opens Failure Lens for a workspace-relative JavaScript `file` and must be the only step in its recipe.
+
+Each recipe supports one to eight steps. Opening a workspace or reviewing a plan never starts execution. **Run recipe** asks for native confirmation even in a trusted workspace. After confirmation, CEVRA saves open files and rechecks the recipe, referenced task configuration, and Python interpreter identity. A changed plan requires a fresh review. Steps use the latest saved source, run in order, and stop the pipeline on failure or cancellation. **Recipe output** shows each step's result.
+
+Workspace trust is local to this device and bound to the selected directory. Revoke it from **Recipes** or **Settings**. Earlier trust records require fresh consent. Version 1 recipes can be reviewed and run as single steps. **Upgrade recipe file** converts them to version 2 after checking that the file still matches the reviewed revision. Keep credentials out of the recipe file.
+
 ## Review and commit with Change Lens
 
 Open the repository root as a workspace, then select **Change Lens**. With Git on PATH, CEVRA shows the current branch, recent local commits, and separate lists of staged and working changes. Select a file to preview its diff. **Stage file** checks the reviewed disk contents before updating the index. **Unstage file** changes the index and keeps the working copy. Save a file's open draft before staging it.
