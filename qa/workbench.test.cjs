@@ -204,8 +204,15 @@ test('Windows terminal runs PowerShell and Command Prompt independently and resi
     await send('Write-Host CEVRA-COLOR -ForegroundColor Green');
     const colored = active.locator('.xterm-rows :is(.xterm-fg-2, .xterm-fg-10)').getByText('CEVRA-COLOR', { exact: true });
     await visible(colored);
-    const { x, y, width, height: rowHeight } = await colored.boundingBox();
-    await page.mouse.click(x + width / 2, y + rowHeight / 2, { clickCount: 3 });
+    const point = await page.waitForFunction(() => {
+      const matches = document.querySelectorAll('.terminal-surface:not([hidden]) .xterm-rows :is(.xterm-fg-2, .xterm-fg-10)');
+      const span = [...matches].find(element => element.textContent === 'CEVRA-COLOR');
+      const box = span?.getBoundingClientRect();
+      return box?.width && box.height ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : null;
+    });
+    const { x, y } = await point.jsonValue();
+    await point.dispose();
+    await page.mouse.click(x, y, { clickCount: 3 });
     await page.getByRole('button', { name: 'Copy', exact: true }).click();
     await page.getByText('Selection copied.', { exact: true }).waitFor();
     assert.match(await app.evaluate(({ clipboard }) => clipboard.readText()), /CEVRA-COLOR/);
