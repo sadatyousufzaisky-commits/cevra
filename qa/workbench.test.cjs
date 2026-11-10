@@ -581,6 +581,68 @@ test('a named test workstream links an exact failure and marks edited or externa
     await fs.writeFile(path.join(project, 'config.json'), '{"round":true}\n');
     await page.getByRole('button', { name: 'Check inputs' }).click();
     await status.getByText(/^Historical · workspace inputs changed/).waitFor();
+    await state.getByText(/^Historical pass/).waitFor();
+    assert.equal(await state.getAttribute('data-state'), '');
+  });
+
+test('Flightpath keeps opt-in capsules across a crash and shows reopened passes as historical',
+  { timeout: 45_000 }, async t => {
+    let workbench = await openWorkbench(t, {
+      'checks.test.cjs': 'const { test } = require("node:test");\ntest("totals", () => console.log("private test output"));\n',
+      'config.json': '{"round":false}\n',
+    });
+    const { page, profile, state } = workbench;
+    const run = page.getByRole('button', { name: 'Run tests', exact: true });
+    const flightpath = page.getByRole('button', { name: 'Flightpath', exact: true });
+    const capsules = page.getByRole('list', { name: 'Run Capsules, newest first' }).getByRole('listitem');
+    await run.click();
+    await state.getByText(/^Passed/).waitFor();
+    await flightpath.click();
+    await page.getByText(/^Local history is off/).waitFor();
+    assert.equal(await capsules.count(), 0);
+    const storage = path.join(profile, 'flightpath');
+    await assert.rejects(fs.stat(storage), { code: 'ENOENT' });
+    await page.getByRole('button', { name: 'Enable local history' }).click();
+    await page.getByText(/^Local history is on/).waitFor();
+    assert.equal(await capsules.count(), 0);
+
+    await page.getByRole('button', { name: 'Test results', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Workstream' }).fill('private goal');
+    await run.click();
+    await state.getByText(/^Passed/).waitFor();
+    await flightpath.click();
+    await capsules.first().getByText(/^Workspace inputs observed/).waitFor();
+    assert.equal(await capsules.count(), 1);
+    const firstRevision = await capsules.first().locator('span[title]').getAttribute('title');
+
+    await workbench.open('config.json');
+    await replaceEditor(workbench, '{"round":true}\n');
+    await capsules.first().getByText(/^Historical/).waitFor();
+    await run.click();
+    await state.getByText(/^Passed/).waitFor();
+    await flightpath.click();
+    await capsules.first().getByText(/^Workspace inputs observed/).waitFor();
+    assert.equal(await capsules.count(), 2);
+    assert.notEqual(await capsules.first().locator('span[title]').getAttribute('title'), firstRevision);
+    await capsules.nth(1).getByText(/^Historical/).waitFor();
+    const [key] = await fs.readdir(storage);
+    const journal = path.join(storage, key, 'journal.json');
+    const retained = await fs.readFile(journal, 'utf8');
+    assert.doesNotMatch(retained, /private goal|private test output|config\.json|checks\.test\.cjs/);
+
+    workbench = await workbench.restart({ crash: true });
+    await workbench.page.locator('#open-folder').click();
+    await workbench.page.getByRole('button', { name: 'Flightpath', exact: true }).click();
+    const reopened = workbench.page.getByRole('list', { name: 'Run Capsules, newest first' }).getByRole('listitem');
+    await reopened.nth(1).getByText(/^Historical/).waitFor();
+    await reopened.first().getByText(/^Historical/).waitFor();
+    assert.equal(await reopened.count(), 2);
+    await workbench.page.getByRole('button', { name: 'Clear history', exact: true }).click();
+    await reopened.first().waitFor({ state: 'detached' });
+    assert.deepEqual(JSON.parse(await fs.readFile(journal, 'utf8')).data.capsules, []);
+    await workbench.page.getByRole('button', { name: 'Turn off and clear', exact: true }).click();
+    await workbench.page.getByText(/^Local history is off/).waitFor();
+    await assert.rejects(fs.stat(journal), { code: 'ENOENT' });
   });
 
 test('project replacement rejects a changed file, then recovers the entire confirmed batch after a crash',
@@ -1900,6 +1962,7 @@ test('the compact workbench gives the editor space and keeps layout controls and
   const workbench = await openWorkbench(t, { [path.join(folder, name)]: content });
   const { app, page, editor, open, file, output } = workbench;
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(740, 560));
+  await page.waitForFunction(() => window.innerWidth <= 740);
   await file(folder).click();
   await open(name);
   const viewport = page.locator('#editor');
@@ -1926,7 +1989,8 @@ test('the compact workbench gives the editor space and keeps layout controls and
   const cursor = await page.locator('#cursor').textContent();
   const originalWidth = (await viewport.boundingBox()).width;
   await editor.press('Control+b');
-  assert.ok((await viewport.boundingBox()).width >= originalWidth + 150);
+  await page.getByRole('button', { name: 'Show Explorer', exact: true }).waitFor();
+  await page.waitForFunction(width => document.getElementById('editor').getBoundingClientRect().width >= width + 150, originalWidth);
   assert.equal(await page.locator('#cursor').textContent(), cursor);
   await editor.press('Control+Shift+f');
   const search = page.getByRole('searchbox', { name: 'Search project' });
@@ -1948,6 +2012,11 @@ test('the compact workbench gives the editor space and keeps layout controls and
   assert.ok((await dock.boundingBox()).height >= beforeDrag + 18);
   await editor.press('Control+j');
   await output.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Flightpath', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable local history', exact: true }).waitFor();
+  const dockBounds = await dock.boundingBox();
+  const hidePanel = await page.getByRole('button', { name: 'Hide bottom panel', exact: true }).boundingBox();
+  assert.ok(hidePanel.x + hidePanel.width <= dockBounds.x + dockBounds.width);
   await editor.press('F5');
   await output.getByText('room', { exact: true }).waitFor();
 });

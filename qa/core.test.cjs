@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { test } = require('node:test');
@@ -14,6 +15,7 @@ const { createSyntaxService } = require('../src/syntax-service.cjs');
 const { createFormatService } = require('../src/format-service.cjs');
 const { createSemanticService } = require('../src/semantic-service.cjs');
 const { createPreferences } = require('../src/preferences.cjs');
+const { createFlightpathStore } = require('../src/continuum/flightpath.cjs');
 const { captureInputs, inputFreshness, sourceAnchor } = require('../src/continuum/revisions.cjs');
 const { createTestWorkstream } = require('../src/continuum/workstream.cjs');
 const { createExecutionSessions } = require('../src/execution/sessions.cjs');
@@ -201,6 +203,86 @@ test('workstream evidence stays tied to its attempt and cancellation wins over a
   assert.equal(cancelled.stopped, true);
   assert.equal(cancelled.evidence.outcome, 'cancelled');
   assert.equal(cancelled.evidence.freshness, 'unavailable');
+});
+
+test('Flightpath persists only bounded capsule metadata for the original workspace', async t => {
+  const { folder, root, workspace } = await fixture(t);
+  const directory = path.join(folder, 'profile', 'flightpath');
+  const store = createFlightpathStore(directory);
+  const history = store.forWorkspace(workspace);
+  const makeEvidence = () => ({
+    id: randomUUID(), revision: 'a'.repeat(64), outcome: 'passed', freshness: 'observed',
+    retry: false, exitCode: 0, durationMs: 13, goal: 'private goal', output: 'private output',
+    args: ['secret argument'], environment: { TOKEN: 'secret token' },
+  });
+
+  history.record(await history.admit(), makeEvidence());
+  assert.equal((await history.view()).enabled, false);
+  await assert.rejects(fs.stat(directory), { code: 'ENOENT' });
+  const { limit } = await history.enable();
+  const generation = await history.admit();
+  const attempts = Array.from({ length: limit + 2 }, makeEvidence);
+  for (const attempt of attempts) history.record(generation, attempt);
+  history.record(generation, attempts.at(-1));
+  await store.flush();
+
+  const journal = path.join(directory, history.workstreamId, 'journal.json');
+  const saved = await fs.readFile(journal, 'utf8');
+  assert.doesNotMatch(saved, /private goal|private output|secret argument|secret token|project \(QA\)/);
+  const reopened = createFlightpathStore(directory).forWorkspace(await createWorkspace(root));
+  const { enabled, capsules } = await reopened.view();
+  assert.equal(enabled, true);
+  assert.deepEqual(capsules.map(capsule => capsule.id), attempts.slice(-limit).map(attempt => attempt.id));
+  assert.deepEqual(Object.keys(capsules[0]).sort(),
+    ['completedAt', 'durationMs', 'exitCode', 'freshness', 'id', 'kind', 'outcome', 'retry', 'revision', 'workstreamId']);
+
+  await fs.rename(root, root + ' old');
+  await fs.mkdir(root);
+  const replacement = store.forWorkspace(await createWorkspace(root));
+  assert.equal((await replacement.view()).enabled, false);
+  assert.notEqual(replacement.workstreamId, history.workstreamId);
+});
+
+test('Flightpath clear and opt-out reject late results and unreadable history fails closed', async t => {
+  const { folder, workspace } = await fixture(t);
+  const directory = path.join(folder, 'flightpath');
+  const store = createFlightpathStore(directory);
+  const history = store.forWorkspace(workspace);
+  const result = {
+    id: randomUUID(), revision: 'a'.repeat(64), outcome: 'passed', freshness: 'observed',
+    retry: false, exitCode: 0, durationMs: 13,
+  };
+  await history.enable();
+  const first = await history.admit();
+  const journal = path.join(directory, history.workstreamId, 'journal.json');
+  const interrupted = path.join(path.dirname(journal), '.cevra-' + randomUUID() + '.tmp');
+  await fs.writeFile(interrupted, 'uncommitted capsule');
+  const clearing = history.clear();
+  history.record(first, result);
+  await clearing;
+  assert.deepEqual((await history.view()).capsules, []);
+  await assert.rejects(fs.stat(interrupted), { code: 'ENOENT' });
+
+  const second = await history.admit();
+  const disabling = history.disable();
+  const enabling = history.enable();
+  history.record(second, result);
+  await Promise.all([disabling, enabling]);
+  assert.deepEqual((await history.view()).capsules, []);
+
+  history.record(await history.admit(), result);
+  assert.equal((await history.view()).capsules[0].id, result.id);
+  const changed = JSON.parse(await fs.readFile(journal, 'utf8'));
+  changed.data.capsules[0].revision = 'b'.repeat(64);
+  await fs.writeFile(journal, JSON.stringify(changed));
+  const invalid = await history.view();
+  assert.equal(invalid.unreadable, true);
+  assert.deepEqual(invalid.capsules, []);
+  assert.equal(await history.admit(), undefined);
+  await assert.rejects(history.enable(), /Invalid Flightpath journal/);
+  assert.equal((await history.disable()).enabled, false);
+  await assert.rejects(fs.stat(journal), { code: 'ENOENT' });
+  await assert.rejects(fs.stat(path.dirname(journal)), { code: 'ENOENT' });
 });
 
 test('theme preferences default safely and persist concurrent changes in order', async t => {

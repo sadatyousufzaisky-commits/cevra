@@ -1,15 +1,15 @@
 const { randomUUID } = require('node:crypto');
 const { captureInputs, inputFreshness, sourceAnchor } = require('./revisions.cjs');
 
-function createTestWorkstream(workspace, startTests) {
-  const workstreamId = randomUUID();
+function createTestWorkstream(workspace, startTests, history) {
+  const workstreamId = history?.workstreamId ?? randomUUID();
   let latest;
 
   async function start(retry, goal, publish, isStopping) {
     if (typeof goal !== 'string' || goal.length > 120 || /[\r\n\0]/.test(goal)) throw new Error('Enter a workstream goal of up to 120 characters.');
     latest = undefined;
     const id = randomUUID();
-    const before = await captureInputs(workspace);
+    const [before, retention] = await Promise.all([captureInputs(workspace), history?.admit()]);
     const failures = [];
 
     async function finish(event) {
@@ -24,6 +24,7 @@ function createTestWorkstream(workspace, startTests) {
         exitCode: event.code, durationMs: event.elapsed,
       };
       latest = { evidence, before };
+      history?.record(retention, evidence);
       publish({
         ...event, stopped, evidence,
         failures: failures.map(failure => ({

@@ -1,4 +1,4 @@
-export function createTestEvidence(api) {
+export function createTestEvidence(api, onChange) {
   const strip = document.getElementById('test-evidence');
   const goal = document.getElementById('workstream-goal');
   const status = document.getElementById('test-revision');
@@ -24,6 +24,7 @@ export function createTestEvidence(api) {
     status.title = evidence ? [evidence.goal, evidence.revision, evidence.fileCount + ' captured files'].filter(Boolean).join('\n') : '';
     check.hidden = evidence?.freshness !== 'observed';
     check.disabled = Boolean(pending);
+    onChange(evidence, pending);
   }
 
   async function recheck() {
@@ -48,6 +49,7 @@ export function createTestEvidence(api) {
   return {
     get goal() { return goal.value; },
     get version() { return edits; },
+    get latest() { return evidence; },
     setBusy(busy) { goal.disabled = busy; },
     reset(next) {
       project = next;
@@ -63,13 +65,13 @@ export function createTestEvidence(api) {
     },
     changed() {
       edits++;
-      if (!evidence || evidence.outcome === 'cancelled' || evidence.freshness === 'historical') return;
+      if (evidence?.freshness !== 'observed') return;
       evidence = { ...evidence, freshness: 'historical' };
       render();
     },
     finish(result, version) {
       if (!result || result.workspaceId !== project?.id) return;
-      evidence = result.outcome !== 'cancelled' && edits !== version ?
+      evidence = result.freshness === 'observed' && edits !== version ?
         { ...result, freshness: 'historical' } : result;
       render();
     },

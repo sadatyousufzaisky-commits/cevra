@@ -41,7 +41,13 @@ The built-in example includes a failing test for fractional weights. In `total.c
 
 Expand **Run output** and enter a **Workstream** goal, then choose **Run tests**. The result records the goal, a unique attempt ID, the observed workspace revision, and the outcome. A failure opens its recorded line only if the source revision still matches. Editing a buffer marks the result **Historical** immediately. **Check inputs** and returning focus to CEVRA recheck the workspace on disk.
 
-This foundation keeps the latest attempt in memory for the open workspace. CEVRA compares snapshots of supported workspace files before and after the run. The scan includes source, configuration, and binary files and is bounded to 256 files and 16 MiB, with a 2 MiB per-file limit. It excludes dependency and cache directories and version-control data. Unreadable inputs, unsafe links, and scan limits make the workspace revision unavailable. The observation covers those snapshots. The runner still executes against the live workspace, where code can also read external inputs. A retry records the new attempt and keeps previously passed tests separate in the totals.
+The latest result stays available in **Test results** for the open workspace. CEVRA compares snapshots of supported workspace files before and after the run. The scan includes source, configuration, and binary files and is bounded to 256 files and 16 MiB, with a 2 MiB per-file limit. It excludes dependency and cache directories and version-control data. Unreadable inputs, unsafe links, and scan limits make the workspace revision unavailable. The observation covers those snapshots. The runner still executes against the live workspace, where code can also read external inputs. A retry records the new attempt and keeps previously passed tests separate in the totals.
+
+### Keep a local Flightpath
+
+Open **Flightpath** in the bottom panel and select **Enable local history** for the workspace. Each completed test attempt adds a **Run Capsule** with its outcome, revision fingerprint when available, duration, exit code, and timestamp. The journal keeps the latest 64 attempts for that workspace on this device. It stores structured metadata. Goals, source, command arguments, environment variables, and raw output stay out of the journal.
+
+Earlier attempts with complete revision observations and entries reopened after a restart appear as **Historical**. Incomplete observations show **Revision unavailable**. A successful retry is labeled separately from a full test run. **Clear history** removes saved attempts and leaves retention on. **Turn off and clear** removes them and stops future recording. Both actions exclude in-progress attempts from saved history.
 
 ## Search and navigate
 

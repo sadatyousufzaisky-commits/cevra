@@ -9,6 +9,7 @@ import { createDefinitionNavigation } from './definition-navigation.js';
 import { createEditPreview } from './edit-preview.js';
 import { createEditorSettings, editorOptions, optionExtensions } from './editor-settings.js';
 import { colorModeExtension, editorColorMode, editorTheme } from './editor-theme.js';
+import { createFlightpathPanel } from './flightpath-panel.js';
 import { indentGuides } from './indent-guides.js';
 import { createNavigationHistory } from './navigation-history.js';
 import { createProblemsPanel } from './problems-panel.js';
@@ -28,7 +29,11 @@ import { normalizeSource } from './source-text.cjs';
 import { changeLineEnding, detectLineEnding, lineEnding, lineEndingHistory } from './line-endings.js';
 
 const api = window.cevra;
-const testEvidence = createTestEvidence(api);
+const flightpathPanel = createFlightpathPanel({ api, errorText, checkInputs: () => testEvidence.recheck() });
+const testEvidence = createTestEvidence(api, (evidence, checking) => {
+  flightpathPanel.setEvidence(evidence, checking);
+  renderTestPass(evidence, checking);
+});
 const byId = id => document.getElementById(id);
 const terminalPanel = createTerminalPanel({ api, errorText });
 const tabs = byId('tabs');
@@ -62,7 +67,7 @@ const forwardButton = byId('nav-forward');
 const dock = byId('run-panel');
 const dockButtons = {
   output: byId('show-output'), problems: byId('show-problems'), references: byId('show-references'),
-  terminal: byId('show-terminal'),
+  terminal: byId('show-terminal'), flightpath: byId('show-flightpath'),
 };
 const runnable = /\.(?:js|cjs|mjs)$/i;
 const maxOutput = 160_000;
@@ -80,6 +85,7 @@ let runSequence = 0;
 let run;
 let diagnostic;
 let retryAvailable = false;
+let testPass;
 let outputText = '';
 let selectedTheme = themeChoice.value;
 let colorMode = 'dark';
@@ -161,6 +167,7 @@ function syncCommands() {
   const saving = savingAll || open.some(tab => tab.saving);
   const discarding = open.some(tab => tab.discarding);
   dockButtons.terminal.disabled = !project?.terminalLimit || changingProject;
+  dockButtons.flightpath.disabled = !project || changingProject;
   terminalPanel.setBusy(changingProject);
   testEvidence.setBusy(Boolean(run || changingProject));
   openButton.disabled = welcomeOpen.disabled = exampleButton.disabled = Boolean(run || changingProject || saving || discarding);
@@ -554,6 +561,7 @@ async function adoptProject(next) {
   semantic.changed();
   project = next;
   terminalPanel.reset(next);
+  flightpathPanel.reset(next);
   testEvidence.reset(next);
   documents.clear();
   expanded.clear();
@@ -566,6 +574,7 @@ async function adoptProject(next) {
   byId('welcome-copy').textContent = 'The Explorer shows the files in this project.';
   retryAvailable = false;
   resetOutput();
+  flightpathPanel.refresh();
   notify(project.root);
   let restored;
   for (const draft of next.recovered) {
@@ -764,6 +773,14 @@ function setRunState(text, state = '') {
   badge.dataset.state = state;
 }
 
+function renderTestPass(evidence, checking) {
+  if (!evidence || !testPass || evidence.id !== testPass.id) return;
+  if (checking) setRunState('Pass · checking inputs');
+  else if (evidence.freshness === 'historical') setRunState('Historical pass · ' + testPass.elapsed);
+  else if (evidence.freshness === 'unavailable') setRunState('Pass · revision unavailable');
+  else setRunState((evidence.retry ? 'Passed · retry only · ' : 'Passed · ') + testPass.elapsed, 'ok');
+}
+
 function showDock(name, focus = false) {
   dock.dataset.pane = name;
   for (const [pane, button] of Object.entries(dockButtons)) button.setAttribute('aria-pressed', String(pane === name));
@@ -771,11 +788,13 @@ function showDock(name, focus = false) {
   byId('references-panel').hidden = name !== 'references';
   layout.expandDock();
   terminalPanel.show(name === 'terminal', focus);
+  flightpathPanel.show(name === 'flightpath');
   problemsPanel.render();
   if (focus && name !== 'terminal') dockButtons[name].focus();
 }
 
 function resetOutput(target = '', mode = 'file') {
+  testPass = undefined;
   testEvidence.clear();
   const testing = mode === 'tests';
   dock.dataset.mode = mode;
@@ -977,7 +996,11 @@ function finishTests(event, elapsed) {
     setRunState('No tests');
     empty.textContent = 'No JavaScript tests were discovered in this project.';
   } else if (event.code === 0 && counts) {
-    setRunState('Passed · ' + elapsed, 'ok');
+    const evidence = testEvidence.latest;
+    if (evidence) {
+      testPass = { id: evidence.id, elapsed };
+      renderTestPass(evidence);
+    } else setRunState('Pass · revision unavailable');
     empty.textContent = 'No test failures.';
   } else {
     setRunState('Failed · ' + (counts ? elapsed : event.code ?? 'launch'), 'error');
@@ -999,6 +1022,7 @@ api.onRun(event => {
     testEvidence.finish(event.evidence, sourceVersion);
     for (const failure of event.failures ?? []) appendFailure(failure, event.evidence?.id);
     finishTests(event, elapsed);
+    flightpathPanel.refresh();
     syncCommands();
     return;
   }

@@ -110,7 +110,7 @@
           </div>
         </div>
       </section>
-      <section id="run-panel" class="run-panel" aria-label="Workbench panel" data-collapsed="true">
+      <section id="run-panel" class="run-panel" aria-label="Workbench panel" data-collapsed="true" data-pane="output">
         <div id="dock-resizer" class="dock-resizer" role="separator" aria-label="Resize bottom panel" aria-controls="dock-content" aria-orientation="horizontal" aria-valuemin="126" tabindex="0" hidden></div>
         <header class="run-header">
           <div class="dock-views" role="group" aria-label="Workbench views">
@@ -118,6 +118,7 @@
             <button id="show-problems" class="dock-view" aria-label="Problems" aria-pressed="false" title="Problems (Ctrl+Shift+M)">Problems <span id="problems-count" class="problems-count" aria-hidden="true" hidden></span></button>
             <button id="show-references" class="dock-view" aria-pressed="false" title="References (Shift+F12 to search)">References</button>
             <button id="show-terminal" class="dock-view" aria-pressed="false" title="Terminal (Ctrl+`)" disabled>Terminal</button>
+            <button id="show-flightpath" class="dock-view" aria-pressed="false" disabled>Flightpath</button>
           </div>
           <span id="run-state" class="run-state" role="status">Ready</span>
           <span id="run-target" class="run-target"></span>
@@ -167,6 +168,15 @@
             </div>
             <p id="references-scope" class="references-scope"></p>
             <ul id="reference-results" class="problem-list" aria-label="Reference locations"></ul>
+          </section>
+          <section id="flightpath-panel" class="flightpath-panel" aria-label="Flightpath" hidden>
+            <div class="references-tools">
+              <p id="flightpath-status" role="status"></p>
+              <button id="flightpath-check" class="button" hidden>Check inputs</button>
+              <button id="flightpath-clear" class="button" hidden>Clear history</button>
+              <button id="flightpath-retention" class="button" disabled>Enable local history</button>
+            </div>
+            <ol id="flightpath-capsules" aria-label="Run Capsules, newest first"></ol>
           </section>
           <section id="terminal-panel" class="terminal-panel" aria-label="Workspace terminal" hidden>
             <div class="terminal-toolbar">

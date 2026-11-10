@@ -14,6 +14,7 @@ const { createSyntaxService } = require('./syntax-service.cjs');
 const { createFormatService } = require('./format-service.cjs');
 const { createSemanticService } = require('./semantic-service.cjs');
 const { createPreferences } = require('./preferences.cjs');
+const { createFlightpathStore } = require('./continuum/flightpath.cjs');
 const { createTestWorkstream } = require('./continuum/workstream.cjs');
 const { createExecutionSessions } = require('./execution/sessions.cjs');
 const { createTerminalSessions, terminalProfile, validateSize, maxTerminalInput } = require('./execution/terminal-sessions.cjs');
@@ -25,6 +26,7 @@ const pageURL = pathToFileURL(page).href;
 const tests = createTestSession(app.getPath('temp'));
 const drafts = createDraftStore(path.join(app.getPath('userData'), 'drafts'));
 const preferences = createPreferences(app.getPath('userData'));
+const flightpathStore = createFlightpathStore(path.join(app.getPath('userData'), 'flightpath'));
 const syntax = createSyntaxService();
 const formatter = createFormatService();
 const semantics = createSemanticService();
@@ -32,6 +34,7 @@ const terminals = createTerminalSessions();
 let window;
 let workspace;
 let workstream;
+let flightpath;
 let changingWorkspace = false;
 let runGrant;
 let authorizingRun = false;
@@ -126,7 +129,8 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
     formatter.stop();
     semantics.stop();
     workspace = next;
-    workstream = createTestWorkstream(next, tests.start);
+    flightpath = flightpathStore.forWorkspace(next);
+    workstream = createTestWorkstream(next, tests.start, flightpath);
     return {
       id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable, settings,
       caseInsensitivePaths: process.platform === 'win32',
@@ -374,6 +378,15 @@ handle('test-evidence', (id, evidenceId) => {
   currentWorkspace(id);
   return workstream.recheck(evidenceId);
 });
+handle('flightpath', async (id, action) => {
+  const project = currentWorkspace(id);
+  if (action === 'view') return flightpath.view();
+  if (action !== 'enable' && action !== 'clear' && action !== 'disable') throw new Error('Invalid Flightpath action.');
+  await resolveEntry(project, '');
+  currentWorkspace(id);
+  if (changingWorkspace || closePending || allowClose) throw new Error('The workspace is changing.');
+  return flightpath[action]();
+});
 
 handle('stop', (id, runId, sessionId) => {
   currentWorkspace(id);
@@ -417,6 +430,7 @@ handle('close-ready', async (hasDrafts, backupFailed) => {
   } else {
     runGrant = undefined;
     await Promise.all([sessions.cancel(), terminals.closeAll()]);
+    await flightpathStore.flush();
     if (!closePending || window !== closing) return;
     closePending = false;
     allowClose = true;

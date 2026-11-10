@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('cevra', {
   start: (id, file, revision, runId, token) => ipcRenderer.invoke('cevra:start', id, file, revision, runId, token),
   test: (id, retry, runId, token, goal) => ipcRenderer.invoke('cevra:test', id, retry, runId, token, goal),
   testEvidence: (id, evidenceId) => ipcRenderer.invoke('cevra:test-evidence', id, evidenceId),
+  flightpath: (id, action) => ipcRenderer.invoke('cevra:flightpath', id, action),
   stop: (id, runId, sessionId) => ipcRenderer.invoke('cevra:stop', id, runId, sessionId),
   runOutput: (id, runId, sessionId, cursor) => ipcRenderer.invoke('cevra:run-output', id, runId, sessionId, cursor),
   terminalNew: (id, profile, columns, rows) => ipcRenderer.invoke('cevra:terminal-new', id, profile, columns, rows),
