@@ -37,6 +37,14 @@ const terminalTree = [
   'setInterval(() => {}, 1000);',
 ].join('\n');
 
+async function waitForTerminalEcho(page, command) {
+  await page.waitForFunction(text => {
+    const lines = [...document.querySelectorAll('.terminal-surface:not([hidden]) .xterm-rows > div')];
+    const output = lines.map(row => row.textContent).join('').replaceAll('\u00a0', ' ');
+    return output.includes('> ' + text) || output.includes('>' + text);
+  }, command);
+}
+
 async function startTerminalTree(page) {
   const active = page.locator('.terminal-surface:visible');
   const input = active.getByRole('textbox', { name: /terminal input/ });
@@ -45,9 +53,7 @@ async function startTerminalTree(page) {
   const command = "& '" + process.execPath.replaceAll("'", "''") + "' .\\terminal-tree.cjs";
   await input.press('End');
   await page.keyboard.type(command);
-  // PowerShell can repaint the line asynchronously while accepting the keystrokes.
-  await page.waitForFunction(text => [...document.querySelectorAll('.terminal-surface:not([hidden]) .xterm-rows > div')]
-    .map(row => row.textContent).join('').replaceAll('\u00a0', ' ').includes(text), command);
+  await waitForTerminalEcho(page, command);
   await input.press('Enter');
   const marker = /^TERMINAL-TREE (\d+) (\d+)$/;
   const pids = marker.exec((await rows.getByText(marker).textContent()).trim()).slice(1).map(Number);
@@ -165,11 +171,14 @@ test('Windows terminal runs PowerShell and Command Prompt independently and resi
       const input = active.getByRole('textbox', { name: /terminal input/ });
       await input.press('End');
       await page.keyboard.type(text);
+      await waitForTerminalEcho(page, text);
       await input.press('Enter');
     };
     await open.click();
     await visible(rows.getByText(/PS .*project \(QA\)/).first());
     assert.match(await page.locator('#terminal-root').textContent(), /project \(QA\)/);
+    const input = active.getByRole('textbox', { name: /terminal input/ });
+    await input.press('Escape');
     const text = '$cevraValue = "café ✓"; Write-Output ("PTY " + $cevraValue)';
     await app.evaluate(({ clipboard }, value) => {
       // Exercise the app's clipboard bridge without replacing the user's clipboard.
@@ -178,8 +187,8 @@ test('Windows terminal runs PowerShell and Command Prompt independently and resi
       clipboard.writeText = async text => { contents = text; };
     }, text);
     await page.getByRole('button', { name: 'Paste', exact: true }).click();
-    await visible(rows.getByText(/\$cevraValue/).first());
-    await active.getByRole('textbox', { name: /terminal input/ }).press('Enter');
+    await waitForTerminalEcho(page, text);
+    await input.press('Enter');
     await visible(rows.getByText('PTY café ✓', { exact: true }));
 
     await send('Write-Output ("ROWS:" + [Console]::WindowHeight)');
