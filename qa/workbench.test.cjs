@@ -41,7 +41,11 @@ async function startTerminalTree(page) {
   const rows = active.locator('.xterm-accessibility-tree');
   await rows.getByText(/PS .*project \(QA\)/).first().waitFor();
   const command = "& '" + process.execPath.replaceAll("'", "''") + "' .\\terminal-tree.cjs";
+  await input.press('End');
   await page.keyboard.type(command);
+  // PowerShell can repaint the line asynchronously while accepting the keystrokes.
+  await page.waitForFunction(text => [...document.querySelectorAll('.terminal-surface:not([hidden]) .xterm-rows > div')]
+    .map(row => row.textContent).join('').replaceAll('\u00a0', ' ').includes(text), command);
   await input.press('Enter');
   const marker = /^TERMINAL-TREE (\d+) (\d+)$/;
   const pids = marker.exec((await rows.getByText(marker).textContent()).trim()).slice(1).map(Number);
