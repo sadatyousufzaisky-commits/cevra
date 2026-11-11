@@ -66,7 +66,12 @@
         "scope": "Internal declarative-package registry with one owning process per app-data profile"
       }
     },
-    { "id": "G3", "name": "Extension Host Isolation", "status": "unverified", "evidence": [] },
+    {
+      "id": "G3",
+      "name": "Extension Host Isolation",
+      "status": "in_progress",
+      "evidence": ["g3-extension-host-isolation.md", "../../qa/extension-host.test.cjs"]
+    },
     { "id": "G4", "name": "Contribution APIs", "status": "unverified", "evidence": [] },
     { "id": "G5", "name": "Capability & Consent Broker", "status": "unverified", "evidence": [] },
     { "id": "G6", "name": "Extension Manager UI", "status": "unverified", "evidence": [] },

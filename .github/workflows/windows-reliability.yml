@@ -37,3 +37,9 @@ jobs:
           }
           exit 1
       - run: npm test
+      - name: Verify extension host isolation
+        env:
+          CEVRA_TEST_CLIPBOARD: '1'
+        run: |
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, BuildNumber | Format-List
+          npm run test:extension-host

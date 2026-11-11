@@ -13,7 +13,8 @@
     "benchmark": "npm run build && node qa/benchmark.cjs",
     "benchmark:continuum": "npm run build && node --test qa/continuum.test.cjs",
     "inspect:extension": "node scripts/inspect-extension.cjs",
-    "test:extensions": "node --test --test-concurrency=1 qa/extensions.test.cjs qa/extension-registry.test.cjs"
+    "test:extensions": "node --test --test-concurrency=1 qa/extensions.test.cjs qa/extension-registry.test.cjs",
+    "test:extension-host": "npm run build && node scripts/build-extension-host.cjs && node --test qa/extension-host.test.cjs"
   },
   "devDependencies": {
     "electron": "45.2.3",
