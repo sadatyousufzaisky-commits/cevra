@@ -105,3 +105,5 @@ When updating, keep the package ID, increment its version, and publish the ZIP d
 ## Verification
 
 `npm test` checks the declarations, validates both real manifests, exercises invalid author inputs, and verifies the packaged snippet and palette in Electron. `npm run test:extension-host` builds the example with the pinned compiler, packages it through the author CLI, installs it through the manager, and executes it twice with separate grants across disable and re-enable.
+
+On 2026-11-11, implementation `4b79826c8c4e2345a3c73942b7dc7a26f50926c1` passed 118 core, 72 desktop, and 16 extension-host tests on Windows Server 2025 x64 build 26100. Local Windows 11 x64 build 26300 passed the 118 core tests, two runs of the corrected Starter Tools lifecycle test, and all 16 extension-host tests. [Windows verification](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42984736104)

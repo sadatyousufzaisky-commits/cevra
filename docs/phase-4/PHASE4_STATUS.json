@@ -173,7 +173,31 @@
         "scope": "Reproducible offline ZIPs, digest pins, permission changes, reviewed downgrade, and verified update recovery"
       }
     },
-    { "id": "G8", "name": "Author SDK & Documentation", "status": "unverified", "evidence": [] },
+    {
+      "id": "G8",
+      "name": "Author SDK & Documentation",
+      "status": "passed",
+      "evidence": ["g8-author-sdk.md", "../../sdk/extensions/contracts.d.ts", "../../qa/extension-sdk.test.cjs", "../../qa/extension-sdk-desktop.test.cjs", "../../qa/extension-sdk-runtime.test.cjs"],
+      "verification": {
+        "reviewer": "Codex",
+        "verifiedAt": "2026-11-11",
+        "implementationCommit": "4b79826c8c4e2345a3c73942b7dc7a26f50926c1",
+        "testCommands": ["npm test", "npm run test:extension-host"],
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassed": 118,
+        "desktopPassed": 72,
+        "extensionHostPassed": 16,
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42984736104",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "localVerification": {
+          "corePassed": 118,
+          "starterToolsLifecyclePasses": 2,
+          "extensionHostPassed": 16
+        },
+        "scope": "Typed author contracts, manifest rejection cases, and both SDK templates built, packaged, installed, disabled and re-enabled through the production Windows workflow",
+        "knownLimitations": ["SDK distributed in the source checkout", "Executable activation on verified Windows x64 builds 26100 and 26300"]
+      }
+    },
     { "id": "G9", "name": "Final Integration & Benchmark", "status": "unverified", "evidence": [] }
   ]
 }
