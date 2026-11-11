@@ -18,7 +18,9 @@ const methods = new Map([
   ['diagnostics.publish', 'diagnostics.publish'], ['diagnostics.clear', 'diagnostics.publish'],
   ['editor.proposeEdit', 'editor.proposeEdit'],
 ]);
-function failure(code) { return Object.assign(new Error(messages[code]), { code }); }
+const maxConcurrentHosts = 5;
+
+function failure(code, message = messages[code]) { return Object.assign(new Error(message), { code }); }
 function requireValue(condition, code = 'INVALID_REQUEST') { if (!condition) throw failure(code); }
 const hash = value => createHash('sha256').update(value).digest('hex');
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -267,7 +269,9 @@ function createCapabilityBroker({ registry, audit, getWorkspace, isTrusted, cons
   async function activate(id, digest) {
     requireValue(!safeStart && supported, 'PERMISSION_DENIED');
     requireValue(!sessions.has(id) && !starting.has(id), 'STALE_SESSION');
-    requireValue(sessions.size + starting.size < 4, 'QUOTA');
+    if (new Set([...sessions.keys(), ...starting]).size >= maxConcurrentHosts) {
+      throw failure('QUOTA', 'CEVRA can run five executable extensions at once. Revoke one before activating another.');
+    }
     starting.add(id);
     const project = getWorkspace();
     const activationEpoch = epoch;

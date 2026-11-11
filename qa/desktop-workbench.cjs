@@ -25,10 +25,10 @@ async function assertWindowsProcessStopped(pid) {
   assert.fail('Windows process ' + pid + ' was still running after cleanup.');
 }
 
-async function openWorkbench(t, files, prepare) {
+async function openWorkbench(t, files, prepare, { appRoot = repo, projectPath, args: initialArgs = [] } = {}) {
   const temp = await fs.realpath(os.tmpdir());
   const sandbox = await fs.mkdtemp(path.join(temp, 'cevra-workbench-'));
-  const project = path.join(sandbox, 'project (QA) & café [#%]');
+  const project = projectPath ?? path.join(sandbox, 'project (QA) & café [#%]');
   const profile = path.join(sandbox, 'profile');
   let app;
   t.after(async () => {
@@ -40,7 +40,8 @@ async function openWorkbench(t, files, prepare) {
       await fs.rm(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
-  await fs.mkdir(project);
+  if (projectPath && Object.keys(files).length) throw new Error('An existing benchmark workspace must be supplied without fixture files.');
+  if (!projectPath) await fs.mkdir(project);
   await fs.mkdir(profile);
   for (const [name, content] of Object.entries(files)) {
     const target = path.join(project, name);
@@ -55,8 +56,8 @@ async function openWorkbench(t, files, prepare) {
     delete env.ELECTRON_RUN_AS_NODE;
     app = await _electron.launch({
       executablePath: require('electron'),
-      args: [repo, '--user-data-dir=' + profile, ...extraArgs],
-      cwd: repo,
+      args: [appRoot, '--user-data-dir=' + profile, ...extraArgs],
+      cwd: appRoot,
       env,
       chromiumSandbox: true,
       timeout: 20_000,
@@ -115,7 +116,7 @@ async function openWorkbench(t, files, prepare) {
     };
   }
   const started = performance.now();
-  const result = await launch();
+  const result = await launch(initialArgs);
   await result.page.locator('#open-folder').click();
   await result.page.getByRole('heading', { name: 'Choose a file to edit.' }).waitFor().catch(async error => {
     throw new Error('Could not open the fixture. ' + await result.page.locator('#message').textContent(), { cause: error });

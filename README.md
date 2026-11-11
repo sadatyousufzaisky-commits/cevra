@@ -227,6 +227,8 @@ Use `npm run pack:extension -- "C:\path\to\source" "C:\path\to\package.zip"` to 
 
 Build an extension from the snippet, palette, and Wasm command templates. The SDK includes TypeScript contracts, a C guest header, and `npm run validate:extension -- <extension.json>` for manifest preflight. [Extension author guide](docs/phase-4/g8-author-sdk.md)
 
+Phase 4's Windows acceptance suite covers the full extension lifecycle with five active executable hosts. Its benchmark measures the extension-free editor against the Phase 3 build and records scaling with 50 declarative packages and five active hosts. [Phase 4 integration and benchmark](docs/phase-4/g9-final-integration.md)
+
 ### Phase 3 end-to-end benchmark
 
 Run `npm run benchmark:continuum` on Windows with Git and npm on PATH. The benchmark launches the real Electron workbench in a fresh profile and creates a temporary Git repository with a failing invoice calculation. It runs a recipe with workspace consent, opens the exact failure location, inspects the incorrect total at a live breakpoint, and repairs the calculation in the editor. It verifies that the original result becomes **Historical**, then runs a dependency graph and a fresh test suite. The final assertions check that Change Lens matches the staged bytes to the passing test revision, that the reviewed fix is the only committed change, and that the displayed commit hash matches Git.

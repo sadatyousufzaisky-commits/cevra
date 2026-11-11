@@ -6,6 +6,7 @@ const path = require('node:path');
 const { test } = require('node:test');
 const { promisify } = require('node:util');
 const { assertWindowsProcessStopped, openWorkbench, replaceEditor } = require('./desktop-workbench.cjs');
+const { seedExtensions, starterTools } = require('./extension-scenarios.cjs');
 
 const execute = promisify(execFile);
 const windows = process.platform === 'win32';
@@ -44,8 +45,8 @@ async function chooseRecipe(page, id) {
   await page.getByLabel('Recipe', { exact: true }).selectOption(id);
 }
 
-test('G9 Windows desktop benchmark repairs, verifies, reviews, and commits an invoice regression',
-  { timeout: 90_000, skip: !windows }, async t => {
+function verifyContinuum(extensionMode) {
+  return async t => {
     const actions = [];
     async function measure(action, operation) {
       const start = performance.now();
@@ -71,7 +72,7 @@ test('G9 Windows desktop benchmark repairs, verifies, reviews, and commits an in
         ['inspect', 'Inspect invoice total', { kind: 'debug', file: 'invoice-demo.cjs' }],
         ['verify', 'Verify invoice repair', { kind: 'task', target: 'dag:verify' }, { kind: 'test' }],
       ),
-    }, async project => {
+    }, async (project, profile) => {
       const git = gitCommand(project);
       await git('init', '-b', 'main', '--template=');
       await git('config', 'user.name', 'CEVRA Continuum QA');
@@ -79,8 +80,11 @@ test('G9 Windows desktop benchmark repairs, verifies, reviews, and commits an in
       await git('config', 'core.autocrlf', 'false');
       await git('add', '--all');
       await git('commit', '-m', 'Seed invoice regression');
-    });
+      if (extensionMode !== 'empty') await seedExtensions(profile, [await starterTools()]);
+    }, { args: extensionMode === 'safe-start' ? ['--disable-extensions'] : [] });
     const { app, page, project, state, output, editor, selected, openMs } = workbench;
+    const contributions = await page.evaluate(async () => (await window.cevra.extensionContributions()).packages);
+    assert.deepEqual(contributions.map(item => item.id), extensionMode === 'enabled' ? ['org.cevra.examples.starter-tools'] : []);
     actions.push({ action: 'Launch and open fixture', ms: openMs });
     const git = gitCommand(project);
     const initial = await git('rev-parse', 'HEAD');
@@ -239,9 +243,15 @@ test('G9 Windows desktop benchmark repairs, verifies, reviews, and commits an in
     t.diagnostic('CONTINUUM ' + JSON.stringify({
       schemaVersion: 1, os: os.release(), arch: os.arch(), electron: require('electron/package.json').version,
       runtime: await app.evaluate(() => process.versions.node),
-      actions, measuredMs: actions.reduce((total, action) => total + action.ms, 0), revisionA, revisionB, fixtureCommit: commit,
+      extensionMode, actions, measuredMs: actions.reduce((total, action) => total + action.ms, 0), revisionA, revisionB, fixtureCommit: commit,
     }));
-  });
+  };
+}
+
+const continuumOptions = { timeout: 90_000, skip: !windows };
+test('G9 Windows desktop benchmark repairs, verifies, reviews, and commits an invoice regression', continuumOptions, verifyContinuum('empty'));
+test('Phase 4 preserves the full Continuum workflow with enabled contributions', continuumOptions, verifyContinuum('enabled'));
+test('Phase 4 preserves the full Continuum workflow in extension safe start', continuumOptions, verifyContinuum('safe-start'));
 
 test('G9 Windows fault replay denies missing runtime, cancels the process tree, and recovers the draft after a crash',
   { timeout: 50_000, skip: !windows }, async t => {

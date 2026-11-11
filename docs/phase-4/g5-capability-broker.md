@@ -22,6 +22,8 @@ Main rechecks package bytes, workspace identity, trust, and the grant before ope
 
 The host runs in the G3 Windows AppContainer and job. Requests are bounded to 256 KiB, responses to 1 MiB, and source snapshots to 512 KiB. Fuel, memory, deadlines, heartbeat, and per-session quotas bound resource use. The last 256 audit events are stored in `extensions/audit.json` under app data. Events include a package digest prefix, hashed workspace identity, operation, result, and duration. They omit source, paths, file handles, and arbitrary host parameters or output.
 
+CEVRA allows up to five concurrent executable hosts. Starting and stopping hosts occupy their slot until activation or teardown settles. Revoke one active extension to free a slot.
+
 ## Verification
 
 Run `npm test` for broker, package, registry, and desktop regressions. Run `npm run test:extension-host` for the confinement suite and the real Electron journey with a compiled Wasm fixture. Tests cover allow, deny, revoke, replay, workspace replacement and switching, digest changes, stale previews, draft recovery, and audit privacy.
