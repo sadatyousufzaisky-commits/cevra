@@ -15,3 +15,5 @@ Package operations use the existing atomic registry. CEVRA checks the selected b
 `npm test` exercises the manager through Electron with the local ZIP picker and confirmation responses controlled by the tests. Coverage includes keyboard navigation and focus, accessible names and status messages, stale package rejection, update and restore, uninstall cancellation, registry errors, and safe-mode restart with draft recovery. The restart test checks the arguments sent to Electron and launches the next session with those arguments.
 
 `npm run test:extension-host` exercises executable installation and consent through the manager, automatic quarantine after real confined host failures, recovery of an unsaved draft, and removal of a running extension.
+
+On 2026-11-11, implementation `afa685e01acffcc5b0091d5e4278622288f25c4a` passed 111 core tests, 70 desktop tests, and 14 host and runtime tests on local Windows 11 x64 build 26300 and hosted Windows Server 2025 x64 build 26100. [Windows verification](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42957922504)
