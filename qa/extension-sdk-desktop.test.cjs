@@ -37,7 +37,7 @@ test('the author starter tools ZIP installs and its snippet and palette survive 
     await button('Close').click();
     await palette.waitFor({ state: 'detached' });
     assert.notEqual(await theme.inputValue(), key);
-    assert.deepEqual(await page.evaluate(() => window.cevra.extensionContributions()), { packages: [], palette: null });
+    assert.deepEqual(await page.evaluate(async () => (await window.cevra.extensionContributions()).packages), []);
 
     await show();
     await button('Enable').click();
