@@ -12,6 +12,7 @@ const maxSnapshotBytes = Math.ceil(maxArchiveBytes / 3) * 4 + 128 * 1024;
 const digestPattern = /^[a-f0-9]{64}$/;
 const temporaryPattern = /^\.cevra-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\.tmp$/;
 const writers = new Map();
+const listeners = new Map();
 
 function fail(code, message) {
   throw new InspectionError(code, message);
@@ -97,6 +98,7 @@ function checkPackage(data, id, version) {
   if (report.manifest.id !== id || report.manifest.version !== version.version) {
     fail('STORED_PACKAGE_CHANGED', 'The stored extension does not match its registry record.');
   }
+  return report.manifest;
 }
 
 function summary(data, entry) {
@@ -146,7 +148,7 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
       const directory = await checkedDirectory(folder);
       const data = await readSnapshot(file);
       await recover(folder);
-      return operation(data, async () => {
+      return operation(data, async changedId => {
         const bytes = encode({ data, checksum: sha256(encode(data)) });
         if (bytes.length > maxSnapshotBytes) fail('REGISTRY_QUOTA', 'The extension registry reached its storage limit.');
         await checkpoint('prepared');
@@ -159,6 +161,10 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
             }
           },
         });
+        for (const listener of listeners.get(writerKey) ?? []) {
+          try { listener(changedId); }
+          catch (error) { process.emitWarning(error); }
+        }
         await checkpoint('committed');
       });
     });
@@ -172,13 +178,40 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
     request(id, digest);
     return run(async (data, commit) => {
       const entry = findCurrent(data, id, digest);
-      if (mutate(data, entry)) await commit();
+      if (mutate(data, entry)) await commit(id);
       return summary(data, entry);
     });
   }
 
   return {
     list: () => run(data => data.entries.map(entry => summary(data, entry))),
+    contributions: () => run(data => {
+      const packages = [];
+      for (const { id, current, enabled } of data.entries) {
+        if (!enabled || current.quarantined) continue;
+        let manifest;
+        try { manifest = checkPackage(data, id, current); }
+        catch (error) {
+          if (!(error instanceof InspectionError)) throw error;
+          continue;
+        }
+        const { sha256 } = current;
+        const { snippets = [], themes = [] } = manifest.contributes;
+        packages.push({ id, sha256, snippets, palettes: themes.map(theme => ({
+          key: `${id}:${sha256}:${theme.id}`, label: theme.label, colors: theme.colors,
+        })) });
+      }
+      return packages;
+    }),
+    onChange(listener) {
+      const subscribers = listeners.get(writerKey) ?? new Set();
+      subscribers.add(listener);
+      listeners.set(writerKey, subscribers);
+      return () => {
+        subscribers.delete(listener);
+        if (!subscribers.size && listeners.get(writerKey) === subscribers) listeners.delete(writerKey);
+      };
+    },
     async install(filename, { reviewedDigest, expectedCurrent = null } = {}) {
       if (!matches(reviewedDigest, digestPattern) || (expectedCurrent !== null && !matches(expectedCurrent, digestPattern))) {
         fail('INVALID_EXTENSION_REQUEST', 'Review the package digest and the current installed version first.');
@@ -206,7 +239,7 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
         const total = Object.values(data.archives).reduce((sum, value) => sum + Buffer.from(value, 'base64').length, 0);
         if (total > maxArchiveBytes) fail('REGISTRY_QUOTA', 'Installed and rollback packages share a 16 MiB limit.');
         data.entries = data.entries.filter(item => item.id !== id).concat(entry).sort((a, b) => a.id < b.id ? -1 : 1);
-        await commit();
+        await commit(id);
         return summary(data, entry);
       });
     },
@@ -243,7 +276,7 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
         delete data.archives[entry.current.sha256];
         if (entry.previous) delete data.archives[entry.previous.sha256];
         data.entries = data.entries.filter(item => item !== entry);
-        await commit();
+        await commit(id);
         return true;
       });
     },

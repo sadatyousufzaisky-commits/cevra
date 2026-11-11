@@ -83,8 +83,19 @@ function createPreferences(directory) {
     },
     async setTheme(theme) {
       if (!themes.has(theme)) throw new Error('Choose Dark, Light, or System.');
-      await save(data => ({ ...data, theme }));
+      await save(data => {
+        const next = { ...data, theme };
+        delete next.extensionPalette;
+        return next;
+      });
       return theme;
+    },
+    async getExtensionPalette() {
+      const { extensionPalette } = await current();
+      return typeof extensionPalette === 'string' && extensionPalette.length <= 226 ? extensionPalette : null;
+    },
+    async setExtensionPalette(extensionPalette) {
+      await save(data => ({ ...data, extensionPalette }));
     },
     async getEditor(workspace) {
       return editorSettings(await current(), workspace && workspaceKey(workspace));

@@ -11,25 +11,34 @@ export function colorModeExtension(dark) {
 }
 
 const highlighting = HighlightStyle.define([
-  { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: 'var(--syntax-keyword)' },
-  { tag: [tags.string, tags.regexp, tags.escape], color: 'var(--syntax-string)' },
-  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: 'var(--syntax-number)' },
-  { tag: [tags.typeName, tags.className, tags.namespace, tags.tagName], color: 'var(--syntax-type)' },
-  { tag: [tags.propertyName, tags.attributeName], color: 'var(--syntax-property)' },
-  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: 'var(--syntax-function)' },
-  { tag: [tags.comment, tags.meta], color: 'var(--muted)' },
+  { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: 'var(--extension-editor-syntax-accent, var(--syntax-keyword))' },
+  { tag: [tags.string, tags.regexp, tags.escape], color: 'var(--extension-editor-foreground, var(--syntax-string))' },
+  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: 'var(--extension-editor-syntax-accent, var(--syntax-number))' },
+  { tag: [tags.typeName, tags.className, tags.namespace, tags.tagName], color: 'var(--extension-editor-syntax-accent, var(--syntax-type))' },
+  { tag: [tags.propertyName, tags.attributeName], color: 'var(--extension-editor-foreground, var(--syntax-property))' },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: 'var(--extension-editor-syntax-accent, var(--syntax-function))' },
+  { tag: [tags.comment, tags.meta], color: 'var(--extension-editor-foreground, var(--muted))' },
   { tag: tags.invalid, color: 'var(--danger)' },
 ]);
 
 export const editorTheme = [EditorView.theme({
-  '&': { backgroundColor: 'var(--base)', color: 'var(--text)', fontSize: 'var(--editor-font-size, 14px)' },
+  '&': {
+    backgroundColor: 'var(--extension-editor-background, var(--base))',
+    color: 'var(--extension-editor-foreground, var(--text))',
+    fontSize: 'var(--editor-font-size, 14px)',
+  },
   '.cm-scroller': { fontFamily: 'var(--editor-font, var(--mono))', lineHeight: '1.6' },
-  '.cm-content': { padding: '10px 0', caretColor: 'var(--mint)' },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--mint)', borderLeftWidth: 'var(--editor-cursor-width, 1px)' },
-  '.cm-gutters': { backgroundColor: 'var(--base)', color: 'var(--muted)', borderRight: '1px solid var(--line)' },
-  '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--active-line)' },
+  '.cm-content': { padding: '10px 0', caretColor: 'var(--extension-editor-accent, var(--mint))' },
+  '.cm-cursor, .cm-dropCursor': {
+    borderLeftColor: 'var(--extension-editor-accent, var(--mint))', borderLeftWidth: 'var(--editor-cursor-width, 1px)',
+  },
+  '.cm-gutters': {
+    backgroundColor: 'var(--extension-editor-background, var(--base))',
+    color: 'var(--extension-editor-foreground, var(--muted))', borderRight: '1px solid var(--line)',
+  },
+  '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--extension-editor-active-line, var(--active-line))' },
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-    backgroundColor: 'var(--editor-selection)',
+    backgroundColor: 'var(--extension-editor-selection, var(--editor-selection))',
   },
   '.cm-selectionMatch': { backgroundColor: 'var(--selected)' },
   '.cm-searchMatch': { backgroundColor: 'var(--search-match)' },

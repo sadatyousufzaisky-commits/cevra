@@ -140,6 +140,7 @@ test('registry reports damaged package bytes and restores the verified rollback 
   await install(registry, first);
   await install(registry, second, first.sha256);
   await registry.setEnabled(second.id, second.sha256, true);
+  assert.deepEqual((await registry.contributions()).map(entry => entry.sha256), [second.sha256]);
   const { data } = JSON.parse(await fs.readFile(file));
   data.archives[second.sha256] = data.archives[first.sha256];
   await fs.writeFile(file, signedSnapshot(data));
@@ -147,6 +148,7 @@ test('registry reports damaged package bytes and restores the verified rollback 
   assert.equal(damaged.state, 'failed');
   assert.equal(damaged.enabled, false);
   assert.equal(damaged.failure, 'STORED_PACKAGE_CHANGED');
+  assert.deepEqual(await registry.contributions(), []);
   await assert.rejects(registry.setEnabled(second.id, second.sha256, true), { code: 'STORED_PACKAGE_CHANGED' });
   assert.equal((await registry.rollback(second.id, second.sha256)).sha256, first.sha256);
   await assert.rejects(registry.rollback(first.id, first.sha256), { code: 'STORED_PACKAGE_CHANGED' });
@@ -159,12 +161,49 @@ test('registry preserves corrupt snapshots and refuses a linked store directory'
   const snapshot = Buffer.concat([await fs.readFile(file), Buffer.from(' ')]);
   await fs.writeFile(file, snapshot);
   await assert.rejects(registry.list(), { code: 'REGISTRY_CORRUPT' });
+  await assert.rejects(registry.contributions(), { code: 'REGISTRY_CORRUPT' });
   await assert.rejects(install(registry, first), { code: 'REGISTRY_CORRUPT' });
   assert.deepEqual(await fs.readFile(file), snapshot);
   await fs.rename(folder, path.join(profile, 'original'));
   await fs.symlink(workspace, folder, process.platform === 'win32' ? 'junction' : 'dir');
   await assert.rejects(install(registry, first), { code: 'REGISTRY_PATH' });
   assert.deepEqual(await fs.readdir(workspace), ['draft.txt']);
+});
+
+test('contributions use committed enabled digests and notify only observers of the same profile', async t => {
+  const { registry, profile, workspace, pack } = await fixture(t);
+  const first = await pack();
+  const second = await pack('2.0.0');
+  const changes = [];
+  let unrelatedChanges = 0;
+  const unsubscribe = registry.onChange(id => changes.push(id));
+  t.after(unsubscribe);
+  t.after(createExtensionRegistry(workspace).onChange(() => unrelatedChanges++));
+  const writer = createExtensionRegistry(profile);
+  await install(writer, first);
+  assert.deepEqual(await registry.contributions(), []);
+  await writer.setEnabled(first.id, first.sha256, true);
+  const expected = [{ id: first.id, sha256: first.sha256, snippets: manifest().contributes.snippets, palettes: [] }];
+  assert.deepEqual(await registry.contributions(), expected);
+  await writer.setEnabled(first.id, first.sha256, true);
+  await assert.rejects(install(writer, second), { code: 'STALE_REGISTRY' });
+  assert.deepEqual(changes, [first.id, first.id]);
+
+  await install(writer, second, first.sha256);
+  assert.deepEqual(await registry.contributions(), []);
+  await writer.rollback(second.id, second.sha256);
+  assert.deepEqual(await registry.contributions(), []);
+  await writer.setEnabled(first.id, first.sha256, true);
+  assert.deepEqual(await registry.contributions(), expected);
+  await writer.quarantine(first.id, first.sha256);
+  assert.deepEqual(await registry.contributions(), []);
+  await writer.remove(first.id, first.sha256);
+  assert.deepEqual(await registry.contributions(), []);
+  assert.deepEqual(changes, Array(7).fill(first.id));
+  assert.equal(unrelatedChanges, 0);
+  unsubscribe();
+  await install(writer, first);
+  assert.equal(changes.length, 7);
 });
 
 test('registry enforces the installed extension count quota before replacing the snapshot', async t => {

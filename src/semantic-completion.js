@@ -1,4 +1,4 @@
-import { autocompletion, closeCompletion, completionStatus, insertCompletionText, pickedCompletion } from '@codemirror/autocomplete';
+import { closeCompletion, completionStatus, insertCompletionText, pickedCompletion } from '@codemirror/autocomplete';
 import { isolateHistory } from '@codemirror/commands';
 import { snippets, typescriptSnippets } from '@codemirror/lang-javascript';
 
@@ -63,5 +63,5 @@ export function createSemanticCompletion({ semantic, getActive, report }) {
     }
   }
 
-  return autocompletion({ override: [complete] });
+  return complete;
 }

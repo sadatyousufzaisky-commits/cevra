@@ -14,6 +14,7 @@ const { createSyntaxService } = require('./syntax-service.cjs');
 const { createFormatService } = require('./format-service.cjs');
 const { createSemanticService } = require('./semantic-service.cjs');
 const { createPreferences } = require('./preferences.cjs');
+const { createExtensionRegistry } = require('./extensions/registry.cjs');
 const { createFlightpathStore } = require('./continuum/flightpath.cjs');
 const { createChangeLens } = require('./continuum/change-lens.cjs');
 const { createTestWorkstream, workstreamGoal } = require('./continuum/workstream.cjs');
@@ -33,6 +34,8 @@ const pageURL = pathToFileURL(page).href;
 const tests = createTestSession(app.getPath('temp'));
 const drafts = createDraftStore(path.join(app.getPath('userData'), 'drafts'));
 const preferences = createPreferences(app.getPath('userData'));
+const safeStart = app.commandLine.hasSwitch('disable-extensions');
+const extensions = createExtensionRegistry(app.getPath('userData'));
 const flightpathStore = createFlightpathStore(path.join(app.getPath('userData'), 'flightpath'));
 const syntax = createSyntaxService();
 const formatter = createFormatService();
@@ -55,6 +58,13 @@ let rendererReady = false;
 let closePending = false;
 let allowClose = false;
 let lastRendererCrash = 0;
+if (!safeStart) {
+  app.once('will-quit', extensions.onChange(id => {
+    if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
+      window.webContents.send('cevra:extension-contributions-changed', id);
+    }
+  }));
+}
 const sessions = createExecutionSessions(event => {
   if (workspace?.id === event.workspaceId && rendererReady && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
     window.webContents.send('cevra:run-event', event);
@@ -178,6 +188,18 @@ handle('set-theme', async choice => {
   nativeTheme.themeSource = theme;
   syncWindowAppearance();
   return { theme, mode: colorMode() };
+});
+handle('extension-contributions', async () => {
+  if (safeStart) return { packages: [], palette: null };
+  const [packages, palette] = await Promise.all([extensions.contributions(), preferences.getExtensionPalette()]);
+  return { packages, palette };
+});
+handle('set-extension-palette', async key => {
+  if (safeStart || typeof key !== 'string' ||
+      !(await extensions.contributions()).some(extension => extension.palettes.some(palette => palette.key === key))) {
+    throw new Error('This extension palette is unavailable.');
+  }
+  await preferences.setExtensionPalette(key);
 });
 handle('editor-settings', id => preferences.getEditor(id ? currentWorkspace(id) : undefined));
 handle('set-editor-settings', (id, scope, values) =>

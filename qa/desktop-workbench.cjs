@@ -47,15 +47,15 @@ async function openWorkbench(t, files, prepare) {
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, content);
   }
-  await prepare?.(project);
+  await prepare?.(project, profile);
 
-  async function launch() {
+  async function launch(extraArgs = []) {
     const env = { ...process.env };
     delete env.NODE_TEST_CONTEXT;
     delete env.ELECTRON_RUN_AS_NODE;
     app = await _electron.launch({
       executablePath: require('electron'),
-      args: [repo, '--user-data-dir=' + profile],
+      args: [repo, '--user-data-dir=' + profile, ...extraArgs],
       cwd: repo,
       env,
       chromiumSandbox: true,
@@ -92,7 +92,7 @@ async function openWorkbench(t, files, prepare) {
         await assertWindowsProcessStopped(pid);
         app = undefined;
       },
-      restart: async ({ crash = false } = {}) => {
+      restart: async ({ crash = false, args = [] } = {}) => {
         if (crash) {
           const processUnderTest = app.process();
           const exited = once(processUnderTest, 'exit');
@@ -109,7 +109,7 @@ async function openWorkbench(t, files, prepare) {
           await closed;
         }
         app = undefined;
-        return launch();
+        return launch(args);
       },
     };
   }

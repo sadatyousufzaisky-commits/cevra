@@ -89,7 +89,13 @@
         "remainingEvidence": ["Windows 10 and ARM64 isolation coverage", "G5 broker enforcement before activation"]
       }
     },
-    { "id": "G4", "name": "Contribution APIs", "status": "unverified", "evidence": [] },
+    {
+      "id": "G4",
+      "name": "Contribution APIs",
+      "status": "in_progress",
+      "evidence": ["g4-contribution-apis.md", "../../qa/extension-contributions.test.cjs", "../../qa/extension-registry.test.cjs"],
+      "remainingEvidence": ["G5 broker-backed commands and diagnostics", "Revision-checked extension edit proposals"]
+    },
     { "id": "G5", "name": "Capability & Consent Broker", "status": "unverified", "evidence": [] },
     { "id": "G6", "name": "Extension Manager UI", "status": "unverified", "evidence": [] },
     { "id": "G7", "name": "Local Distribution & Update", "status": "unverified", "evidence": [] },

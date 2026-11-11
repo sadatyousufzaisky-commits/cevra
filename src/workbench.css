@@ -323,6 +323,11 @@ button.test-result:hover { background: var(--raised); }
 .theme-control { display: flex; flex: none; align-items: center; gap: 5px; white-space: nowrap; }
 .theme-control select { padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--text); font: inherit; }
 .theme-control select:hover:not(:disabled) { background: var(--raised); }
+.theme-control select:has(optgroup) { max-inline-size: min(24vw, 210px); }
+#editor[data-extension-palette] {
+  --extension-editor-active-line: color-mix(in srgb, var(--extension-editor-foreground) 8%, transparent);
+  --extension-editor-selection: color-mix(in srgb, var(--extension-editor-accent) 32%, transparent);
+}
 .symbol-info, .signature-help { max-width: min(500px, 75vw); max-height: min(220px, 40vh); overflow: auto; padding: 8px 10px; background: var(--panel); color: var(--text); }
 .symbol-signature, .signature-label { margin: 0; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .symbol-signature, .signature-parameter { color: var(--mint); }

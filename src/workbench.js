@@ -1,5 +1,5 @@
 import { basicSetup } from 'codemirror';
-import { closeCompletion } from '@codemirror/autocomplete';
+import { autocompletion, closeCompletion } from '@codemirror/autocomplete';
 import { indentWithTab, isolateHistory } from '@codemirror/commands';
 import { EditorState, Text } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
@@ -9,6 +9,7 @@ import { createDefinitionNavigation } from './definition-navigation.js';
 import { createEditPreview } from './edit-preview.js';
 import { createEditorSettings, editorOptions, optionExtensions } from './editor-settings.js';
 import { colorModeExtension, editorColorMode, editorTheme } from './editor-theme.js';
+import { createExtensionContributions } from './extension-contributions.js';
 import { createChangeLensPanel } from './change-lens-panel.js';
 import { createFailureLens, refreshDebugGutter } from './failure-lens.js';
 import { createFlightpathPanel } from './flightpath-panel.js';
@@ -111,6 +112,8 @@ let savingAll;
 let editorSettings;
 
 const view = new EditorView({ parent: editor });
+const extensionContributions = createExtensionContributions({ api, editor, view, themeChoice,
+  builtInTheme: () => selectedTheme, report });
 const layout = createWorkspaceLayout();
 const syntaxDecorations = [
   linter(null),
@@ -165,16 +168,22 @@ function applyColorMode(mode) {
 api.onColorMode(applyColorMode);
 
 themeChoice.onchange = async () => {
+  const choice = themeChoice.value;
   themeChoice.disabled = true;
   try {
-    const { theme, mode } = await api.setTheme(themeChoice.value);
-    selectedTheme = theme;
-    applyColorMode(mode);
+    if (choice.includes(':')) {
+      await api.setExtensionPalette(choice);
+    } else {
+      const { theme, mode } = await api.setTheme(choice);
+      selectedTheme = theme;
+      applyColorMode(mode);
+    }
     notify('Theme saved.');
+    await extensionContributions.refresh();
   } catch (error) {
     report(error);
   } finally {
-    themeChoice.value = selectedTheme;
+    extensionContributions.syncThemeChoice();
     themeChoice.disabled = false;
   }
 };
@@ -319,6 +328,7 @@ function updateDocument(tab, before, state, changes, docChanged) {
 }
 
 function editorState(tab, text, ending) {
+  const snippets = extensionContributions.source(tab.path, tab.language);
   return EditorState.create({
     doc: text,
     extensions: [
@@ -328,6 +338,7 @@ function editorState(tab, text, ending) {
       editorTheme,
       editorColorMode.of(colorModeExtension(colorMode === 'dark')),
       editorOptions.of(optionExtensions(editorSettings)),
+      autocompletion({ override: tab.language ? [semanticCompletion, snippets] : [snippets] }),
       runtimeKind(tab.path) === 'javascript' ? failureLens.gutter(tab) : [],
       tab.language ? [
         javascript({ typescript: tab.language.typescript, jsx: tab.language.jsx }),
@@ -335,7 +346,6 @@ function editorState(tab, text, ending) {
         indentGuides,
         syntaxDecorations,
         symbolInfo.extension,
-        semanticCompletion,
         signatureHelp.extension,
       ] : [],
       EditorView.contentAttributes.of({ 'aria-label': 'Source editor' }),
@@ -1536,6 +1546,7 @@ async function initialize() {
     const { theme, mode } = await api.appearance();
     themeChoice.value = selectedTheme = theme;
     applyColorMode(mode);
+    await extensionContributions.refresh();
     const initial = await api.initial();
     if (initial.project) await adoptProject(initial.project);
     else applyEditorSettings((await api.editorSettings()).effective);
