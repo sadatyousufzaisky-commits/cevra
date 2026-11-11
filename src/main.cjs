@@ -159,7 +159,8 @@ function readExtensionEditor(project, file, signal, allowedFiles) {
     const timer = setTimeout(aborted, 3000);
     signal?.addEventListener('abort', aborted, { once: true });
     editorSnapshots.set(requestId, { project, file, allowedFiles, owner, finish });
-    owner.send('cevra:extension-editor-snapshot', { requestId, workspaceId: project.id, path: file, allowedFiles });
+    try { owner.send('cevra:extension-editor-snapshot', { requestId, workspaceId: project.id, path: file, allowedFiles }); }
+    catch (error) { finish(error); }
   });
 }
 
@@ -318,10 +319,9 @@ handle('workspace-trust', id => preferences.isTrusted(currentWorkspace(id)));
 handle('revoke-trust', async id => {
   const project = currentWorkspace(id);
   trustEpoch++;
-  await extensionBroker.suspend().catch(() => {});
   runGrant = undefined;
   void sessions.cancel();
-  await preferences.setTrusted(project, false);
+  await Promise.all([extensionBroker.suspend().catch(() => {}), preferences.setTrusted(project, false)]);
 });
 
 async function authorizeExecution(project, prompt, start) {
