@@ -97,10 +97,10 @@ test('LPAC denies controlled native file, environment, network, subprocess, hand
     if (clipboardFixture) {
       assert.equal(process.env.GITHUB_ACTIONS, 'true');
       assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted');
-      const set = text => execute('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-Command',
-        "Set-Clipboard -Value '" + text + "'"], { windowsHide: true });
-      await set('CEVRA disposable isolation fixture');
-      t.after(() => set(''));
+      const clipboard = command => execute('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-Command',
+        command], { windowsHide: true });
+      await clipboard("Set-Clipboard -Value 'CEVRA disposable isolation fixture'");
+      t.after(() => clipboard('Add-Type -AssemblyName System.Windows.Forms\n[System.Windows.Forms.Clipboard]::Clear()'));
     }
     const payload = Buffer.from([workspace, profile, loopback, adapter.address, local, process.pid,
       clipboardFixture ? 'clipboard-fixture' : 'policy-only'].join('\n'));
