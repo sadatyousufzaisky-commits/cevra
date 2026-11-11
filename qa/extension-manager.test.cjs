@@ -55,8 +55,9 @@ test('a keyboard-only package review works before opening a workspace and preser
     const { page } = workbench;
     await selectPackage(workbench, file);
     const ui = manager(page);
+    const action = name => ui.entry.getByRole('button', { name, exact: true }).and(ui.entry.locator('button:enabled'));
     await page.getByRole('heading', { name: 'Your project starts here.' }).waitFor();
-    await ui.open.press('Enter');
+    await ui.open.and(page.locator('button:enabled')).press('Enter');
     await ui.dialog.getByText('No extensions installed.', { exact: true }).waitFor();
     assert.equal(await ui.button('Choose ZIP Package').evaluate(button => document.activeElement === button), true);
     await page.keyboard.press('Enter');
@@ -73,7 +74,7 @@ test('a keyboard-only package review works before opening a workspace and preser
     assert.equal(await ui.button('Choose ZIP Package').evaluate(button => document.activeElement === button), true);
     await page.keyboard.press('Enter');
     await heading.waitFor();
-    const apply = ui.button('Install Package');
+    const apply = ui.button('Install Package').and(ui.dialog.locator('button:enabled'));
     for (let attempt = 0; attempt < 6 && !await apply.evaluate(node => document.activeElement === node); attempt++) {
       await page.keyboard.press('Tab');
     }
@@ -82,11 +83,11 @@ test('a keyboard-only package review works before opening a workspace and preser
     await ui.entry.getByText('Disabled', { exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.cevra.extensionContributions()), { packages: [], palette: null });
 
-    await ui.entry.getByRole('button', { name: 'Inspect', exact: true }).press('Enter');
+    await action('Inspect').press('Enter');
     await ui.dialog.getByText('Local ZIP package', { exact: true }).waitFor();
     await ui.dialog.getByText('No runtime permissions requested.', { exact: true }).waitFor();
     await page.keyboard.press('Escape');
-    await ui.entry.getByRole('button', { name: 'Enable', exact: true }).press('Enter');
+    await action('Enable').press('Enter');
     await ui.entry.getByText('Enabled', { exact: true }).waitFor();
     await page.waitForFunction(async () => (await window.cevra.extensionContributions()).packages.length === 1);
     await ui.entry.getByRole('button', { name: 'Quarantine', exact: true }).click();

@@ -91,6 +91,7 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
     finally {
       if (!interrupt) busy = false;
       choose.disabled = restart.disabled = busy;
+      if (token && !install.hidden) install.disabled = busy;
       await refresh();
       focusCatalog();
     }
@@ -149,7 +150,7 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
     const identical = current?.sha256 === sha256;
     const downgrade = update?.direction === 'downgrade';
     install.hidden = !selectedToken || identical || current?.pinned === true;
-    install.disabled = false;
+    install.disabled = busy;
     install.textContent = !update ? 'Install Package' : downgrade ? 'Install Older Version' :
       update.direction === 'replacement' ? 'Replace Package' : 'Install Update';
     install.onclick = () => {
