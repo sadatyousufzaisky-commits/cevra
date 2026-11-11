@@ -2,7 +2,8 @@
   "project": "CEVRA",
   "phase": 4,
   "name": "Extensibility",
-  "status": "in_progress",
+  "status": "completed",
+  "completedAt": "2026-11-11",
   "baselineCommit": "f2048ffda5a02e21acfe8d6d39632070c5557961",
   "lastVerifiedPhase3Ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42784806345",
   "gates": [
@@ -198,6 +199,33 @@
         "knownLimitations": ["SDK distributed in the source checkout", "Executable activation on verified Windows x64 builds 26100 and 26300"]
       }
     },
-    { "id": "G9", "name": "Final Integration & Benchmark", "status": "unverified", "evidence": [] }
+    {
+      "id": "G9",
+      "name": "Final Integration & Benchmark",
+      "status": "passed",
+      "evidence": ["g9-final-integration.md", "g9-benchmark-windows-26300.json", "../../qa/extension-integration.test.cjs", "../../qa/extension-benchmark.test.cjs", "../../qa/continuum.test.cjs"],
+      "verification": {
+        "reviewer": "Codex",
+        "verifiedAt": "2026-11-11",
+        "implementationCommit": "261ae916932bc102461000d190113ea5baa44ccb",
+        "testCommands": ["npm test", "npm run test:extension-host"],
+        "benchmarkCommand": "npm run benchmark:extensions",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassed": 118,
+        "desktopPassed": 74,
+        "extensionHostPassed": 17,
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42988060217",
+        "localPlatform": "Windows 11 Home x64 build 26300",
+        "localVerification": {
+          "brokerPassed": 33,
+          "continuumPassed": 4,
+          "extensionHostPassed": 17,
+          "benchmarkChecksPassed": 70
+        },
+        "scope": "Multi-extension lifecycle, denied consent and capabilities, host and update faults, process cleanup, recovered drafts, Continuum regression, matched Phase 3 timings, and extension scaling",
+        "unresolvedBlockers": [],
+        "knownLimitations": ["Executable activation on verified Windows x64 builds 26100 and 26300", "Performance sampled on one SSD workstation with warm filesystem caches"]
+      }
+    }
   ]
 }

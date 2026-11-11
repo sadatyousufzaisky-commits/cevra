@@ -1,0 +1,634 @@
+{
+  "schemaVersion": 1,
+  "phase": 4,
+  "gate": "G9",
+  "recordedAt": "2026-11-11T08:41:25.665Z",
+  "baselineCommit": "f2048ffda5a02e21acfe8d6d39632070c5557961",
+  "commit": "261ae916932bc102461000d190113ea5baa44ccb",
+  "dirty": false,
+  "machine": {
+    "os": "10.0.26300",
+    "arch": "x64",
+    "cpu": "11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz",
+    "logicalProcessors": 8,
+    "memoryMiB": 7835,
+    "node": "24.15.0",
+    "electronRuntime": {
+      "node": "24.22.2",
+      "electron": "45.2.3"
+    }
+  },
+  "sampling": {
+    "pairedSamples": 20,
+    "inertSamples": 20,
+    "activeSamples": 5,
+    "warmupsPerScenario": 1
+  },
+  "summary": {
+    "phase3": {
+      "startupMs": {
+        "p50": 1656.5,
+        "p95": 1943
+      },
+      "paintMs": {
+        "p50": 30.15,
+        "p95": 47.2
+      },
+      "testMs": {
+        "p50": 1503.44,
+        "p95": 1818.37
+      },
+      "recoveryMs": {
+        "p50": 1981.61,
+        "p95": 2689.42
+      }
+    },
+    "phase4Zero": {
+      "startupMs": {
+        "p50": 1720,
+        "p95": 1948
+      },
+      "paintMs": {
+        "p50": 26.75,
+        "p95": 35.7
+      },
+      "testMs": {
+        "p50": 1514.71,
+        "p95": 1596.54
+      },
+      "recoveryMs": {
+        "p50": 2061.94,
+        "p95": 2535.57
+      }
+    },
+    "phase4Inert50": {
+      "catalogMs": {
+        "p50": 18.96,
+        "p95": 37.03
+      },
+      "startupMs": {
+        "p50": 1905,
+        "p95": 2239
+      },
+      "contributionsMs": {
+        "p50": 49.15,
+        "p95": 62.29
+      }
+    },
+    "phase4Active5": {
+      "activationMs": {
+        "p50": 894.34,
+        "p95": 998.12
+      },
+      "paintMs": {
+        "p50": 31.9,
+        "p95": 36
+      },
+      "commandMs": {
+        "p50": 138.95,
+        "p95": 164.97
+      },
+      "workerWorkingSetMiB": {
+        "p50": 56.02,
+        "p95": 56.13
+      },
+      "launcherWorkingSetMiB": {
+        "p50": 103.02,
+        "p95": 103.11
+      }
+    }
+  },
+  "raw": {
+    "pairs": [
+      {
+        "order": [
+          "phase4",
+          "phase3"
+        ],
+        "phase4": {
+          "startupMs": 1618,
+          "paintMs": 28.299999998882413,
+          "testMs": 1586.618300000002,
+          "recoveryMs": 2535.5727000000006
+        },
+        "phase3": {
+          "startupMs": 1665,
+          "paintMs": 23.09999999962747,
+          "testMs": 1532.8912999999993,
+          "recoveryMs": 1913.5871000000006
+        }
+      },
+      {
+        "order": [
+          "phase3",
+          "phase4"
+        ],
+        "phase3": {
+          "startupMs": 1943,
+          "paintMs": 28.40000000037253,
+          "testMs": 1818.372199999998,
+          "recoveryMs": 2689.418899999997
+        },
+        "phase4": {
+          "startupMs": 1761,
+          "paintMs": 31.59999999962747,
+          "testMs": 2058.510699999999,
+          "recoveryMs": 2650.1437000000005
+        }
+      },
+      {
+        "order": [
+          "phase4",
+          "phase3"
+        ],
+        "phase4": {
+          "startupMs": 1847,
+          "paintMs": 26.40000000037253,
+          "testMs": 1510.0419000000038,
+          "recoveryMs": 2056.9133
+        },
+        "phase3": {
+          "startupMs": 1735,
+          "paintMs": 30.699999999254942,
+          "testMs": 927.6065999999992,
+          "recoveryMs": 2208.3314000000028
+        }
+      },
+      {
+        "order": [
+          "phase3",
+          "phase4"
+        ],
+        "phase3": {
+          "startupMs": 1694,
+          "paintMs": 27,
+          "testMs": 958.3451000000059,
+          "recoveryMs": 2113.6898999999976
+        },
+        "phase4": {
+          "startupMs": 1861,
+          "paintMs": 27.09999999962747,
+          "testMs": 1495.7600999999995,
+          "recoveryMs": 1985.0843999999925
+        }
+      },
+      {
+        "order": [
+          "phase4",
+          "phase3"
+        ],
+        "phase4": {
+          "startupMs": 1948,
+          "paintMs": 35.69999999925494,
+          "testMs": 1518.0231000000058,
+          "recoveryMs": 2350.9425000000047
+        },
+        "phase3": {
+          "startupMs": 1735,
+          "paintMs": 30.40000000037253,
+          "testMs": 1519.9850000000006,
+          "recoveryMs": 1700.2407999999996
+        }
+      },
+      {
+        "order": [
+          "phase3",
+          "phase4"
+        ],
+        "phase3": {
+          "startupMs": 1941,
+          "paintMs": 47.20000000111759,
+          "testMs": 1515.2249999999913,
+          "recoveryMs": 2230.020199999999
+        },
+        "phase4": {
+          "startupMs": 1521,
+          "paintMs": 24.09999999962747,
+          "testMs": 1501.7206999999908,
+          "recoveryMs": 1664.488000000012
+        }
+      },
+      {
+        "order": [
+          "phase4",
+          "phase3"
+        ],
+        "phase4": {
+          "startupMs": 1910,
+          "paintMs": 29.90000000037253,
+          "testMs": 1455.367499999993,
+          "recoveryMs": 2136.5706999999966
+        },
+        "phase3": {
+          "startupMs": 1429,
+          "paintMs": 27.199999999254942,
+          "testMs": 1460.8175999999949,
+          "recoveryMs": 1962.1851000000024
+        }
+      },
+      {
+        "order": [
+          "phase3",
+          "phase4"
+        ],
+        "phase3": {
+          "startupMs": 1538,
+          "paintMs": 31.200000001117587,
+          "testMs": 1479.686400000006,
+          "recoveryMs": 2003.2171999999991
+        },
+        "phase4": {
+          "startupMs": 1715,
+          "paintMs": 29.399999998509884,
+          "testMs": 1505.1123999999982,
+          "recoveryMs": 2121.8322999999946
+        }
+      },
+      {
+        "order": [
+          "phase4",
+          "phase3"
+        ],
+        "phase4": {
+          "startupMs": 1896,
+          "paintMs": 26,
+          "testMs": 1501.6021000000037,
+          "recoveryMs": 2066.9716000000044
+        },
+        "phase3": {
+          "startupMs": 2095,
+          "paintMs": 58.59999999962747,
+          "testMs": 3150.0464999999967,
+          "recoveryMs": 3102.4709999999905
+        }
+      },
+      {
+        "order": [
+          "phase3",
+          "phase4"
+        ],
+        "phase3": {
+          "startupMs": 1632,
+          "paintMs": 35.80000000074506,
+          "testMs": 1488.2553999999946,
+          "recoveryMs": 2037.5970000000088
+        },
+        "phase4": {
+          "startupMs": 1809,
+          "paintMs": 27.5,
+          "testMs": 1596.5376000000106,
+          "recoveryMs": 2095.5945000000065
+        }
+      },
+      {
+        "order": [
+          "phase4",
+          "phase3"
+        ],
+        "phase4": {
+          "startupMs": 2128,
+          "paintMs": 25.300000000745058,
+          "testMs": 1537.6823999999906,
+          "recoveryMs": 2180.583099999989
+        },
+        "phase3": {
+          "startupMs": 1497,
+          "paintMs": 30,
+          "testMs": 1557.5390000000189,
+          "recoveryMs": 2333.760500000004
+        }
+      },
+      {
+        "order": [
+          "phase3",
+          "phase4"
+        ],
+        "phase3": {
+          "startupMs": 1589,
+          "paintMs": 36.19999999925494,
+          "testMs": 1494.076700000005,
+          "recoveryMs": 1974.9327000000048
+        },
+        "phase4": {
+          "startupMs": 1634,
+          "paintMs": 25.90000000037253,
+          "testMs": 1514.3025000000198,
+          "recoveryMs": 2040.3284999999742
+        }
+      },
+      {
+        "order": [
+          "phase4",
+          "phase3"
+        ],
+        "phase4": {
+          "startupMs": 1706,
+          "paintMs": 39.20000000111759,
+          "testMs": 1518.3085999999894,
+          "recoveryMs": 2047.6826999999757
+        },
+        "phase3": {
+          "startupMs": 1879,
+          "paintMs": 25,
+          "testMs": 1446.4775000000081,
+          "recoveryMs": 1846.75
+        }
+      },
+      {
+        "order": [
+          "phase3",
+          "phase4"
+        ],
+        "phase3": {
+          "startupMs": 1677,
+          "paintMs": 30.90000000037253,
+          "testMs": 1510.9263999999966,
+          "recoveryMs": 1774.8037999999942
+        },
+        "phase4": {
+          "startupMs": 1668,
+          "paintMs": 25.59999999962747,
+          "testMs": 1515.113400000002,
+          "recoveryMs": 1858.0421000000206
+        }
+      },
+      {
+        "order": [
+          "phase4",
+          "phase3"
+        ],
+        "phase4": {
+          "startupMs": 1777,
+          "paintMs": 29.40000000037253,
+          "testMs": 1498.9256000000169,
+          "recoveryMs": 2121.1796999999788
+        },
+        "phase3": {
+          "startupMs": 1634,
+          "paintMs": 25.199999999254942,
+          "testMs": 1478.229400000011,
+          "recoveryMs": 1988.2894000000088
+        }
+      },
+      {
+        "order": [
+          "phase3",
+          "phase4"
+        ],
+        "phase3": {
+          "startupMs": 1588,
+          "paintMs": 30.299999998882413,
+          "testMs": 1546.7234999999928,
+          "recoveryMs": 1700.4744000000064
+        },
+        "phase4": {
+          "startupMs": 1597,
+          "paintMs": 23.800000000745058,
+          "testMs": 1532.1873999999953,
+          "recoveryMs": 2009.6132999999973
+        }
+      },
+      {
+        "order": [
+          "phase4",
+          "phase3"
+        ],
+        "phase4": {
+          "startupMs": 1725,
+          "paintMs": 23.5,
+          "testMs": 1465.0273999999918,
+          "recoveryMs": 2008.50940000001
+        },
+        "phase3": {
+          "startupMs": 1691,
+          "paintMs": 22.700000001117587,
+          "testMs": 1497.8907000000181,
+          "recoveryMs": 1751.2378999999783
+        }
+      },
+      {
+        "order": [
+          "phase3",
+          "phase4"
+        ],
+        "phase3": {
+          "startupMs": 1619,
+          "paintMs": 19.199999999254942,
+          "testMs": 1502.2165000000095,
+          "recoveryMs": 2051.1440000000002
+        },
+        "phase4": {
+          "startupMs": 1539,
+          "paintMs": 26.399999998509884,
+          "testMs": 1476.0476999999955,
+          "recoveryMs": 1783.5253000000084
+        }
+      },
+      {
+        "order": [
+          "phase4",
+          "phase3"
+        ],
+        "phase4": {
+          "startupMs": 1714,
+          "paintMs": 29.5,
+          "testMs": 1518.5885999999882,
+          "recoveryMs": 2067.7500999999756
+        },
+        "phase3": {
+          "startupMs": 1443,
+          "paintMs": 27.09999999962747,
+          "testMs": 1504.6555999999982,
+          "recoveryMs": 1786.9645999999775
+        }
+      },
+      {
+        "order": [
+          "phase3",
+          "phase4"
+        ],
+        "phase3": {
+          "startupMs": 1648,
+          "paintMs": 31.200000001117587,
+          "testMs": 1511.8976999999722,
+          "recoveryMs": 1907.5108999999939
+        },
+        "phase4": {
+          "startupMs": 1534,
+          "paintMs": 23.59999999962747,
+          "testMs": 1529.001099999994,
+          "recoveryMs": 2016.7834999999614
+        }
+      }
+    ],
+    "inertSamples": [
+      {
+        "catalogMs": 19.78119999996852,
+        "startupMs": 1786,
+        "contributionsMs": 45.07709999999497
+      },
+      {
+        "catalogMs": 36.29279999999562,
+        "startupMs": 1620,
+        "contributionsMs": 52.10950000002049
+      },
+      {
+        "catalogMs": 23.995200000004843,
+        "startupMs": 1738,
+        "contributionsMs": 48.90340000001015
+      },
+      {
+        "catalogMs": 13.884199999971315,
+        "startupMs": 1763,
+        "contributionsMs": 44.55749999999534
+      },
+      {
+        "catalogMs": 19.1418999999878,
+        "startupMs": 1619,
+        "contributionsMs": 62.38330000004498
+      },
+      {
+        "catalogMs": 11.315200000011828,
+        "startupMs": 1963,
+        "contributionsMs": 50.53010000003269
+      },
+      {
+        "catalogMs": 23.261599999968894,
+        "startupMs": 1894,
+        "contributionsMs": 54.91690000001108
+      },
+      {
+        "catalogMs": 17.96610000001965,
+        "startupMs": 1974,
+        "contributionsMs": 62.29399999999441
+      },
+      {
+        "catalogMs": 45.772400000016205,
+        "startupMs": 1918,
+        "contributionsMs": 46.39669999998296
+      },
+      {
+        "catalogMs": 14.826799999980722,
+        "startupMs": 2090,
+        "contributionsMs": 48.2662999999593
+      },
+      {
+        "catalogMs": 37.02860000001965,
+        "startupMs": 2352,
+        "contributionsMs": 55.8572999999742
+      },
+      {
+        "catalogMs": 22.704500000050757,
+        "startupMs": 1968,
+        "contributionsMs": 59.37489999999525
+      },
+      {
+        "catalogMs": 18.447400000004563,
+        "startupMs": 1979,
+        "contributionsMs": 46.442200000048615
+      },
+      {
+        "catalogMs": 23.568900000012945,
+        "startupMs": 2162,
+        "contributionsMs": 49.697599999955855
+      },
+      {
+        "catalogMs": 12.898199999995995,
+        "startupMs": 1916,
+        "contributionsMs": 42.02849999995669
+      },
+      {
+        "catalogMs": 18.776000000012573,
+        "startupMs": 2239,
+        "contributionsMs": 49.40270000003511
+      },
+      {
+        "catalogMs": 19.75519999995595,
+        "startupMs": 1841,
+        "contributionsMs": 44.37320000003092
+      },
+      {
+        "catalogMs": 18.07880000001751,
+        "startupMs": 1613,
+        "contributionsMs": 40.09429999999702
+      },
+      {
+        "catalogMs": 14.25269999995362,
+        "startupMs": 1677,
+        "contributionsMs": 58.56190000002971
+      },
+      {
+        "catalogMs": 15.536900000006426,
+        "startupMs": 1854,
+        "contributionsMs": 43.57970000000205
+      }
+    ],
+    "activeSamples": [
+      {
+        "activationMs": [
+          978.9876999999979,
+          884.07150000002,
+          889.3288000000175,
+          890.6470000000554,
+          895.085000000021
+        ],
+        "paintMs": 31.90000000037253,
+        "commandMs": 138.94670000002952,
+        "workerWorkingSetMiB": 55.99609375,
+        "launcherWorkingSetMiB": 103.10546875
+      },
+      {
+        "activationMs": [
+          1009.2596999999951,
+          886.8150000000023,
+          885.8618000000133,
+          884.9418999999762,
+          888.5815999999759
+        ],
+        "paintMs": 36,
+        "commandMs": 138.15810000000056,
+        "workerWorkingSetMiB": 56.015625,
+        "launcherWorkingSetMiB": 102.9609375
+      },
+      {
+        "activationMs": [
+          941.4844000000157,
+          896.8761999999988,
+          877.1598000000231,
+          892.123099999968,
+          900.20279999997
+        ],
+        "paintMs": 33.80000000074506,
+        "commandMs": 164.97030000004452,
+        "workerWorkingSetMiB": 56.00390625,
+        "launcherWorkingSetMiB": 103.03515625
+      },
+      {
+        "activationMs": [
+          998.1189999999478,
+          912.9695000000065,
+          923.7204999999958,
+          894.3391999999876,
+          885.8122999999905
+        ],
+        "paintMs": 24.40000000037253,
+        "commandMs": 135.2601999999606,
+        "workerWorkingSetMiB": 56.125,
+        "launcherWorkingSetMiB": 102.5
+      },
+      {
+        "activationMs": [
+          940.74099999998,
+          901.7595999999903,
+          903.023899999971,
+          881.306099999987,
+          893.117099999974
+        ],
+        "paintMs": 31.59999999962747,
+        "commandMs": 163.15320000000065,
+        "workerWorkingSetMiB": 56.02734375,
+        "launcherWorkingSetMiB": 103.015625
+      }
+    ]
+  }
+}
