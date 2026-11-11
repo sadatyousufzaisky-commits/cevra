@@ -93,7 +93,20 @@
       "id": "G4",
       "name": "Contribution APIs",
       "status": "in_progress",
+      "declarativeStatus": "passed",
       "evidence": ["g4-contribution-apis.md", "../../qa/extension-contributions.test.cjs", "../../qa/extension-registry.test.cjs"],
+      "verification": {
+        "verifiedAt": "2026-11-11",
+        "implementationCommit": "6c73f28fd4c48ab657aafd374896ae8b88cd9d62",
+        "testCommands": ["npm test", "npm run test:extension-host"],
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassed": 78,
+        "desktopPassed": 66,
+        "isolationPassed": 6,
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42949730680",
+        "scope": "Verified manifest-v1 snippets and editor palettes with live revocation and safe start"
+      },
       "remainingEvidence": ["G5 broker-backed commands and diagnostics", "Revision-checked extension edit proposals"]
     },
     { "id": "G5", "name": "Capability & Consent Broker", "status": "unverified", "evidence": [] },
