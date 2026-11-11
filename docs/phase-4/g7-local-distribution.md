@@ -20,3 +20,5 @@ At install, the registry verifies the reviewed archive and compares the installe
 ## Verification
 
 `npm test` checks reproducible packages, offline installation in Electron, pin persistence, permission review, incompatible and corrupt candidates, explicit downgrade, and recovery after terminating a process at each registry update checkpoint. `npm run test:extension-host` checks that a running extension survives an injected registry write failure and requires new consent after a successful update.
+
+On 2026-11-11, implementation `9e1fd8c9e676a4fbf4ebdaec311f8fa50e6884ea` passed 115 core tests, 71 desktop tests, and 15 host and runtime tests on local Windows 11 x64 build 26300 and hosted Windows Server 2025 x64 build 26100. [Windows verification](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42981186465)
