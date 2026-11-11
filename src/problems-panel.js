@@ -7,7 +7,7 @@ export function problemRow(tab, issue, onJump) {
   const severity = document.createElement('span');
   severity.className = 'problem-severity';
   severity.dataset.severity = issue.severity;
-  severity.textContent = issue.severity === 'warning' ? 'Warning' : 'Error';
+  severity.textContent = { error: 'Error', warning: 'Warning', info: 'Info' }[issue.severity] ?? 'Error';
   const message = document.createElement('span');
   message.className = 'problem-message';
   message.textContent = (issue.source ? issue.source + ' · ' : '') + issue.message;

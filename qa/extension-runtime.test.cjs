@@ -108,7 +108,8 @@ test('a real confined extension requires consent, navigates diagnostics and appl
     await workbench.command();
     await permissions.getByRole('button', { name: 'Close', exact: true }).click();
     await page.locator('#show-problems').click();
-    await page.getByRole('button', { name: /Warning.*Check answer/ }).click();
+    const diagnostic = page.getByRole('button', { name: /Info.*Check answer/ });
+    await diagnostic.click();
     await workbench.selected('value.js').waitFor();
     assert.match(await page.locator('#cursor').textContent(), /Ln 1/);
     await editor.press('Control+Home');
@@ -132,6 +133,10 @@ test('a real confined extension requires consent, navigates diagnostics and appl
     await replaceEditor(workbench, dirty);
     await workbench.show();
     await workbench.command(true);
+    await permissions.getByRole('button', { name: 'Close', exact: true }).click();
+    await diagnostic.click();
+    await page.waitForFunction(() => /^Ln 1/.test(document.getElementById('cursor').textContent));
+    await workbench.show();
     await permissions.getByRole('button', { name: 'Review Edit', exact: true }).click();
     await preview.locator('del').getByText('const answer = 19;', { exact: false }).waitFor();
     await preview.getByRole('button', { name: 'Cancel', exact: true }).click();

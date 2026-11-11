@@ -86,7 +86,7 @@ __attribute__((export_name("command"))) int32_t command(int32_t handler) {
     params[0] = 0;
     append(params, "{\"fileHandle\":\""); append(params, handle);
     append(params, "\",\"expectedRevision\":\""); append(params, revision);
-    append(params, "\",\"items\":[{\"from\":0,\"to\":5,\"severity\":\"warning\",\"message\":\"Check answer\"}]}");
+    append(params, "\",\"items\":[{\"from\":0,\"to\":5,\"severity\":\"info\",\"message\":\"Check answer\"}]}");
     if (!request("diagnostics.publish", params)) return 7;
     params[0] = 0;
     append(params, "{\"fileHandle\":\""); append(params, handle);

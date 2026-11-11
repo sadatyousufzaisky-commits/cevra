@@ -222,6 +222,7 @@ kbd { font: 11px var(--mono); border-radius: 3px; padding: 2px 4px; background: 
 .problem-row:hover { background: var(--raised); }
 .problem-severity { font-size: 12px; color: var(--danger); }
 .problem-severity[data-severity="warning"] { color: var(--warning); }
+.problem-severity[data-severity="info"] { color: var(--muted); }
 .problem-message { overflow-wrap: anywhere; }
 .problem-location, .problem-note { color: var(--muted); font: 12px var(--mono); }
 .problem-note { margin: 0; padding: 8px 15px; }

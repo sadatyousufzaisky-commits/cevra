@@ -544,7 +544,7 @@ async function openFile(path, expected) {
     if (expected?.revision && disk.revision !== expected.revision) {
       throw stale();
     }
-    if (expected?.revision && tab && (tab.dirty || tab.revision !== disk.revision)) {
+    if (expected?.revision && tab && ((tab.dirty && !expected.allowDraft) || tab.revision !== disk.revision)) {
       throw new Error(expected.changedMessage ?? 'The open file changed on disk. Reopen it, then search again.');
     }
     tab ??= createTab(path, disk.text, disk.revision);
@@ -1513,20 +1513,25 @@ const extensionPermissions = createExtensionPermissions({ api, getProject: () =>
           if (diagnostic.documentId === undefined ? tab.dirty || tab.revision !== diagnostic.revision :
             tab.id !== diagnostic.documentId || tab.version !== diagnostic.version) continue;
           doc = tab.state.doc;
-          issues.set(tab, (issues.get(tab) ?? []).concat(diagnostic.items.map(item => ({ ...item, source: session.id }))));
+          const previous = issues.get(tab);
+          const items = diagnostic.items.map(item => ({ ...item, source: session.id }));
+          issues.set(tab, { doc, items: previous?.doc === doc ? previous.items.concat(items) : items });
         } else {
           if (diagnostic.documentId !== undefined) continue;
           doc = Text.of(normalizeSource(disk.text).split('\n'));
         }
         entries.push({ extensionId: session.id, tab: { path: diagnostic.path, state: { doc } }, items: diagnostic.items,
           expected: { revision: diagnostic.revision, documentId: diagnostic.documentId, version: diagnostic.version,
-            isCurrent: () => project === workspace && renderedExtensionDiagnostics === entries } });
+            allowDraft: diagnostic.documentId !== undefined,
+            isCurrent: () => project === workspace && renderedExtensionDiagnostics === entries &&
+              (!tab || (findDocument(diagnostic.path) === tab && tab.state.doc === doc)) } });
       }
     }
     if (!current()) return;
     for (const tab of documents.values()) {
       if (!tab.extensionIssues?.length && !issues.has(tab)) continue;
-      tab.extensionIssues = issues.get(tab);
+      const entry = issues.get(tab);
+      tab.extensionIssues = entry?.doc === tab.state.doc ? entry.items : undefined;
       if (tab.language) showDiagnostics(tab);
     }
     renderedExtensionDiagnostics = entries;
