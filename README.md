@@ -225,6 +225,8 @@ Run `npm run inspect:extension -- "C:\path\to\package.zip"` to validate a packag
 
 Use `npm run pack:extension -- "C:\path\to\source" "C:\path\to\package.zip"` to create a reproducible ZIP from `extension.json` and, for executable packages, `extension.wasm`. The manager can pin a version and shows permission changes before installing an update. [Local distribution and updates](docs/phase-4/g7-local-distribution.md)
 
+Build an extension from the snippet, palette, and Wasm command templates. The SDK includes TypeScript contracts, a C guest header, and `npm run validate:extension -- <extension.json>` for manifest preflight. [Extension author guide](docs/phase-4/g8-author-sdk.md)
+
 ### Phase 3 end-to-end benchmark
 
 Run `npm run benchmark:continuum` on Windows with Git and npm on PATH. The benchmark launches the real Electron workbench in a fresh profile and creates a temporary Git repository with a failing invoice calculation. It runs a recipe with workspace consent, opens the exact failure location, inspects the incorrect total at a live breakpoint, and repairs the calculation in the editor. It verifies that the original result becomes **Historical**, then runs a dependency graph and a fresh test suite. The final assertions check that Change Lens matches the staged bytes to the passing test revision, that the reviewed fix is the only committed change, and that the displayed commit hash matches Git.

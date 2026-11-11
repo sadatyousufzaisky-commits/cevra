@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "org.cevra.examples.starter-tools",
+  "version": "1.0.0",
+  "displayName": "Starter Tools",
+  "description": "A JavaScript snippet and a three-color editor palette.",
+  "engines": { "cevra": ">=0.1.0 <0.2.0" },
+  "permissions": [],
+  "contributes": {
+    "snippets": [
+      {
+        "id": "hello-log",
+        "language": "javascript",
+        "prefix": "cevrahello",
+        "body": "console.log(\"Hello from CEVRA!\");",
+        "description": "Log a greeting."
+      }
+    ],
+    "themes": [
+      {
+        "id": "tideline",
+        "label": "Tideline",
+        "colors": { "background": "#14242B", "foreground": "#E9F5F3", "accent": "#7ED8C5" }
+      }
+    ]
+  }
+}

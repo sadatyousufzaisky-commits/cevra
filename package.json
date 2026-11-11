@@ -9,14 +9,16 @@
     "build:extension-host": "node scripts/build-extension-host.cjs",
     "start": "npm run build && electron .",
     "test": "npm run test:core && npm run test:desktop",
-    "test:core": "npm run build:host && node --test --test-concurrency=1 qa/core.test.cjs qa/extensions.test.cjs qa/extension-packaging.test.cjs qa/extension-registry.test.cjs qa/extension-broker.test.cjs",
-    "test:desktop": "npm run build && node --test --test-concurrency=1 qa/continuum.test.cjs qa/extension-contributions.test.cjs qa/extension-manager.test.cjs qa/workbench.test.cjs",
+    "test:core": "npm run build:host && node --test --test-concurrency=1 qa/core.test.cjs qa/extensions.test.cjs qa/extension-packaging.test.cjs qa/extension-registry.test.cjs qa/extension-broker.test.cjs qa/extension-sdk.test.cjs",
+    "test:desktop": "npm run build && node --test --test-concurrency=1 qa/continuum.test.cjs qa/extension-contributions.test.cjs qa/extension-manager.test.cjs qa/extension-sdk-desktop.test.cjs qa/workbench.test.cjs",
     "benchmark": "npm run build && node qa/benchmark.cjs",
     "benchmark:continuum": "npm run build && node --test qa/continuum.test.cjs",
     "inspect:extension": "node scripts/inspect-extension.cjs",
     "pack:extension": "node scripts/pack-extension.cjs",
-    "test:extensions": "node --test --test-concurrency=1 qa/extensions.test.cjs qa/extension-packaging.test.cjs qa/extension-registry.test.cjs",
-    "test:extension-host": "npm run build && node scripts/build-extension-fixture.cjs && node --test --test-concurrency=1 qa/extension-host.test.cjs qa/extension-runtime.test.cjs"
+    "validate:extension": "node scripts/validate-extension.cjs",
+    "build:extension-example": "node scripts/build-extension-example.cjs",
+    "test:extensions": "node --test --test-concurrency=1 qa/extensions.test.cjs qa/extension-packaging.test.cjs qa/extension-registry.test.cjs qa/extension-sdk.test.cjs",
+    "test:extension-host": "npm run build && node scripts/build-extension-fixture.cjs && npm run build:extension-example && node --test --test-concurrency=1 qa/extension-host.test.cjs qa/extension-runtime.test.cjs qa/extension-sdk-runtime.test.cjs"
   },
   "devDependencies": {
     "electron": "45.2.3",

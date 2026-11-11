@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 2,
+  "id": "org.cevra.examples.hello-command",
+  "version": "1.0.0",
+  "displayName": "Hello Command",
+  "description": "Register a command that completes without accessing workspace files.",
+  "engines": { "cevra": ">=0.1.0 <0.2.0" },
+  "runtime": { "apiVersion": "0.1", "entry": "extension.wasm" },
+  "permissions": [{ "capability": "commands.register" }],
+  "contributes": {}
+}
