@@ -340,10 +340,20 @@ button.test-result:hover { background: var(--raised); }
 .definition-dialog h2 { margin: 0; font-size: 16px; }
 .definition-dialog p { margin: 4px 0 12px; color: var(--muted); }
 .definition-choices { max-height: min(320px, 50vh); overflow: auto; margin: 0 0 12px; padding: 0; list-style: none; }
-#extension-permissions-list > li { border-bottom: 1px solid var(--line); padding: 12px 0; overflow-wrap: anywhere; }
-#extension-permissions-list h3 { margin: 0; }
-#extension-permissions-list ul { margin-bottom: 10px; padding-inline-start: 20px; }
-#extension-permissions-list button { margin: 0 6px 6px 0; }
+#extension-manager { width: min(680px, calc(100vw - 32px)); }
+#extension-manager-list { margin: 4px 0 0; max-height: min(440px, 50vh); }
+#extension-manager-list > li { border-bottom: 1px solid var(--line); padding: 12px 6px 12px 0; overflow-wrap: anywhere; }
+#extension-manager h3 { margin: 0; font-size: 15px; }
+#extension-manager h4 { margin: 14px 0 4px; font-size: 13px; }
+#extension-manager-empty { margin: 12px 0; }
+#extension-manager-details { margin-top: 8px; }
+#extension-manager-detail-body { max-height: min(430px, 48vh); overflow: auto; overflow-wrap: anywhere; }
+#extension-manager-detail-body dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; }
+#extension-manager-detail-body dt { color: var(--muted); }
+#extension-manager-detail-body dd { margin: 0; min-width: 0; }
+#extension-manager-detail-body ul { padding-inline-start: 20px; }
+#extension-manager-detail-body code { display: block; color: var(--muted); font: 12px var(--mono); }
+.extension-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .definition-choice { display: grid; gap: 3px; width: 100%; padding: 8px; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; overflow-wrap: anywhere; }
 .definition-choice:hover { background: var(--raised); }
 .definition-location { color: var(--muted); font: 12px var(--mono); }

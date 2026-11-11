@@ -10,7 +10,7 @@ import { createEditPreview } from './edit-preview.js';
 import { createEditorSettings, editorOptions, optionExtensions } from './editor-settings.js';
 import { colorModeExtension, editorColorMode, editorTheme } from './editor-theme.js';
 import { createExtensionContributions } from './extension-contributions.js';
-import { createExtensionPermissions } from './extension-permissions.js';
+import { createExtensionManager } from './extension-manager.js';
 import { createChangeLensPanel } from './change-lens-panel.js';
 import { createFailureLens, refreshDebugGutter } from './failure-lens.js';
 import { createFlightpathPanel } from './flightpath-panel.js';
@@ -194,7 +194,7 @@ function syncCommands() {
   const saving = savingAll || open.some(tab => tab.saving);
   const discarding = open.some(tab => tab.discarding);
   const runtime = runtimeKind(active?.path);
-  byId('extension-permissions').disabled = !project || changingProject;
+  byId('extension-manager-open').disabled = changingProject;
   dock.dataset.runtime = runtime ?? '';
   runtimePanel.sync(project, runtime, Boolean(run || changingProject));
   dockButtons.terminal.disabled = !project?.terminalLimit || changingProject;
@@ -602,7 +602,7 @@ async function adoptProject(next) {
   symbolPicker.close();
   semantic.changed();
   project = next;
-  extensionPermissions.reset();
+  extensionManager.reset();
   changePanel.reset(next);
   terminalPanel.reset(next);
   taskPanel.reset(next);
@@ -842,7 +842,7 @@ function showDock(name, focus = false) {
   failureLens.show(name === 'failure');
   changePanel.show(name === 'changes');
   problemsPanel.render();
-  if (name === 'problems') void extensionPermissions.refresh();
+  if (name === 'problems') void extensionManager.refresh();
   if (focus && name !== 'terminal') dockButtons[name].focus();
 }
 
@@ -1488,7 +1488,7 @@ api.onExtensionEditorSnapshot(({ workspaceId, path, allowedFiles }) => {
 });
 
 let renderedExtensionDiagnostics;
-const extensionPermissions = createExtensionPermissions({ api, getProject: () => project, report, errorText,
+const extensionManager = createExtensionManager({ api, getProject: () => project, report, errorText,
   async review(extensionId, proposalId) {
     editPreview.extension(async () => {
       const proposal = await api.extensionProposal(project.id, extensionId, proposalId);

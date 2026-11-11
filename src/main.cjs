@@ -15,6 +15,8 @@ const { createFormatService } = require('./format-service.cjs');
 const { createSemanticService } = require('./semantic-service.cjs');
 const { createPreferences } = require('./preferences.cjs');
 const { createExtensionRegistry } = require('./extensions/registry.cjs');
+const { createExtensionManager } = require('./extensions/manager.cjs');
+const { InspectionError } = require('./extensions/inspection-error.cjs');
 const { createExtensionAudit } = require('./extensions/audit.cjs');
 const { createCapabilityBroker } = require('./extensions/broker.cjs');
 const { startExtensionHost, supportedRuntime } = require('./extensions/runtime.cjs');
@@ -61,6 +63,7 @@ let activeSearch;
 let rendererReady = false;
 let closePending = false;
 let allowClose = false;
+let restartExtensions;
 let lastRendererCrash = 0;
 let authorizingExtension = false;
 const editorSnapshots = new Map();
@@ -84,17 +87,43 @@ const extensionBroker = createCapabilityBroker({
     });
     return response === 1;
   },
-  changed: () => {
-    if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) window.webContents.send('cevra:extension-runtime-changed');
+  changed: notifyExtensionRuntime,
+});
+const extensionManager = createExtensionManager({
+  registry: extensions, broker: extensionBroker,
+  owner: () => rendererReady && !changingWorkspace && !closePending && !allowClose && !authorizingExtension &&
+    window && !window.isDestroyed() ? window : undefined,
+  async choosePackage(owner) {
+    const selection = await dialog.showOpenDialog(owner, {
+      title: 'Choose an extension package', properties: ['openFile'], filters: [{ name: 'Extension ZIP packages', extensions: ['zip'] }],
+    });
+    return selection.canceled ? undefined : selection.filePaths[0];
+  },
+  async confirm(owner, entry, action) {
+    const prompts = {
+      quarantine: ['Quarantine', 'The extension will be disabled and require review before it can be enabled again.'],
+      'clear-quarantine': ['Clear Quarantine', 'The extension will stay disabled until you enable it.'],
+      restore: ['Restore Previous Version', `Restore version ${entry.rollback?.version} as a disabled extension.`],
+      uninstall: ['Uninstall', 'This removes the installed package and its retained version from CEVRA.'],
+    };
+    const [label, explanation] = prompts[action];
+    const { response } = await dialog.showMessageBox(owner, {
+      type: 'warning', title: 'Extension Manager', message: `${label} ${entry.displayName ?? entry.id}?`,
+      detail: `${entry.id} · ${entry.version}\nSHA-256 ${entry.sha256}\n\n${explanation}`,
+      buttons: ['Cancel', label], defaultId: 0, cancelId: 0, noLink: true,
+    });
+    return response === 1;
   },
 });
-if (!safeStart) {
-  app.once('will-quit', extensions.onChange(id => {
-    if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
-      window.webContents.send('cevra:extension-contributions-changed', id);
-    }
-  }));
+function notifyExtensionRuntime() {
+  if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) window.webContents.send('cevra:extension-runtime-changed');
 }
+app.once('will-quit', extensions.onChange(id => {
+  if (!safeStart && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
+    window.webContents.send('cevra:extension-contributions-changed', id);
+  }
+  notifyExtensionRuntime();
+}));
 const sessions = createExecutionSessions(event => {
   if (workspace?.id === event.workspaceId && rendererReady && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
     window.webContents.send('cevra:run-event', event);
@@ -271,13 +300,37 @@ handle('set-extension-palette', async key => {
   }
   await preferences.setExtensionPalette(key);
 });
-handle('extension-runtime', async id => {
-  currentWorkspace(id);
-  return { catalog: (await extensions.list()).filter(extension => extension.executable), ...extensionBroker.snapshot() };
+handle('extension-runtime', async (id, includeCatalog = true) => {
+  if (id !== undefined) currentWorkspace(id);
+  let catalog;
+  let catalogError;
+  if (includeCatalog === true) {
+    try { catalog = await extensions.list(); }
+    catch (error) {
+      catalog = [];
+      catalogError = error instanceof InspectionError ? error.message : 'The extension registry could not be read.';
+    }
+  }
+  if (id !== undefined) currentWorkspace(id);
+  const runtime = extensionBroker.snapshot();
+  return { ...runtime, safeStart, catalog, catalogError, sessions: id === undefined ? [] : runtime.sessions };
+});
+handle('select-extension-package', () => extensionManager.select());
+handle('inspect-installed-extension', (id, digest) => extensionManager.inspect(id, digest));
+handle('install-extension', token => extensionManager.install(token));
+handle('discard-extension-review', token => extensionManager.discard(token));
+handle('change-extension', (id, digest, action) => extensionManager.change(id, digest, action));
+handle('restart-extensions', disabled => {
+  if (typeof disabled !== 'boolean' || disabled === safeStart || !rendererReady || changingWorkspace || closePending ||
+      allowClose || authorizingExtension || extensionManager.busy || restartExtensions !== undefined) {
+    throw new Error('Extension restart is unavailable.');
+  }
+  restartExtensions = disabled;
+  window.close();
 });
 handle('activate-extension', async (id, extensionId, digest) => {
   const project = currentWorkspace(id);
-  if (authorizingExtension || changingWorkspace || closePending || allowClose || !rendererReady || safeStart || !supportedRuntime()) {
+  if (authorizingExtension || extensionManager.busy || changingWorkspace || closePending || allowClose || !rendererReady || safeStart || !supportedRuntime()) {
     throw new Error('Extension activation is unavailable.');
   }
   authorizingExtension = true;
@@ -753,30 +806,43 @@ handle('close-ready', async (hasDrafts, backupFailed) => {
   await preferences.getTheme();
   if (!closePending) return;
   const closing = window;
+  const restarting = restartExtensions !== undefined;
   const stay = backupFailed ? dialog.showMessageBoxSync(window, {
     type: 'error',
     message: 'Some draft backups could not be updated.',
     detail: 'Only completed backups can be recovered.',
-    buttons: ['Keep editing', 'Quit anyway'],
+    buttons: ['Keep editing', restarting ? 'Restart anyway' : 'Quit anyway'],
     defaultId: 0,
     cancelId: 0,
   }) === 0 : hasDrafts && dialog.showMessageBoxSync(window, {
     type: 'question',
-    message: 'Quit CEVRA and keep your drafts?',
+    message: restarting ? 'Restart CEVRA and keep your drafts?' : 'Quit CEVRA and keep your drafts?',
     detail: 'CEVRA will reopen the drafts next time.',
-    buttons: ['Keep editing', 'Quit and keep drafts'],
+    buttons: ['Keep editing', restarting ? 'Restart and keep drafts' : 'Quit and keep drafts'],
     defaultId: 0,
     cancelId: 0,
   }) === 0;
   if (stay) {
     closePending = false;
+    restartExtensions = undefined;
     window.webContents.send('cevra:close-canceled');
   } else {
     runGrant = undefined;
-    await Promise.all([sessions.cancel(), terminals.closeAll(), gitWrite?.catch(() => {}), extensionBroker.suspend().catch(() => {})]);
+    await Promise.all([sessions.cancel(), terminals.closeAll(), gitWrite?.catch(() => {}),
+      extensionBroker.suspend().catch(() => {}), extensionManager.wait()]);
     await flightpathStore.flush();
     if (!closePending || window !== closing) return;
     closePending = false;
+    if (restarting) {
+      const args = process.argv.slice(1).filter(arg => !/^--disable-extensions(?:=|$)/.test(arg));
+      if (restartExtensions) args.push('--disable-extensions');
+      restartExtensions = undefined;
+      try { app.relaunch({ args }); }
+      catch (error) {
+        closing.webContents.send('cevra:close-canceled');
+        throw error;
+      }
+    }
     allowClose = true;
     setImmediate(() => closing.close());
   }
@@ -811,6 +877,8 @@ async function launch() {
   workbench.webContents.on('render-process-gone', () => {
     if (window !== workbench) return;
     rendererReady = false;
+    extensionManager.clearReview();
+    restartExtensions = undefined;
     void extensionBroker.suspend().catch(() => {});
     runGrant = undefined;
     closePending = false;

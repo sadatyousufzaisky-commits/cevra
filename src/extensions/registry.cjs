@@ -98,7 +98,7 @@ function checkPackage(data, id, version) {
   if (report.manifest.id !== id || report.manifest.version !== version.version) {
     fail('STORED_PACKAGE_CHANGED', 'The stored extension does not match its registry record.');
   }
-  return report.manifest;
+  return report;
 }
 
 function summary(data, entry) {
@@ -106,7 +106,7 @@ function summary(data, entry) {
   let state = current.quarantined ? 'quarantined' : entry.enabled ? 'enabled' : 'disabled';
   let failure;
   let manifest;
-  try { manifest = checkPackage(data, id, current); }
+  try { ({ manifest } = checkPackage(data, id, current)); }
   catch (error) {
     if (!(error instanceof InspectionError)) throw error;
     state = 'failed';
@@ -116,7 +116,7 @@ function summary(data, entry) {
     id, sha256: current.sha256, version: current.version, enabled: state === 'enabled', state,
     rollback: previous && { sha256: previous.sha256, version: previous.version },
     ...(failure && { failure }),
-    ...(manifest?.schemaVersion === 2 && { displayName: manifest.displayName, permissions: manifest.permissions, executable: true }),
+    ...(manifest && { displayName: manifest.displayName, permissions: manifest.permissions, executable: manifest.schemaVersion === 2 }),
   };
 }
 
@@ -187,12 +187,16 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
 
   return {
     list: () => run(data => data.entries.map(entry => summary(data, entry))),
+    inspect(id, digest) {
+      request(id, digest);
+      return run(data => checkPackage(data, id, findCurrent(data, id, digest).current));
+    },
     executable(id, digest) {
       request(id, digest);
       return run(data => {
         const entry = findCurrent(data, id, digest);
         if (!entry.enabled || entry.current.quarantined) fail('EXTENSION_DISABLED', 'Enable the reviewed extension first.');
-        const manifest = checkPackage(data, id, entry.current);
+        const { manifest } = checkPackage(data, id, entry.current);
         if (manifest.schemaVersion !== 2) fail('NO_EXECUTABLE', 'This extension contains declarative contributions.');
         const { module } = unpackPackage(Buffer.from(data.archives[digest], 'base64'));
         return { manifest, module };
@@ -203,7 +207,7 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
       for (const { id, current, enabled } of data.entries) {
         if (!enabled || current.quarantined) continue;
         let manifest;
-        try { manifest = checkPackage(data, id, current); }
+        try { ({ manifest } = checkPackage(data, id, current)); }
         catch (error) {
           if (!(error instanceof InspectionError)) throw error;
           continue;
@@ -274,8 +278,17 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
       entry.current.quarantined = true;
       return true;
     }),
-    rollback: (id, digest) => change(id, digest, (data, entry) => {
+    clearQuarantine: (id, digest) => change(id, digest, (data, entry) => {
+      if (!entry.current.quarantined) return false;
+      checkPackage(data, id, entry.current);
+      entry.current.quarantined = false;
+      return true;
+    }),
+    rollback: (id, digest, expectedPrevious) => change(id, digest, (data, entry) => {
       if (!entry.previous) fail('NO_ROLLBACK', 'There is no previous version to restore.');
+      if (expectedPrevious !== undefined && entry.previous.sha256 !== expectedPrevious) {
+        fail('STALE_REGISTRY', 'The previous extension version changed. Refresh and review it again.');
+      }
       checkPackage(data, id, entry.previous);
       [entry.current, entry.previous] = [entry.previous, entry.current];
       entry.enabled = false;

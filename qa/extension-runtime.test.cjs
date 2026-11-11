@@ -13,7 +13,7 @@ const relative = 'nested/value.js';
 const original = 'const answer = 1;\n';
 const proposed = 'const answer = 42;\n';
 
-async function runtimeWorkbench(t) {
+async function runtimeWorkbench(t, { installThroughManager = false } = {}) {
   const module = await fs.readFile(path.join(artifacts, 'broker-fixture.wasm'));
   const manifest = executableManifest([
     { capability: 'commands.register' }, { capability: 'workspace.read', files: [relative], drafts: true },
@@ -22,22 +22,25 @@ async function runtimeWorkbench(t) {
   ], { id: 'org.cevra.broker-test', displayName: 'Broker Test' });
   const bytes = executableArchive(manifest, module);
   const digest = sha256(bytes);
+  let packageFile;
   const workbench = await openWorkbench(t, { [relative]: original, 'private.txt': 'PRIVATE_SOURCE_MARKER', 'entry.js': 'const entry = true;' },
     async (_project, profile) => {
+      packageFile = path.join(path.dirname(profile), 'broker test.zip');
+      await fs.writeFile(packageFile, bytes);
+      if (installThroughManager) return;
       const registry = createExtensionRegistry(profile);
-      const file = path.join(path.dirname(profile), 'broker test.zip');
-      await fs.writeFile(file, bytes);
-      await registry.install(file, { reviewedDigest: digest });
+      await registry.install(packageFile, { reviewedDigest: digest });
       await registry.setEnabled(manifest.id, digest, true);
     });
-  await workbench.app.evaluate(({ dialog }) => {
+  await workbench.app.evaluate(({ dialog }, file) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
     globalThis.extensionReviews = [];
     dialog.showMessageBox = async (_owner, options) => {
       globalThis.extensionReviews.push({ title: options.title, detail: options.detail, defaultId: options.defaultId });
       return { response: 1 };
     };
-  });
-  const permissions = workbench.page.getByRole('dialog', { name: 'Extension Permissions', exact: true });
+  }, packageFile);
+  const permissions = workbench.page.getByRole('dialog', { name: 'Extension Manager', exact: true });
   const show = async () => {
     await workbench.page.getByRole('button', { name: 'Extensions', exact: true }).click();
     await permissions.getByRole('heading', { name: 'Broker Test' }).waitFor();
@@ -52,7 +55,7 @@ async function runtimeWorkbench(t) {
     await permissions.getByRole('button', { name: 'Review Edit', exact: true }).waitFor().catch(async error => {
       const audit = await fs.readFile(path.join(workbench.profile, 'extensions', 'audit.json'), 'utf8');
       const events = JSON.parse(audit).events.map(event => [event.operation, event.result, event.code]);
-      throw new Error('Extension command failed. ' + await workbench.page.locator('#extension-permissions-status').textContent() +
+      throw new Error('Extension command failed. ' + await workbench.page.locator('#extension-manager-status').textContent() +
         ' Audit ' + JSON.stringify(events), { cause: error });
     });
   };
@@ -69,9 +72,9 @@ test('the Wasm broker import rejects invalid guest memory before accessing the t
     } });
     t.after(() => host.stop());
     await host.activate(await fs.readFile(path.join(artifacts, 'broker-fixture.wasm')));
-    assert.equal(calls, 3);
+    assert.equal(calls, 4);
     await assert.rejects(host.invoke(2), { code: 'HOST_COMMAND' });
-    assert.equal(calls, 3);
+    assert.equal(calls, 4);
     await assertWindowsProcessStopped(host.pid);
     assert.deepEqual(await fs.readdir(scratch), []);
   });
@@ -176,7 +179,7 @@ test('extension consent can be canceled and safe start and restart require fresh
     await workbench.page.getByRole('button', { name: 'Extensions', exact: true }).click();
     await workbench.page.getByRole('button', { name: 'Review Permissions', exact: true }).waitFor();
     assert.equal(await workbench.page.getByRole('button', { name: 'Run Review saved answer', exact: true }).count(), 0);
-    await workbench.page.getByRole('dialog', { name: 'Extension Permissions', exact: true }).getByRole('button', { name: 'Close', exact: true }).click();
+    await workbench.page.getByRole('dialog', { name: 'Extension Manager', exact: true }).getByRole('button', { name: 'Close', exact: true }).click();
     workbench = await workbench.restart({ args: ['--disable-extensions'] });
     await workbench.selected('entry.js').waitFor();
     await workbench.page.getByRole('button', { name: 'Extensions', exact: true }).click();
@@ -210,4 +213,56 @@ test('source changes or live disable after extension preview prevent applying th
         assert.equal(drafts.filter(name => name.endsWith('.json')).length, 0);
       });
     }
+  });
+
+test('the manager installs an executable, persists quarantine after three host failures, and recovers the editor draft',
+  { timeout: 55_000 }, async t => {
+    let workbench = await runtimeWorkbench(t, { installThroughManager: true });
+    const draft = 'const entry = "recover from extension failure";\n';
+    await workbench.open('entry.js');
+    await replaceEditor(workbench, draft);
+    const openManager = () => workbench.page.getByRole('button', { name: 'Extensions', exact: true }).click();
+    const dialog = () => workbench.page.getByRole('dialog', { name: 'Extension Manager', exact: true });
+    const button = name => dialog().getByRole('button', { name, exact: true });
+    const state = text => dialog().getByText(text, { exact: true }).waitFor();
+    await openManager();
+    await button('Choose ZIP Package').click();
+    await dialog().getByText('Add commands to Extensions', { exact: true }).waitFor();
+    await dialog().getByText(/extension\.wasm.*bytes/).waitFor();
+    await button('Install Package').click();
+    await state('Disabled');
+    await button('Enable').click();
+    await state('Enabled');
+    assert.equal(await button('Run Trigger fixture failure').count(), 0);
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await button('Review Permissions').click();
+      await state('Active for this session');
+      await button('Run Trigger fixture failure').click();
+      await state(attempt === 3 ? 'Quarantined' : 'Stopped after a host failure');
+      await button('Run Trigger fixture failure').waitFor({ state: 'hidden' });
+    }
+    assert.equal(await button('Review Permissions').count(), 0);
+    workbench = await workbench.restart({ crash: true });
+    await workbench.selected('entry.js').waitFor();
+    assert.deepEqual(await workbench.editor.locator('.cm-line').allTextContents(), draft.split('\n'));
+    assert.equal(await fs.readFile(path.join(workbench.project, 'entry.js'), 'utf8'), 'const entry = true;');
+    await openManager();
+    await state('Quarantined');
+    await button('Clear Quarantine').click();
+    await state('Disabled');
+    await button('Enable').click();
+    await state('Enabled');
+    assert.equal(await button('Run Trigger fixture failure').count(), 0);
+    await button('Review Permissions').click();
+    await state('Active for this session');
+    await button('Run Review saved answer').click();
+    await button('Review Edit').waitFor();
+    await button('Uninstall').click();
+    await state('No extensions installed.');
+    assert.equal(await button('Review Edit').count(), 0);
+    await button('Close').click();
+    await workbench.page.locator('#show-problems').click();
+    await workbench.page.getByRole('button', { name: /Check answer/ }).waitFor({ state: 'hidden' });
+    assert.deepEqual(await workbench.editor.locator('.cm-line').allTextContents(), draft.split('\n'));
   });

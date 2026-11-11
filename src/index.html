@@ -324,7 +324,7 @@
     <button id="inspect-symbol" class="status-action" title="Inspect symbol (Ctrl+Alt+I)" disabled>Inspect symbol</button>
     <button id="go-definition" class="status-action" title="Go to Definition (F12)" disabled>Go to Definition</button>
     <button id="editor-settings" class="status-action" title="Editor settings (Ctrl+,)" disabled>Settings</button>
-    <button id="extension-permissions" class="status-action" disabled>Extensions</button>
+    <button id="extension-manager-open" class="status-action" disabled>Extensions</button>
     <label class="theme-control">Theme
       <select id="theme-choice" disabled>
         <option value="dark">CEVRA Dark</option>
@@ -369,12 +369,27 @@
       </div>
     </form>
   </dialog>
-  <dialog id="extension-permissions-dialog" class="definition-dialog" aria-labelledby="extension-permissions-heading">
-    <h2 id="extension-permissions-heading">Extension Permissions</h2>
-    <p id="extension-permissions-status" role="status"></p>
-    <ul id="extension-permissions-list" class="definition-choices"></ul>
+  <dialog id="extension-manager" class="definition-dialog" aria-labelledby="extension-manager-heading">
+    <h2 id="extension-manager-heading">Extension Manager</h2>
+    <p id="extension-manager-safe-mode" hidden>Safe mode is active. Extension commands, snippets, and palettes are suspended for this session.</p>
+    <p id="extension-manager-status" role="status"></p>
+    <section id="extension-manager-catalog" aria-label="Installed extensions">
+      <button id="extension-manager-choose" class="button primary" autofocus>Choose ZIP Package</button>
+      <p id="extension-manager-catalog-error" role="alert" hidden></p>
+      <p id="extension-manager-empty" hidden>No extensions installed.</p>
+      <ul id="extension-manager-list" class="definition-choices"></ul>
+    </section>
+    <section id="extension-manager-details" aria-labelledby="extension-manager-detail-heading" hidden>
+      <h3 id="extension-manager-detail-heading" tabindex="-1"></h3>
+      <div id="extension-manager-detail-body"></div>
+      <div class="extension-actions">
+        <button id="extension-manager-back" class="button">Back to Installed</button>
+        <button id="extension-manager-install" class="button primary" hidden>Install Package</button>
+      </div>
+    </section>
     <div class="edits-actions">
-      <button id="extension-permissions-close" class="button">Close</button>
+      <button id="extension-manager-restart" class="button">Restart in Safe Mode</button>
+      <button id="extension-manager-close" class="button">Close</button>
     </div>
   </dialog>
   <dialog id="edits-dialog" class="definition-dialog edits-dialog" aria-labelledby="edits-heading">

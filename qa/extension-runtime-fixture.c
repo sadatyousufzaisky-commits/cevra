@@ -67,10 +67,12 @@ __attribute__((export_name("run"))) int32_t run(void) {
     if (!request("commands.register", "{\"id\":\"saved-fix\",\"title\":\"Review saved answer\",\"handler\":0}")) return 1;
     if (!request("commands.register", "{\"id\":\"draft-fix\",\"title\":\"Review draft answer\",\"handler\":1}")) return 2;
     if (!request("commands.register", "{\"id\":\"check-selection\",\"title\":\"Check active selection\",\"handler\":3}")) return 3;
+    if (!request("commands.register", "{\"id\":\"fixture-failure\",\"title\":\"Trigger fixture failure\",\"handler\":4}")) return 4;
     return 0;
 }
 
 __attribute__((export_name("command"))) int32_t command(int32_t handler) {
+    if (handler == 4) __builtin_trap();
     if (handler == 2) return broker_request((const char *)0x7fffffff, 100, response, sizeof(response));
     if (handler == 3) {
         if (request("editor.readSelection", "{}")) return contains(response, "\"text\":\"answer\"") ? 0 : 9;

@@ -92,7 +92,7 @@ async function openWorkbench(t, files, prepare) {
         await assertWindowsProcessStopped(pid);
         app = undefined;
       },
-      restart: async ({ crash = false, args = [] } = {}) => {
+      restart: async ({ crash = false, args = [], close } = {}) => {
         if (crash) {
           const processUnderTest = app.process();
           const exited = once(processUnderTest, 'exit');
@@ -105,7 +105,8 @@ async function openWorkbench(t, files, prepare) {
           await exited;
         } else {
           const closed = app.waitForEvent('close', { timeout: 10_000 });
-          await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+          if (close) await close();
+          else await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
           await closed;
         }
         app = undefined;

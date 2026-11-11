@@ -217,9 +217,11 @@ Run `npm test` on Windows before expanding the workbench. Put Git and Python 3 w
 
 GitHub Actions runs the same checks on Windows for every push and pull request.
 
-### Inspect a local extension package
+### Manage local extensions
 
-Run `npm run inspect:extension -- "C:\path\to\package.zip"` to validate a declarative snippet or theme package and view its manifest, file inventory, and SHA-256 digest. See the [Phase 4 package format](docs/phase-4/g1-package-inspection.md) for a starter manifest and validation rules.
+Open **Extensions** in the status bar and choose a local ZIP package. Review the version, contents, and permissions, then install and enable it. The manager also supports quarantine, restore, uninstall, and safe-mode restart. [Extension Manager](docs/phase-4/g6-extension-manager.md)
+
+Run `npm run inspect:extension -- "C:\path\to\package.zip"` to validate a package and view its manifest, inventory, and SHA-256 digest from the command line. [Phase 4 package format](docs/phase-4/g1-package-inspection.md)
 
 ### Phase 3 end-to-end benchmark
 

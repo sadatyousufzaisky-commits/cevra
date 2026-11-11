@@ -1,6 +1,6 @@
 # G5 · Capability & Consent Broker
 
-Open a trusted workspace and choose **Extensions** in the status bar. For an installed, enabled executable package, **Review Permissions** shows its identity, exact archive digest, and requested file scopes in a native dialog. The grant lasts for the current host session. Workspace trust and extension consent are separate decisions. **Revoke Access** stops the host and clears its commands, diagnostics, and pending edits. Package installation and enablement use the G2 registry until G6 provides the full Extension Manager.
+Open a trusted workspace and choose **Extensions** in the status bar. For an installed, enabled executable package, **Review Permissions** shows its identity, exact archive digest, and requested file scopes in a native dialog. The grant lasts for the current host session. Workspace trust and extension consent are separate decisions. **Revoke Access** stops the host and clears its commands, diagnostics, and pending edits. [Extension Manager](g6-extension-manager.md)
 
 The executable runtime is enabled on the verified Windows x64 builds 26100 and 26300. Safe start with `npx electron . --disable-extensions` suppresses extension execution and declarative contributions. Standard Windows x64 development builds prepare the pinned Wasmtime host alongside the workbench.
 

@@ -135,7 +135,12 @@
         "knownLimitations": ["Executable activation on verified Windows x64 builds 26100 and 26300", "Session-only grants", "Package management through the registry until G6"]
       }
     },
-    { "id": "G6", "name": "Extension Manager UI", "status": "unverified", "evidence": [] },
+    {
+      "id": "G6",
+      "name": "Extension Manager UI",
+      "status": "in_progress",
+      "evidence": ["g6-extension-manager.md", "../../qa/extension-manager.test.cjs", "../../qa/extension-runtime.test.cjs"]
+    },
     { "id": "G7", "name": "Local Distribution & Update", "status": "unverified", "evidence": [] },
     { "id": "G8", "name": "Author SDK & Documentation", "status": "unverified", "evidence": [] },
     { "id": "G9", "name": "Final Integration & Benchmark", "status": "unverified", "evidence": [] }

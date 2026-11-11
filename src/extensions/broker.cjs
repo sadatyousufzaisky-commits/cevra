@@ -98,7 +98,7 @@ function createCapabilityBroker({ registry, audit, getWorkspace, isTrusted, cons
       await session.host?.stop();
       if (sessions.get(id) === session) sessions.delete(id);
       publish();
-      await log(session.identity, 'revoke', 'revoked', 'OK');
+      await log(session.identity, 'revoke', 'revoked', 'OK').catch(() => {});
     })();
     return session.stopping;
   }
@@ -255,6 +255,7 @@ function createCapabilityBroker({ registry, audit, getWorkspace, isTrusted, cons
       try { await log(session.identity, method, code === 'PERMISSION_DENIED' ? 'denied' : 'failed', code, started); }
       catch { code = 'AUDIT_UNAVAILABLE'; }
       if (code === 'INVALID_REQUEST' || code === 'QUOTA' || code === 'AUDIT_UNAVAILABLE') {
+        if (session.active && code !== 'AUDIT_UNAVAILABLE') noteHostFailure(session);
         invalidate(session);
         void session.host?.stop();
       }
@@ -301,7 +302,7 @@ function createCapabilityBroker({ registry, audit, getWorkspace, isTrusted, cons
         invalidate(session);
         sessions.delete(id);
         if (unexpected) {
-          noteHostFailure(id, digest);
+          noteHostFailure(session);
           void log(session.identity, 'protocol', 'failed', 'HOST_FAILURE').catch(() => {});
         }
         publish();
@@ -320,14 +321,15 @@ function createCapabilityBroker({ registry, audit, getWorkspace, isTrusted, cons
     } catch (error) {
       const hostFailed = session?.host && !session.revoking;
       if (session) await revoke(id).catch(() => {});
-      if (hostFailed) {
-        noteHostFailure(id, digest);
-      }
+      if (hostFailed) noteHostFailure(session);
       throw Object.hasOwn(messages, error?.code) ? error : failure('HOST_FAILURE');
     } finally { starting.delete(id); }
   }
 
-  function noteHostFailure(id, digest) {
+  function noteHostFailure(session) {
+    if (session.failureRecorded) return;
+    session.failureRecorded = true;
+    const { id, digest } = session;
     const previous = failures.get(id);
     const count = previous?.digest === digest ? previous.count + 1 : 1;
     failures.set(id, { digest, count });
@@ -350,6 +352,9 @@ function createCapabilityBroker({ registry, audit, getWorkspace, isTrusted, cons
       await validate(session);
       return result;
     } catch (error) {
+      if (session.active && !session.revoking && typeof error?.code === 'string' && error.code.startsWith('HOST_')) {
+        noteHostFailure(session);
+      }
       await log(session.identity, 'commands.invoke', 'failed', Object.hasOwn(messages, error?.code) ? error.code : 'HOST_FAILURE').catch(() => {});
       await revoke(id).catch(() => {});
       throw Object.hasOwn(messages, error?.code) ? error : failure('HOST_FAILURE');
@@ -402,6 +407,9 @@ function createCapabilityBroker({ registry, audit, getWorkspace, isTrusted, cons
   });
   return {
     activate, revoke, suspend, invoke, proposal, commitProposal,
+    clearFailure(id, digest) {
+      if (failures.get(id)?.digest === digest) failures.delete(id);
+    },
     documentChanged(projectId, path) {
       let removed = false;
       for (const session of sessions.values()) {
