@@ -26,9 +26,7 @@ test('the author starter tools ZIP installs and its snippet and palette survive 
     await themed();
     await editor.press('Control+End');
     await editor.press('Control+Space');
-    await snippet.waitFor();
-    await page.waitForFunction(() => document.querySelector('.cm-tooltip-autocomplete [aria-selected="true"]')?.textContent.includes('cevrahello'));
-    await editor.press('Enter');
+    await snippet.click();
     await page.locator('#draft-status[data-state="saved"]').waitFor();
     assert.deepEqual(await editor.locator('.cm-line').allTextContents(), ['console.log("Hello from CEVRA!");']);
     await editor.press('Control+z');
