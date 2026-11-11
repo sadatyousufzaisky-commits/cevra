@@ -69,8 +69,25 @@
     {
       "id": "G3",
       "name": "Extension Host Isolation",
-      "status": "in_progress",
-      "evidence": ["g3-extension-host-isolation.md", "../../qa/extension-host.test.cjs"]
+      "status": "passed",
+      "evidence": ["g3-extension-host-isolation.md", "../../qa/extension-host.test.cjs"],
+      "verification": {
+        "reviewer": "Codex",
+        "verifiedAt": "2026-11-11",
+        "implementationCommit": "1e2150d9ad0aa94b412ddb884b5f3e4483c9778f",
+        "testCommands": ["npm test", "npm run test:extension-host"],
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "nodeVersion": "24.15.0",
+        "wasmtimeVersion": "36.0.20",
+        "corePassed": 77,
+        "desktopPassed": 63,
+        "isolationPassed": 6,
+        "hostedClipboardFixture": "passed",
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42947743911",
+        "scope": "LPAC lab with Windows job UI restrictions and a one-shot core Wasm protocol",
+        "remainingEvidence": ["Windows 10 and ARM64 isolation coverage", "G5 broker enforcement before activation"]
+      }
     },
     { "id": "G4", "name": "Contribution APIs", "status": "unverified", "evidence": [] },
     { "id": "G5", "name": "Capability & Consent Broker", "status": "unverified", "evidence": [] },
