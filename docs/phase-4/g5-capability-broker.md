@@ -25,3 +25,5 @@ The host runs in the G3 Windows AppContainer and job. Requests are bounded to 25
 ## Verification
 
 Run `npm test` for broker, package, registry, and desktop regressions. Run `npm run test:extension-host` for the confinement suite and the real Electron journey with a compiled Wasm fixture. Tests cover allow, deny, revoke, replay, workspace replacement and switching, digest changes, stale previews, draft recovery, and audit privacy.
+
+On 2026-11-11, implementation `1999c6f6e3ecc82f9238981302c4ed3105b831e1` passed 111 core, 66 desktop, and 13 extension host and runtime tests on local Windows 11 x64 build 26300 and hosted Windows Server 2025 x64 build 26100. The hosted run also exercised the clipboard confinement fixture. [Windows verification](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42955384816)

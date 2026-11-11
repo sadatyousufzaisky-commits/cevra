@@ -86,13 +86,13 @@
         "hostedClipboardFixture": "passed",
         "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42947743911",
         "scope": "LPAC lab with Windows job UI restrictions and a one-shot core Wasm protocol",
-        "remainingEvidence": ["Windows 10 and ARM64 isolation coverage", "G5 broker enforcement before activation"]
+        "remainingEvidence": ["Windows 10 and ARM64 isolation coverage"]
       }
     },
     {
       "id": "G4",
       "name": "Contribution APIs",
-      "status": "in_progress",
+      "status": "passed",
       "declarativeStatus": "passed",
       "evidence": ["g4-contribution-apis.md", "../../qa/extension-contributions.test.cjs", "../../qa/extension-registry.test.cjs"],
       "verification": {
@@ -107,13 +107,33 @@
         "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42949730680",
         "scope": "Verified manifest-v1 snippets and editor palettes with live revocation and safe start"
       },
-      "remainingEvidence": ["G5 broker-backed commands and diagnostics", "Revision-checked extension edit proposals"]
+      "runtimeVerification": {
+        "implementationCommit": "1999c6f6e3ecc82f9238981302c4ed3105b831e1",
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42955384816",
+        "scope": "Broker-backed commands, revision-aware diagnostics, and reviewed edit proposals"
+      }
     },
     {
       "id": "G5",
       "name": "Capability & Consent Broker",
-      "status": "in_progress",
-      "evidence": ["g5-capability-broker.md", "../../qa/extension-broker.test.cjs", "../../qa/extension-runtime.test.cjs"]
+      "status": "passed",
+      "evidence": ["g5-capability-broker.md", "../../qa/extension-broker.test.cjs", "../../qa/extension-runtime.test.cjs"],
+      "verification": {
+        "reviewer": "Codex",
+        "verifiedAt": "2026-11-11",
+        "implementationCommit": "1999c6f6e3ecc82f9238981302c4ed3105b831e1",
+        "testCommands": ["npm test", "npm run test:extension-host"],
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "nodeVersion": "24.15.0",
+        "wasmtimeVersion": "36.0.20",
+        "corePassed": 111,
+        "desktopPassed": 66,
+        "extensionHostPassed": 13,
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42955384816",
+        "scope": "Session consent, workspace and digest enforcement, revocation, sanitized audit, and confined brokered operations",
+        "knownLimitations": ["Executable activation on verified Windows x64 builds 26100 and 26300", "Session-only grants", "Package management through the registry until G6"]
+      }
     },
     { "id": "G6", "name": "Extension Manager UI", "status": "unverified", "evidence": [] },
     { "id": "G7", "name": "Local Distribution & Update", "status": "unverified", "evidence": [] },

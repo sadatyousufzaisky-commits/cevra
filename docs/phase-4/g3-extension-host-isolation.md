@@ -1,6 +1,6 @@
 # Phase 4 G3 — Extension host isolation
 
-Run `npm run test:extension-host` on Windows x64 with Node.js 24 and the .NET Framework compiler used by CEVRA's existing process host. The lab build verifies pinned Zig 0.15.2 and Wasmtime 36.0.20 downloads by SHA-256 and builds the launcher, worker, and native test probe under `dist`. The command exercises a lab entry point. The G5 capability broker remains the next dependency for executable extension activation. [Wasmtime C API](https://docs.wasmtime.dev/c-api/) · [Wasmtime release](https://github.com/bytecodealliance/wasmtime/releases/tag/v36.0.20) · [Zig release](https://ziglang.org/download/0.15.2/release-notes.html)
+Run `npm run test:extension-host` on Windows x64 with Node.js 24 and the .NET Framework compiler used by CEVRA's existing process host. The build verifies pinned Zig 0.15.2 and Wasmtime 36.0.20 downloads by SHA-256 and builds the launcher, worker, and native test probe under `dist`. This record covers the one-shot G3 isolation tests. The confined host also supports executable extensions through the G5 broker. [G5 capability broker](g5-capability-broker.md) · [Wasmtime C API](https://docs.wasmtime.dev/c-api/) · [Wasmtime release](https://github.com/bytecodealliance/wasmtime/releases/tag/v36.0.20) · [Zig release](https://ziglang.org/download/0.15.2/release-notes.html)
 
 ## Process boundary
 
