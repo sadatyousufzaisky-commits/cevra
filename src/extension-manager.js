@@ -21,6 +21,24 @@ function permissionList(permissions) {
   return list;
 }
 
+function permissionDiff(changes) {
+  if (!changes) return element('p', 'The installed permissions are unavailable. Review all requested permissions for this package.');
+  if (!changes.length) return element('p', 'No permission changes.');
+  const list = element('ul');
+  const labels = { added: 'Added capability', removed: 'Removed capability', changed: 'Changed scope' };
+  for (const change of changes) {
+    const item = element('li');
+    item.append(element('span', `${labels[change.status]} · ${permissionLabel({ capability: change.capability })}`));
+    const scope = element('ul');
+    for (const file of change.addedFiles) scope.append(element('li', `Added file scope · ${file}`));
+    for (const file of change.removedFiles) scope.append(element('li', `Removed file scope · ${file}`));
+    if (change.drafts) scope.append(element('li', `Open draft access ${change.drafts}.`));
+    if (scope.childElementCount) item.append(scope);
+    list.append(item);
+  }
+  return list;
+}
+
 const stateLabels = { enabled: 'Enabled', disabled: 'Disabled', quarantined: 'Quarantined', failed: 'Verification failed' };
 
 export function createExtensionManager({ api, getProject, review, diagnostics, report, errorText }) {
@@ -93,7 +111,7 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
     return control;
   }
 
-  function showDetails({ report: inspection, source, current, token: selectedToken }, opener) {
+  function showDetails({ report: inspection, source, current, update, token: selectedToken }, opener) {
     const { manifest, sha256, inventory } = inspection;
     detailOpener = opener;
     token = selectedToken;
@@ -112,8 +130,13 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
     }
     detailBody.replaceChildren(element('p', manifest.description), metadata,
       element('h4', 'Requested permissions'), permissionList(manifest.permissions));
-    if (selectedToken && current) detailBody.append(element('h4', 'Installed permissions'), current.permissions ?
-      permissionList(current.permissions) : element('p', 'The installed package could not be verified.'));
+    if (update) {
+      detailBody.append(element('h4', 'Permission changes'), permissionDiff(update.permissions));
+      if (manifest.schemaVersion === 2 && current.sha256 !== sha256) {
+        detailBody.append(element('p', 'Review permissions again before activating this package.'));
+      }
+    }
+    if (selectedToken && current?.permissions) detailBody.append(element('h4', 'Installed permissions'), permissionList(current.permissions));
     detailBody.append(element('h4', 'Package contents'), files);
     const snippets = manifest.contributes.snippets?.length ?? 0;
     const themes = manifest.contributes.themes?.length ?? 0;
@@ -123,24 +146,30 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
       if (themes) contributions.push(themes === 1 ? '1 editor palette' : `${themes} editor palettes`);
       detailBody.append(element('p', contributions.join(' · ')));
     }
-    install.hidden = !selectedToken || current?.sha256 === sha256;
+    const identical = current?.sha256 === sha256;
+    const downgrade = update?.direction === 'downgrade';
+    install.hidden = !selectedToken || identical || current?.pinned === true;
     install.disabled = false;
-    install.textContent = current ? 'Install Update' : 'Install Package';
+    install.textContent = !update ? 'Install Package' : downgrade ? 'Install Older Version' :
+      update.direction === 'replacement' ? 'Replace Package' : 'Install Update';
     install.onclick = () => {
       if (!token || busy) return;
       const approved = token;
       token = undefined;
       install.disabled = true;
       void act(async () => {
-        const installed = await api.installExtension(approved);
+        const installed = await api.installExtension(approved, downgrade);
         status.textContent = `${installed.displayName ?? installed.id} ${installed.version} installed. ${stateLabels[installed.state]}.`;
         discardDetails();
         focusAction = { id: installed.id, action: 'enable' };
       });
     };
     if (selectedToken) {
-      status.textContent = current?.sha256 === sha256 ? 'This exact package is already installed.' :
-        'Review the package before installing. The installed version will start disabled.';
+      if (identical) status.textContent = 'This exact package is already installed.';
+      else if (current?.pinned) status.textContent = `Version ${current.version} is pinned. Unpin it before changing packages.`;
+      else if (downgrade) status.textContent = `This package replaces version ${current.version} with older version ${manifest.version}. It starts disabled.`;
+      else if (update?.direction === 'replacement') status.textContent = 'This package has the same version and different bytes. It starts disabled.';
+      else status.textContent = 'Review the package before installing. The new version starts disabled.';
     }
     catalog.hidden = true;
     details.hidden = false;
@@ -182,6 +211,7 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
         failed && entry.enabled ? 'Stopped after a host failure' : stateLabels[entry.state];
       const type = entry.executable === undefined ? 'Local ZIP' : entry.executable ? 'Executable' : 'Declarative';
       row.append(title, element('p', `${entry.id} · ${entry.version} · ${type}`), element('p', state));
+      if (entry.pinned) row.append(element('p', 'Version pinned'));
       if (entry.state === 'failed') row.append(element('p', 'The stored package could not be verified. Restore a previous version or uninstall it.'));
       if (entry.executable && entry.enabled && !session && !safeStart) {
         if (!project) row.append(element('p', 'Open a workspace to review executable permissions.'));
@@ -200,6 +230,8 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
       }));
       if (entry.state === 'disabled') controls.append(change('enable', 'Enable', 'Extension enabled.'));
       if (entry.enabled) controls.append(change('disable', 'Disable', 'Extension disabled.', true));
+      if (entry.pinned) controls.append(change('unpin', 'Unpin Version', 'Version unpinned.'));
+      else if (entry.state !== 'failed') controls.append(change('pin', 'Pin Version', `Version ${entry.version} pinned.`));
       if (entry.executable && entry.enabled) {
         controls.append(session ? action(entry, 'revoke', 'Revoke Access', async () => {
           await api.revokeExtension(project.id, entry.id);
@@ -211,7 +243,7 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
       }
       if (entry.state === 'quarantined') controls.append(change('clear-quarantine', 'Clear Quarantine', 'Quarantine cleared. Extension disabled.'));
       else if (entry.state !== 'failed') controls.append(change('quarantine', 'Quarantine', 'Extension quarantined.'));
-      if (entry.rollback) controls.append(change('restore', 'Restore Previous Version', `Version ${entry.rollback.version} restored and disabled.`));
+      if (entry.rollback && !entry.pinned) controls.append(change('restore', 'Restore Previous Version', `Version ${entry.rollback.version} restored and disabled.`));
       controls.append(change('uninstall', 'Uninstall', 'Extension uninstalled.'));
       for (const command of session?.commands ?? []) {
         controls.append(action(entry, command.registrationId, 'Run ' + command.title, async () => {

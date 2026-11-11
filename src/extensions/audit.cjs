@@ -13,6 +13,8 @@ const results = new Set(['allowed', 'denied', 'failed', 'revoked']);
 const codes = new Set(['OK', 'PERMISSION_DENIED', 'STALE_SESSION', 'STALE_REVISION', 'INVALID_REQUEST',
   'QUOTA', 'UNAVAILABLE', 'HOST_FAILURE', 'AUDIT_UNAVAILABLE']);
 const eventKeys = ['eventId', 'time', 'extensionId', 'version', 'digest', 'workspace', 'operation', 'result', 'durationMs', 'code'];
+const temporaryPrefix = '.cevra-audit-';
+const temporaryPattern = /^\.cevra-audit-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\.tmp$/;
 
 function validEvent(event) {
   return exactKeys(event, eventKeys) && typeof event.eventId === 'string' && /^[a-f0-9-]{36}$/.test(event.eventId) &&
@@ -27,6 +29,7 @@ function createExtensionAudit(userData) {
   const folder = path.join(userData, 'extensions');
   const file = path.join(folder, 'audit.json');
   let queue = Promise.resolve();
+  let recovered = false;
 
   async function checkedFolder() {
     await fs.mkdir(folder, { recursive: true, mode: 0o700 });
@@ -54,8 +57,14 @@ function createExtensionAudit(userData) {
     const task = queue.then(async () => {
       if (!validEvent(event)) throw new Error('Invalid audit event.');
       const before = await checkedFolder();
+      if (!recovered) {
+        for await (const entry of await fs.opendir(folder)) {
+          if (entry.isFile() && temporaryPattern.test(entry.name)) await fs.unlink(path.join(folder, entry.name));
+        }
+        recovered = true;
+      }
       const events = (await read()).slice(-255).concat(event);
-      await writeAtomic(file, JSON.stringify({ version: 1, events }) + '\n', { beforeCommit: async () => {
+      await writeAtomic(file, JSON.stringify({ version: 1, events }) + '\n', { temporaryPrefix, beforeCommit: async () => {
         const current = await checkedFolder();
         if (current.dev !== before.dev || current.ino !== before.ino || current.birthtimeNs !== before.birthtimeNs) {
           throw new Error('The audit directory changed.');

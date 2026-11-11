@@ -103,7 +103,7 @@ const extensionManager = createExtensionManager({
     const prompts = {
       quarantine: ['Quarantine', 'The extension will be disabled and require review before it can be enabled again.'],
       'clear-quarantine': ['Clear Quarantine', 'The extension will stay disabled until you enable it.'],
-      restore: ['Restore Previous Version', `Restore version ${entry.rollback?.version} as a disabled extension.`],
+      restore: ['Restore Previous Version', `Restore version ${entry.rollback?.version} as a disabled extension.\nPrevious SHA-256 ${entry.rollback?.sha256}`],
       uninstall: ['Uninstall', 'This removes the installed package and its retained version from CEVRA.'],
     };
     const [label, explanation] = prompts[action];
@@ -118,8 +118,8 @@ const extensionManager = createExtensionManager({
 function notifyExtensionRuntime() {
   if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) window.webContents.send('cevra:extension-runtime-changed');
 }
-app.once('will-quit', extensions.onChange(id => {
-  if (!safeStart && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
+app.once('will-quit', extensions.onChange((id, change) => {
+  if (change !== 'pin' && !safeStart && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
     window.webContents.send('cevra:extension-contributions-changed', id);
   }
   notifyExtensionRuntime();
@@ -317,7 +317,7 @@ handle('extension-runtime', async (id, includeCatalog = true) => {
 });
 handle('select-extension-package', () => extensionManager.select());
 handle('inspect-installed-extension', (id, digest) => extensionManager.inspect(id, digest));
-handle('install-extension', token => extensionManager.install(token));
+handle('install-extension', (token, approveDowngrade) => extensionManager.install(token, approveDowngrade));
 handle('discard-extension-review', token => extensionManager.discard(token));
 handle('change-extension', (id, digest, action) => extensionManager.change(id, digest, action));
 handle('restart-extensions', disabled => {

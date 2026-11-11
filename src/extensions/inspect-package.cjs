@@ -5,7 +5,7 @@ const path = require('node:path');
 const { version: engineVersion } = require('../../package.json');
 const { InspectionError } = require('./inspection-error.cjs');
 const { parseManifest } = require('./manifest.cjs');
-const { manifestPath, maxPackageBytes, unpackPackage } = require('./package-zip.cjs');
+const { manifestPath, modulePath, maxPackageBytes, unpackPackage } = require('./package-zip.cjs');
 
 const windows = process.platform === 'win32';
 const reservedName = /^(?:con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³]) *(?:\.|$)/i;
@@ -78,7 +78,7 @@ function describePackage(archive) {
     publisher: 'unverified',
     manifest,
     inventory: [{ path: manifestPath, bytes: bytes.length, sha256: sha256(bytes) },
-      ...(module ? [{ path: 'extension.wasm', bytes: module.length, sha256: sha256(module) }] : [])],
+      ...(module ? [{ path: modulePath, bytes: module.length, sha256: sha256(module) }] : [])],
   };
 }
 
@@ -95,4 +95,4 @@ async function inspectExtensionPackage(filename) {
   return (await loadExtensionPackage(filename)).report;
 }
 
-module.exports = { describePackage, inspectExtensionPackage, loadExtensionPackage, readCheckedFile, sha256 };
+module.exports = { describePackage, inspectExtensionPackage, loadExtensionPackage, readCheckedFile, selectedPath, sha256 };

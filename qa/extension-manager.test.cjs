@@ -1,13 +1,17 @@
 const assert = require('node:assert/strict');
+const { execFile } = require('node:child_process');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { test } = require('node:test');
-const { archive, manifest } = require('./extension-fixtures.cjs');
+const { promisify } = require('node:util');
+const { archive, executableManifest, json, manifest, minimalModule } = require('./extension-fixtures.cjs');
 const { sha256 } = require('../src/extensions/inspect-package.cjs');
 const { openWorkbench, replaceEditor } = require('./desktop-workbench.cjs');
 
 const id = 'org.cevra.manager-test';
 const title = 'Studio Palette';
+const exec = promisify(execFile);
+const packer = path.resolve(__dirname, '../scripts/pack-extension.cjs');
 const packageBytes = version => archive({
   ...manifest({ themes: [{ id: 'studio', label: 'Studio', colors: { background: '#102030', foreground: '#F0F8FF', accent: '#79DCBA' } }] }),
   id, version, displayName: title, description: 'Review <button>literal package text</button>.',
@@ -206,3 +210,67 @@ test('a damaged registry has a visible error and still offers safe mode', { time
   assert.equal(await ui.dialog.getByText('No extensions installed.', { exact: true }).isVisible(), false);
   assert.equal(await ui.button('Restart in Safe Mode').isEnabled(), true);
 });
+
+test('offline packages install and preview changed permissions, pins, and an explicitly reviewed downgrade',
+  { timeout: 40_000 }, async t => {
+    let workbench = await openWorkbench(t, { 'entry.js': 'const value = 1;\n' });
+    const folder = path.dirname(workbench.profile);
+    const source = path.join(folder, 'source café');
+    await fs.mkdir(source);
+    const fixture = executableManifest([
+      { capability: 'commands.register' },
+      { capability: 'workspace.read', files: ['entry.js', 'old.js'] },
+    ], { id, version: '2.0.0', displayName: title });
+    await fs.writeFile(path.join(source, 'extension.json'), json(fixture));
+    await fs.writeFile(path.join(source, 'extension.wasm'), minimalModule);
+    const installedFile = path.join(folder, 'initial.zip');
+    const installReport = JSON.parse((await exec(process.execPath, [packer, source, installedFile], { windowsHide: true })).stdout);
+    await workbench.app.evaluate(({ session }) => session.defaultSession.enableNetworkEmulation({ offline: true }));
+    await selectPackage(workbench, installedFile);
+    let ui = manager(workbench.page);
+    await ui.open.click();
+    await install(ui);
+    assert.equal((await packages(workbench.page))[0].sha256, installReport.sha256);
+    await ui.entry.getByRole('button', { name: 'Pin Version', exact: true }).click();
+    await ui.entry.getByText('Version pinned', { exact: true }).waitFor();
+
+    const older = { ...fixture, version: '1.9.0', permissions: [
+      { capability: 'workspace.read', files: ['new.js', 'entry.js'], drafts: true },
+      { capability: 'diagnostics.publish', files: ['entry.js'] },
+    ] };
+    await fs.writeFile(path.join(source, 'extension.json'), json(older));
+    const candidate = path.join(folder, 'older.zip');
+    const olderReport = JSON.parse((await exec(process.execPath, [packer, source, candidate], { windowsHide: true })).stdout);
+    workbench = await workbench.restart();
+    ui = manager(workbench.page);
+    await selectPackage(workbench, candidate);
+    await ui.open.click();
+    await ui.entry.getByText('Version pinned', { exact: true }).waitFor();
+    await ui.button('Choose ZIP Package').click();
+    await ui.status.getByText('Version 2.0.0 is pinned. Unpin it before changing packages.', { exact: true }).waitFor();
+    assert.equal(await ui.button('Install Older Version').count(), 0);
+    await ui.button('Back to Installed').click();
+    await ui.entry.getByRole('button', { name: 'Unpin Version', exact: true }).click();
+    await ui.entry.getByRole('button', { name: 'Pin Version', exact: true }).waitFor();
+    const incompatible = path.join(folder, 'incompatible-v1.zip');
+    await fs.writeFile(incompatible, archive({ ...manifest(), id, engines: { cevra: '>=2.0.0 <3.0.0' } }));
+    await selectPackage(workbench, incompatible);
+    await ui.button('Choose ZIP Package').click();
+    await ui.status.getByText(/Package requires CEVRA >=2\.0\.0/).waitFor();
+    assert.equal((await packages(workbench.page))[0].sha256, installReport.sha256);
+    await selectPackage(workbench, candidate);
+    await ui.button('Choose ZIP Package').click();
+    await ui.dialog.getByRole('heading', { name: 'Permission changes', exact: true }).waitFor();
+    for (const label of ['Removed capability · Add commands to Extensions', 'Added capability · Show problems for these files',
+      'Added file scope · new.js', 'Removed file scope · old.js', 'Open draft access added.']) {
+      await ui.dialog.getByText(label, { exact: true }).waitFor();
+    }
+    await ui.status.getByText(/older version 1\.9\.0/).waitFor();
+    assert.equal((await packages(workbench.page))[0].sha256, installReport.sha256);
+    await ui.button('Install Older Version').click();
+    await ui.status.getByText('Studio Palette 1.9.0 installed. Disabled.', { exact: true }).waitFor();
+    const [downgraded] = await packages(workbench.page);
+    assert.equal(downgraded.sha256, olderReport.sha256);
+    assert.equal(downgraded.enabled, false);
+    assert.equal(downgraded.rollback.sha256, installReport.sha256);
+  });

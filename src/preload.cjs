@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('cevra', {
   extensionRuntime: (id, includeCatalog) => ipcRenderer.invoke('cevra:extension-runtime', id, includeCatalog),
   selectExtensionPackage: () => ipcRenderer.invoke('cevra:select-extension-package'),
   inspectInstalledExtension: (id, digest) => ipcRenderer.invoke('cevra:inspect-installed-extension', id, digest),
-  installExtension: token => ipcRenderer.invoke('cevra:install-extension', token),
+  installExtension: (token, approveDowngrade) => ipcRenderer.invoke('cevra:install-extension', token, approveDowngrade),
   discardExtensionReview: token => ipcRenderer.invoke('cevra:discard-extension-review', token),
   changeExtension: (id, digest, action) => ipcRenderer.invoke('cevra:change-extension', id, digest, action),
   restartExtensions: disabled => ipcRenderer.invoke('cevra:restart-extensions', disabled),

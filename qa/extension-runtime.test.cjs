@@ -59,7 +59,7 @@ async function runtimeWorkbench(t, { installThroughManager = false } = {}) {
         ' Audit ' + JSON.stringify(events), { cause: error });
     });
   };
-  return { ...workbench, permissions, show, activate, command, extensionId: manifest.id, digest };
+  return { ...workbench, permissions, show, activate, command, extensionId: manifest.id, digest, packageFile, manifest, module };
 }
 
 test('the Wasm broker import rejects invalid guest memory before accessing the trusted handler',
@@ -265,4 +265,63 @@ test('the manager installs an executable, persists quarantine after three host f
     await workbench.page.locator('#show-problems').click();
     await workbench.page.getByRole('button', { name: /Check answer/ }).waitFor({ state: 'hidden' });
     assert.deepEqual(await workbench.editor.locator('.cm-line').allTextContents(), draft.split('\n'));
+  });
+
+test('pinning and a rejected update preserve the running host while a committed update requires fresh consent',
+  { timeout: 45_000 }, async t => {
+    const workbench = await runtimeWorkbench(t);
+    const { app, page, permissions, packageFile, manifest, module } = workbench;
+    const control = name => permissions.getByRole('button', { name, exact: true });
+    const catalog = () => page.evaluate(async () => (await window.cevra.extensionRuntime()).catalog);
+    await workbench.activate();
+    await control('Pin Version').click();
+    await permissions.getByText('Version pinned', { exact: true }).waitFor();
+    await workbench.command();
+    await control('Unpin Version').click();
+    await control('Pin Version').waitFor();
+
+    const version = '2.0.0';
+    const update = executableArchive({ ...manifest, version }, module);
+    await fs.writeFile(packageFile, update);
+    await control('Choose ZIP Package').click();
+    await control('Install Update').waitFor();
+    await app.evaluate(({ app }) => {
+      const fs = process.getBuiltinModule('node:fs/promises');
+      const path = process.getBuiltinModule('node:path');
+      const registry = path.join(app.getPath('userData'), 'extensions', 'registry.json');
+      const rename = fs.rename;
+      fs.rename = async (from, to) => {
+        if (to === registry) {
+          fs.rename = rename;
+          throw new Error('Test registry write failed.');
+        }
+        return rename(from, to);
+      };
+    });
+    await control('Install Update').click();
+    await permissions.getByText('Test registry write failed.', { exact: true }).waitFor();
+    assert.equal((await catalog())[0].sha256, workbench.digest);
+    assert.equal((await catalog())[0].enabled, true);
+    await control('Back to Installed').click();
+    await permissions.getByText('Active for this session', { exact: true }).waitFor();
+    await control('Run Review saved answer').click();
+    await permissions.getByText('Command completed.', { exact: true }).waitFor();
+
+    await control('Choose ZIP Package').click();
+    await control('Install Update').click();
+    await permissions.getByText('Broker Test 2.0.0 installed. Disabled.', { exact: true }).waitFor();
+    const [installed] = await catalog();
+    assert.equal(installed.sha256, sha256(update));
+    assert.equal(installed.enabled, false);
+    assert.equal(installed.rollback.sha256, workbench.digest);
+    await control('Run Review saved answer').waitFor({ state: 'hidden' });
+    await control('Enable').click();
+    await control('Review Permissions').waitFor();
+    assert.equal(await control('Run Review saved answer').count(), 0);
+    await control('Review Permissions').click();
+    await permissions.getByText('Active for this session', { exact: true }).waitFor();
+    const reviews = await app.evaluate(() => globalThis.extensionReviews.filter(review => review.title === 'Extension permissions'));
+    assert.equal(reviews.length, 2);
+    assert.match(reviews[0].detail, new RegExp(workbench.digest));
+    assert.match(reviews[1].detail, new RegExp(sha256(update)));
   });

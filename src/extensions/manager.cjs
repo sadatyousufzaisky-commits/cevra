@@ -1,8 +1,8 @@
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { inspectExtensionPackage } = require('./inspect-package.cjs');
-const { digestPattern, safeText } = require('./capabilities.cjs');
-const { packageId } = require('./manifest.cjs');
+const { comparePermissions, digestPattern, safeText } = require('./capabilities.cjs');
+const { comparePackageVersions, packageId } = require('./manifest.cjs');
 
 function createExtensionManager({ registry, broker, owner, choosePackage, confirm }) {
   let review;
@@ -44,38 +44,48 @@ function createExtensionManager({ registry, broker, owner, choosePackage, confir
       const current = (await registry.list()).find(entry => entry.id === report.manifest.id);
       checkOwner(window);
       const token = randomUUID();
-      review = { window, file, token, id: report.manifest.id, digest: report.sha256, expectedCurrent: current?.sha256 ?? null };
+      const comparison = current && comparePackageVersions(report.manifest.version, current.version);
+      const direction = comparison < 0 ? 'downgrade' : comparison > 0 ? 'upgrade' : 'replacement';
+      const update = current ? { direction,
+        permissions: current.permissions ? comparePermissions(current.permissions, report.manifest.permissions) : null,
+      } : null;
+      review = { window, file, token, id: report.manifest.id, digest: report.sha256,
+        expectedCurrent: current?.sha256 ?? null, downgrade: direction === 'downgrade' };
       const basename = path.basename(file);
-      return { token, report, current: current ?? null, source: safeText(basename, 255) ? basename : 'Local ZIP package' };
+      return { token, report, current: current ?? null, update, source: safeText(basename, 255) ? basename : 'Local ZIP package' };
     }),
     inspect: (id, digest) => run(async window => {
       const report = await registry.inspect(id, digest);
       checkOwner(window);
       return report;
     }),
-    install: token => run(async window => {
+    install: (token, approveDowngrade) => run(async window => {
       if (!review || review.window !== window || review.token !== token) throw new Error('Choose a ZIP package and review it again.');
-      const { file, id, digest, expectedCurrent } = review;
+      const { file, id, digest, expectedCurrent, downgrade } = review;
+      if (downgrade && approveDowngrade !== true) throw new Error('Approve the older version in the package review.');
       review = undefined;
-      if (expectedCurrent && expectedCurrent !== digest) {
-        await installed(id, expectedCurrent);
-        if ((await inspectExtensionPackage(file)).sha256 !== digest) throw new Error('The package bytes changed after review. Choose the ZIP again.');
-        checkOwner(window);
-        await broker.revoke(id);
-      }
       checkOwner(window);
-      return registry.install(file, { reviewedDigest: digest, expectedCurrent });
+      // The registry publishes a committed replacement before the old host is stopped.
+      const result = await registry.install(file, { reviewedDigest: digest, expectedCurrent, allowDowngrade: downgrade });
+      if (expectedCurrent && expectedCurrent !== digest) await broker.revoke(id);
+      return result;
     }),
     change: (id, digest, action) => run(async window => {
-      if (!['enable', 'disable', 'quarantine', 'clear-quarantine', 'restore', 'uninstall'].includes(action)) {
+      if (!['enable', 'disable', 'pin', 'unpin', 'quarantine', 'clear-quarantine', 'restore', 'uninstall'].includes(action)) {
         throw new Error('Choose an extension action.');
       }
       const entry = await installed(id, digest);
       checkOwner(window);
       if (action === 'restore' && !entry.rollback) throw new Error('There is no previous extension version to restore.');
       if (action === 'enable') return registry.setEnabled(id, digest, true);
+      if (action === 'pin' || action === 'unpin') return registry.setPinned(id, digest, action === 'pin');
       if (action !== 'disable' && !await confirm(window, entry, action)) return null;
       checkOwner(window);
+      if (action === 'restore') {
+        const result = await registry.rollback(id, digest, entry.rollback.sha256);
+        await broker.revoke(id);
+        return result;
+      }
       await broker.revoke(id);
       checkOwner(window);
       switch (action) {
@@ -86,7 +96,6 @@ function createExtensionManager({ registry, broker, owner, choosePackage, confir
           broker.clearFailure(id, digest);
           return result;
         }
-        case 'restore': return registry.rollback(id, digest, entry.rollback?.sha256);
         case 'uninstall': return registry.remove(id, digest);
       }
     }),

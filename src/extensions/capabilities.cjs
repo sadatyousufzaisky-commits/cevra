@@ -47,4 +47,24 @@ function permissionLabel(permission) {
   return labels.get(permission.capability) + (permission.drafts ? ' and open drafts' : '');
 }
 
-module.exports = { canonicalFile, digestPattern, exactKeys, identifierPattern, permissionLabel, safeText, validPermissions };
+function comparePermissions(installed, requested) {
+  const previous = new Map(installed.map(permission => [permission.capability, permission]));
+  const next = new Map(requested.map(permission => [permission.capability, permission]));
+  const changes = [];
+  for (const capability of labels.keys()) {
+    const before = previous.get(capability);
+    const after = next.get(capability);
+    if (!before && !after) continue;
+    const beforeFiles = before?.files ?? [];
+    const afterFiles = after?.files ?? [];
+    const addedFiles = afterFiles.filter(file => !beforeFiles.includes(file)).sort();
+    const removedFiles = beforeFiles.filter(file => !afterFiles.includes(file)).sort();
+    const drafts = Boolean(before?.drafts) === Boolean(after?.drafts) ? null : after?.drafts ? 'added' : 'removed';
+    if (!before || !after || addedFiles.length || removedFiles.length || drafts) {
+      changes.push({ capability, status: !before ? 'added' : !after ? 'removed' : 'changed', addedFiles, removedFiles, drafts });
+    }
+  }
+  return changes;
+}
+
+module.exports = { canonicalFile, comparePermissions, digestPattern, exactKeys, identifierPattern, permissionLabel, safeText, validPermissions };

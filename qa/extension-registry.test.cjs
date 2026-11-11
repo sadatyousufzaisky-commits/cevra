@@ -6,6 +6,7 @@ const path = require('node:path');
 const { test } = require('node:test');
 const { inspectExtensionPackage, sha256 } = require('../src/extensions/inspect-package.cjs');
 const { createExtensionRegistry } = require('../src/extensions/registry.cjs');
+const { createExtensionAudit } = require('../src/extensions/audit.cjs');
 const { archive, json, manifest } = require('./extension-fixtures.cjs');
 const { temporaryFolder } = require('./temp.cjs');
 
@@ -133,6 +134,69 @@ test('registry serializes clients in one process and orders independent packages
     results.find(item => item.status === 'fulfilled').value.sha256);
 });
 
+test('registry preserves a digest pin across reopen and requires explicit review for a compatible downgrade', async t => {
+  const { registry, profile, pack, file } = await fixture(t);
+  const older = await pack('1.9.0');
+  const current = await pack('1.10.0');
+  const newer = await pack('2.0.0');
+  await install(registry, older);
+  await install(registry, current, older.sha256);
+  await registry.setEnabled(current.id, current.sha256, true);
+  await registry.setPinned(current.id, current.sha256, true);
+  const pinned = await fs.readFile(file);
+  const reopened = createExtensionRegistry(profile);
+  assert.equal((await reopened.list())[0].pinned, true);
+  assert.equal((await install(reopened, current, older.sha256)).enabled, true);
+  await assert.rejects(install(reopened, newer, current.sha256), { code: 'EXTENSION_PINNED' });
+  await assert.rejects(reopened.rollback(current.id, current.sha256, older.sha256), { code: 'EXTENSION_PINNED' });
+  await assert.rejects(reopened.setPinned(current.id, older.sha256, false), { code: 'STALE_REGISTRY' });
+  assert.deepEqual(await fs.readFile(file), pinned);
+
+  await reopened.setPinned(current.id, current.sha256, false);
+  const beforeRejection = await fs.readFile(file);
+  await fs.writeFile(newer.filename, 'corrupt candidate');
+  await assert.rejects(install(reopened, newer, current.sha256), { code: 'INVALID_ARCHIVE' });
+  await assert.rejects(install(reopened, older, current.sha256), { code: 'DOWNGRADE_REVIEW_REQUIRED' });
+  assert.deepEqual(await fs.readFile(file), beforeRejection);
+  const result = await reopened.install(older.filename, { reviewedDigest: older.sha256,
+    expectedCurrent: current.sha256, allowDowngrade: true });
+  assert.equal(result.sha256, older.sha256);
+  assert.equal(result.enabled, false);
+  assert.deepEqual(result.rollback, { version: current.version, sha256: current.sha256 });
+  const restored = await reopened.rollback(older.id, older.sha256, current.sha256);
+  assert.equal(restored.sha256, current.sha256);
+  assert.equal(restored.enabled, false);
+});
+
+test('a pin transaction leaves a concurrent audit write intact', { timeout: 10_000 }, async t => {
+  const { registry, profile, pack, folder } = await fixture(t);
+  const current = await pack();
+  await install(registry, current);
+  const audit = createExtensionAudit(profile);
+  const auditFile = path.join(folder, 'audit.json');
+  const rename = fs.rename;
+  let staged;
+  let resume;
+  const auditStaged = new Promise(resolve => { staged = resolve; });
+  const auditReady = new Promise(resolve => { resume = resolve; });
+  t.mock.method(fs, 'rename', async (from, to) => {
+    if (to === auditFile) { staged(); await auditReady; }
+    return rename(from, to);
+  });
+  const writing = audit.record({ id: current.id, version: current.version, digest: current.sha256, workspace: 'f'.repeat(64) },
+    'commands.invoke', 'allowed', 'OK');
+  try {
+    await Promise.race([auditStaged, writing]);
+    const pinned = await registry.setPinned(current.id, current.sha256, true);
+    assert.equal(pinned.pinned, true);
+  } finally {
+    resume();
+    await writing;
+  }
+  assert.equal(JSON.parse(await fs.readFile(auditFile, 'utf8')).events[0].operation, 'commands.invoke');
+  assert.deepEqual((await fs.readdir(folder)).sort(), ['audit.json', 'registry.json']);
+});
+
 test('registry reports damaged package bytes and restores the verified rollback candidate', async t => {
   const { registry, pack, file } = await fixture(t);
   const first = await pack();
@@ -255,6 +319,7 @@ for (const action of ['install', 'update', 'remove']) {
       const first = await pack();
       const second = await pack('2.0.0');
       if (action !== 'install') await install(registry, first);
+      if (action === 'update') await registry.setEnabled(first.id, first.sha256, true);
       const operation = action === 'remove' ? 'remove' : 'install';
       const args = action === 'remove' ? [first.id, first.sha256] : action === 'update' ?
         [second.filename, { reviewedDigest: second.sha256, expectedCurrent: first.sha256 }] :
@@ -263,7 +328,14 @@ for (const action of ['install', 'update', 'remove']) {
       const recovered = createExtensionRegistry(profile);
       const expected = stage !== 'committed' ? (action === 'install' ? [] : [first.sha256]) :
         action === 'remove' ? [] : action === 'update' ? [second.sha256] : [first.sha256];
-      assert.deepEqual((await recovered.list()).map(entry => entry.sha256), expected, stage);
+      const entries = await recovered.list();
+      assert.deepEqual(entries.map(entry => entry.sha256), expected, stage);
+      if (action === 'update') {
+        assert.equal(entries[0].enabled, stage !== 'committed', stage);
+        assert.deepEqual(entries[0].rollback, stage === 'committed' ? { version: first.version, sha256: first.sha256 } : null);
+        const expectedContributions = stage === 'committed' ? [] : [first.sha256];
+        assert.deepEqual((await recovered.contributions()).map(entry => entry.sha256), expectedContributions, stage);
+      }
       assert.ok((await fs.readdir(folder)).every(name => name === 'registry.json'), stage);
       assert.deepEqual(await fs.readdir(workspace), ['draft.txt']);
       await recovered[operation](...args);

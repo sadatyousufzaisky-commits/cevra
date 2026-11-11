@@ -401,7 +401,8 @@ function createCapabilityBroker({ registry, audit, getWorkspace, isTrusted, cons
     return task;
   }
 
-  const unsubscribe = registry.onChange(id => {
+  const unsubscribe = registry.onChange((id, change) => {
+    if (change === 'pin') return;
     generations.set(id, (generations.get(id) ?? 0) + 1);
     void revoke(id).catch(() => {});
   });

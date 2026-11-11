@@ -3,7 +3,8 @@ const path = require('node:path');
 const { writeAtomic } = require('../atomic-file.cjs');
 const { describePackage, loadExtensionPackage, readCheckedFile, sha256 } = require('./inspect-package.cjs');
 const { maxPackageBytes, unpackPackage } = require('./package-zip.cjs');
-const { packageId, versionPattern } = require('./manifest.cjs');
+const { comparePackageVersions, packageId, versionPattern } = require('./manifest.cjs');
+const { exactKeys } = require('./capabilities.cjs');
 const { InspectionError } = require('./inspection-error.cjs');
 
 const maxEntries = 64;
@@ -38,8 +39,9 @@ function validateSnapshot(data) {
   const referenced = new Set();
   let lastId = '';
   for (const entry of data.entries) {
-    if (!keys(entry, ['id', 'enabled', 'current', 'previous']) || !validId(entry.id) ||
-        entry.id <= lastId || typeof entry.enabled !== 'boolean') corrupt();
+    if (!exactKeys(entry, ['id', 'enabled', 'current', 'previous'], ['pinned']) || !validId(entry.id) ||
+        entry.id <= lastId || typeof entry.enabled !== 'boolean' ||
+        (Object.hasOwn(entry, 'pinned') && entry.pinned !== true)) corrupt();
     lastId = entry.id;
     const versions = entry.previous === null ? [entry.current] : [entry.current, entry.previous];
     for (const version of versions) {
@@ -113,7 +115,7 @@ function summary(data, entry) {
     failure = error.code;
   }
   return {
-    id, sha256: current.sha256, version: current.version, enabled: state === 'enabled', state,
+    id, sha256: current.sha256, version: current.version, enabled: state === 'enabled', state, pinned: entry.pinned === true,
     rollback: previous && { sha256: previous.sha256, version: previous.version },
     ...(failure && { failure }),
     ...(manifest && { displayName: manifest.displayName, permissions: manifest.permissions, executable: manifest.schemaVersion === 2 }),
@@ -134,6 +136,10 @@ function findCurrent(data, id, digest, allowMissing = false) {
   return entry;
 }
 
+function requireUnpinned(entry) {
+  if (entry.pinned) fail('EXTENSION_PINNED', 'Unpin the installed version before changing packages.');
+}
+
 function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
   if (typeof userData !== 'string' || !path.isAbsolute(userData)) {
     fail('REGISTRY_PATH', 'Use the absolute CEVRA app-data directory.');
@@ -150,7 +156,7 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
       const directory = await checkedDirectory(folder);
       const data = await readSnapshot(file);
       await recover(folder);
-      return operation(data, async changedId => {
+      return operation(data, async (changedId, change) => {
         const bytes = encode({ data, checksum: sha256(encode(data)) });
         if (bytes.length > maxSnapshotBytes) fail('REGISTRY_QUOTA', 'The extension registry reached its storage limit.');
         await checkpoint('prepared');
@@ -164,7 +170,7 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
           },
         });
         for (const listener of listeners.get(writerKey) ?? []) {
-          try { listener(changedId); }
+          try { listener(changedId, change); }
           catch (error) { process.emitWarning(error); }
         }
         await checkpoint('committed');
@@ -176,11 +182,11 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
     return next;
   }
 
-  async function change(id, digest, mutate) {
+  async function change(id, digest, mutate, kind) {
     request(id, digest);
     return run(async (data, commit) => {
       const entry = findCurrent(data, id, digest);
-      if (mutate(data, entry)) await commit(id);
+      if (mutate(data, entry)) await commit(id, kind);
       return summary(data, entry);
     });
   }
@@ -229,8 +235,9 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
         if (!subscribers.size && listeners.get(writerKey) === subscribers) listeners.delete(writerKey);
       };
     },
-    async install(filename, { reviewedDigest, expectedCurrent = null } = {}) {
-      if (!matches(reviewedDigest, digestPattern) || (expectedCurrent !== null && !matches(expectedCurrent, digestPattern))) {
+    async install(filename, { reviewedDigest, expectedCurrent = null, allowDowngrade = false } = {}) {
+      if (!matches(reviewedDigest, digestPattern) || (expectedCurrent !== null && !matches(expectedCurrent, digestPattern)) ||
+          typeof allowDowngrade !== 'boolean') {
         fail('INVALID_EXTENSION_REQUEST', 'Review the package digest and the current installed version first.');
       }
       const { archive, report } = await loadExtensionPackage(filename);
@@ -244,6 +251,12 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
         }
         if ((existing?.current.sha256 ?? null) !== expectedCurrent) {
           fail('STALE_REGISTRY', 'The installed extension changed. Refresh and review it again.');
+        }
+        if (existing) {
+          requireUnpinned(existing);
+          if (!allowDowngrade && comparePackageVersions(version, existing.current.version) < 0) {
+            fail('DOWNGRADE_REVIEW_REQUIRED', 'Review this older version before installing it.');
+          }
         }
         if (!existing && data.entries.length === maxEntries) fail('REGISTRY_QUOTA', 'The extension registry holds up to 64 extensions.');
         if (existing?.previous) delete data.archives[existing.previous.sha256];
@@ -272,6 +285,17 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
         return true;
       });
     },
+    async setPinned(id, digest, pinned) {
+      if (typeof pinned !== 'boolean') fail('INVALID_EXTENSION_REQUEST', 'Choose whether to pin the installed version.');
+      return change(id, digest, (data, entry) => {
+        if (Boolean(entry.pinned) === pinned) return false;
+        if (pinned) {
+          checkPackage(data, id, entry.current);
+          entry.pinned = true;
+        } else delete entry.pinned;
+        return true;
+      }, 'pin');
+    },
     quarantine: (id, digest) => change(id, digest, (_data, entry) => {
       if (entry.current.quarantined) return false;
       entry.enabled = false;
@@ -285,6 +309,7 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
       return true;
     }),
     rollback: (id, digest, expectedPrevious) => change(id, digest, (data, entry) => {
+      requireUnpinned(entry);
       if (!entry.previous) fail('NO_ROLLBACK', 'There is no previous version to restore.');
       if (expectedPrevious !== undefined && entry.previous.sha256 !== expectedPrevious) {
         fail('STALE_REGISTRY', 'The previous extension version changed. Refresh and review it again.');

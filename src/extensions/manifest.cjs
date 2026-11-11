@@ -76,6 +76,10 @@ function compareVersions(left, right) {
   return left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
 }
 
+function comparePackageVersions(left, right) {
+  return compareVersions(left.split('.').map(Number), right.split('.').map(Number));
+}
+
 function checkEngine(engines, currentVersion) {
   object(engines, 'Engines', ['cevra']);
   const range = typeof engines.cevra === 'string' && engines.cevra.length <= 62 &&
@@ -150,4 +154,4 @@ function parseManifest(bytes, currentVersion) {
   return data;
 }
 
-module.exports = { checkKeys, packageId, parseManifest, versionPattern };
+module.exports = { checkKeys, comparePackageVersions, packageId, parseManifest, versionPattern };

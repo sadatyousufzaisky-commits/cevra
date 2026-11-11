@@ -8,7 +8,7 @@ Install the reviewed package, then choose **Enable** when ready. Declarative sni
 
 **Restart in Safe Mode** runs CEVRA's draft backup and close flow before restarting with extensions suspended. The manager stays available in safe mode, including when the registry cannot be read. **Restart with Extensions** returns to normal startup. Both modes preserve package enablement preferences.
 
-Package operations use the existing atomic registry. CEVRA checks the selected bytes again at installation and requires the installed digest to match the version shown in the review. This gate covers management of local packages. Distribution policies and update verification continue in G7.
+Package operations use the existing atomic registry. CEVRA checks the selected bytes again at installation and requires the installed digest to match the version shown in the review. G7 adds reproducible packaging, version pins, and permission changes in update review. [Local distribution and updates](g7-local-distribution.md)
 
 ## Verification
 

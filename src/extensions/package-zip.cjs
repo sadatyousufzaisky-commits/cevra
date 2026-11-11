@@ -2,6 +2,7 @@ const { crc32, inflateRawSync } = require('node:zlib');
 const { InspectionError } = require('./inspection-error.cjs');
 
 const manifestPath = 'extension.json';
+const modulePath = 'extension.wasm';
 const manifestName = Buffer.from(manifestPath, 'ascii');
 const maxPackageBytes = 256 * 1024;
 const maxManifestBytes = 128 * 1024;
@@ -87,7 +88,7 @@ function unpackPackage(archive) {
   const result = {};
   let local = 0;
   let central = directory;
-  for (const [name, key] of [['extension.json', 'manifest'], ['extension.wasm', 'module']]) {
+  for (const [name, key] of [[manifestPath, 'manifest'], [modulePath, 'module']]) {
     const filename = Buffer.from(name);
     const start = local + localHeaderBytes + filename.length;
     const next = central + directoryHeaderBytes + filename.length;
@@ -129,4 +130,42 @@ function unpackPackage(archive) {
   return result;
 }
 
-module.exports = { manifestPath, maxPackageBytes, unpackManifest, unpackPackage };
+function packExtensionZip(manifest, module) {
+  const entries = [[manifestPath, manifest]];
+  if (module) entries.push([modulePath, module]);
+  const files = [];
+  const directory = [];
+  let offset = 0;
+  let directorySize = 0;
+  for (const [name, bytes] of entries) {
+    const filename = Buffer.from(name, 'ascii');
+    const local = Buffer.alloc(localHeaderBytes);
+    local.writeUInt32LE(0x04034b50);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x21, 12); // DOS date 1980-01-01, midnight.
+    local.writeUInt32LE(crc32(bytes), 14);
+    local.writeUInt32LE(bytes.length, 18);
+    local.writeUInt32LE(bytes.length, 22);
+    local.writeUInt16LE(filename.length, 26);
+
+    const central = Buffer.alloc(directoryHeaderBytes);
+    central.writeUInt32LE(0x02014b50);
+    central.writeUInt16LE(20, 4);
+    local.copy(central, 6, 4, 28);
+    central.writeUInt32LE(0x20, 38);
+    central.writeUInt32LE(offset, 42);
+    files.push(local, filename, bytes);
+    directory.push(central, filename);
+    offset += local.length + filename.length + bytes.length;
+    directorySize += central.length + filename.length;
+  }
+  const end = Buffer.alloc(endRecordBytes);
+  end.writeUInt32LE(0x06054b50);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(directorySize, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...files, ...directory, end]);
+}
+
+module.exports = { manifestPath, modulePath, maxManifestBytes, maxPackageBytes, packExtensionZip, unpackManifest, unpackPackage };

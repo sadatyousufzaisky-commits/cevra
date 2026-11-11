@@ -2,8 +2,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 
-async function writeAtomic(file, text, { mode = 0o600, beforeCommit } = {}) {
-  const temporary = path.join(path.dirname(file), '.cevra-' + randomUUID() + '.tmp');
+async function writeAtomic(file, text, { mode = 0o600, beforeCommit, temporaryPrefix = '.cevra-' } = {}) {
+  const temporary = path.join(path.dirname(file), temporaryPrefix + randomUUID() + '.tmp');
   const handle = await fs.open(temporary, 'wx', mode);
   let committed = false;
   try {
