@@ -29,6 +29,7 @@ export function createProblemsPanel({ api, apply, jump, report, errorText }) {
   const badge = byId('problems-count');
   const retry = byId('problems-retry');
   const documents = new Map();
+  let extensions = [];
 
   function current(entry, version) {
     return documents.get(entry.tab.id) === entry && entry.tab.version === version;
@@ -43,6 +44,8 @@ export function createProblemsPanel({ api, apply, jump, report, errorText }) {
       pending += Number(entry.status === 'pending');
       unavailable += Number(entry.status === 'unavailable');
     }
+    const extensionCount = extensions.reduce((total, entry) => total + entry.items.length, 0);
+    count += extensionCount;
     badge.textContent = count;
     badge.hidden = count === 0;
     retry.hidden = pane.hidden || unavailable === 0;
@@ -50,7 +53,7 @@ export function createProblemsPanel({ api, apply, jump, report, errorText }) {
 
     const summary = [];
     if (pending) summary.push('Checking ' + pending + (pending === 1 ? ' file…' : ' files…'));
-    if (count) summary.push(count + (count === 1 ? ' syntax problem' : ' syntax problems'));
+    if (count) summary.push(count + (extensionCount ? (count === 1 ? ' problem' : ' problems') : (count === 1 ? ' syntax problem' : ' syntax problems')));
     if (unavailable) summary.push(unavailable + ' unavailable');
     status.textContent = summary.join(' · ') || (documents.size ? 'No syntax problems.' :
       'Open a JavaScript or TypeScript file to check syntax.');
@@ -83,6 +86,18 @@ export function createProblemsPanel({ api, apply, jump, report, errorText }) {
         }
         group.append(rows);
       }
+      fragment.append(group);
+    }
+    for (const entry of extensions) {
+      const group = document.createElement('li');
+      const heading = document.createElement('h3');
+      heading.className = 'problem-file';
+      heading.textContent = entry.tab.path + ' · ' + entry.extensionId;
+      const rows = document.createElement('ul');
+      rows.append(...entry.items.map(issue => problemRow(entry.tab, issue, location => {
+        jump(location, entry.expected).catch(report);
+      })));
+      group.append(heading, rows);
       fragment.append(group);
     }
     list.replaceChildren(fragment);
@@ -140,6 +155,7 @@ export function createProblemsPanel({ api, apply, jump, report, errorText }) {
 
   return {
     render,
+    setExtensions(entries) { extensions = entries; render(); },
     track(tab) {
       if (!tab.language) return;
       const entry = { tab, issues: [] };
@@ -156,6 +172,7 @@ export function createProblemsPanel({ api, apply, jump, report, errorText }) {
       render();
     },
     reset() {
+      extensions = [];
       for (const entry of documents.values()) clearTimeout(entry.timer);
       documents.clear();
       render();

@@ -7,6 +7,18 @@ contextBridge.exposeInMainWorld('cevra', {
   extensionContributions: () => ipcRenderer.invoke('cevra:extension-contributions'),
   setExtensionPalette: key => ipcRenderer.invoke('cevra:set-extension-palette', key),
   onExtensionContributionsChanged: callback => ipcRenderer.on('cevra:extension-contributions-changed', (_event, id) => callback(id)),
+  extensionRuntime: id => ipcRenderer.invoke('cevra:extension-runtime', id),
+  activateExtension: (id, extensionId, digest) => ipcRenderer.invoke('cevra:activate-extension', id, extensionId, digest),
+  revokeExtension: (id, extensionId) => ipcRenderer.invoke('cevra:revoke-extension', id, extensionId),
+  extensionCommand: (id, extensionId, commandId) => ipcRenderer.invoke('cevra:extension-command', id, extensionId, commandId),
+  extensionProposal: (id, extensionId, proposalId) => ipcRenderer.invoke('cevra:extension-proposal', id, extensionId, proposalId),
+  extensionDocumentChanged: (id, path) => ipcRenderer.send('cevra:extension-document-changed', id, path),
+  onExtensionRuntimeChanged: callback => ipcRenderer.on('cevra:extension-runtime-changed', () => callback()),
+  onExtensionEditorSnapshot: callback => ipcRenderer.on('cevra:extension-editor-snapshot', async (_event, request) => {
+    let snapshot = null;
+    try { snapshot = await callback(request); } catch {}
+    await ipcRenderer.invoke('cevra:extension-editor-snapshot', request.requestId, snapshot).catch(() => {});
+  }),
   editorSettings: id => ipcRenderer.invoke('cevra:editor-settings', id),
   setEditorSettings: (id, scope, values) => ipcRenderer.invoke('cevra:set-editor-settings', id, scope, values),
   workspaceTrust: id => ipcRenderer.invoke('cevra:workspace-trust', id),
@@ -31,7 +43,7 @@ contextBridge.exposeInMainWorld('cevra', {
   search: (id, request, query, caseSensitive, snapshots) =>
     ipcRenderer.invoke('cevra:search', id, request, query, caseSensitive, snapshots),
   cancelSearch: (id, request) => ipcRenderer.invoke('cevra:cancel-search', id, request),
-  stageEdits: (id, changes) => ipcRenderer.invoke('cevra:stage-edits', id, changes),
+  stageEdits: (id, changes, authority) => ipcRenderer.invoke('cevra:stage-edits', id, changes, authority),
   rename: (id, file, position, buffers, name) => ipcRenderer.invoke('cevra:rename', id, file, position, buffers, name),
   typeCheck: (id, file, buffers) => ipcRenderer.invoke('cevra:type-check', id, file, buffers),
   save: (id, file, text, revision) => ipcRenderer.invoke('cevra:save', id, file, text, revision),

@@ -77,4 +77,56 @@ function unpackManifest(archive) {
   return manifest;
 }
 
-module.exports = { manifestPath, maxPackageBytes, unpackManifest };
+function unpackPackage(archive) {
+  const end = archive.length - endRecordBytes;
+  if (end < 0 || archive.readUInt16LE(end + 10) !== 2) return { manifest: unpackManifest(archive) };
+  if (archive.readUInt32LE(end) !== 0x06054b50 || archive.readUInt32LE(end + 4) !== 0 ||
+      archive.readUInt16LE(end + 8) !== 2 || archive.readUInt16LE(end + 20) !== 0) reject('The executable ZIP requires two regular files on one disk.');
+  const directory = archive.readUInt32LE(end + 16);
+  if (directory + archive.readUInt32LE(end + 12) !== end) reject('The ZIP directory is inconsistent.');
+  const result = {};
+  let local = 0;
+  let central = directory;
+  for (const [name, key] of [['extension.json', 'manifest'], ['extension.wasm', 'module']]) {
+    const filename = Buffer.from(name);
+    const start = local + localHeaderBytes + filename.length;
+    const next = central + directoryHeaderBytes + filename.length;
+    if (start >= directory || next > end || archive.readUInt32LE(local) !== 0x04034b50 ||
+        archive.readUInt32LE(central) !== 0x02014b50 || archive.readUInt32LE(central + 42) !== local ||
+        archive.readUInt16LE(local + 26) !== filename.length || archive.readUInt16LE(local + 28) !== 0 ||
+        archive.readUInt16LE(central + 28) !== filename.length || archive.readUInt32LE(central + 30) !== 0 ||
+        archive.readUInt16LE(central + 34) !== 0 ||
+        !archive.subarray(local + 4, local + 26).equals(archive.subarray(central + 6, central + 28)) ||
+        !archive.subarray(local + localHeaderBytes, start).equals(filename) ||
+        !archive.subarray(central + directoryHeaderBytes, next).equals(filename)) reject('The executable ZIP requires extension.json followed by extension.wasm without extra metadata.');
+    const attributes = archive.readUInt32LE(central + 38);
+    const method = archive.readUInt16LE(local + 8);
+    const required = archive.readUInt16LE(local + 4);
+    if (![0, 3, 10, 19].includes(archive[central + 5]) || (attributes & 0xffff & ~dosFileFlags) ||
+        ![0, 0x8000].includes((attributes >>> 16) & 0xf000) ||
+        ![0, 0x0800].includes(archive.readUInt16LE(local + 6)) || ![0, 8].includes(method) ||
+        ![10, 20].includes(required) || (method === 8 && required !== 20)) reject('The executable ZIP uses unsupported file types or compression features.');
+    const compressed = archive.readUInt32LE(local + 18);
+    const size = archive.readUInt32LE(local + 22);
+    if (!size || size > 128 * 1024 || compressed > directory - start || (method === 0 && size !== compressed)) {
+      reject('Each executable package entry must fit within 128 KiB.');
+    }
+    const payload = archive.subarray(start, start + compressed);
+    let bytes = payload;
+    if (method === 8) {
+      let inflated;
+      try { inflated = inflateRawSync(payload, { maxOutputLength: size, info: true }); }
+      catch { reject('The compressed package entry is invalid.'); }
+      if (inflated.engine.bytesWritten !== compressed) reject('The package entry contains trailing compressed bytes.');
+      bytes = inflated.buffer;
+    }
+    if (bytes.length !== size || crc32(bytes) !== archive.readUInt32LE(local + 14)) reject('The package entry failed its size or CRC32 check.');
+    result[key] = bytes;
+    local = start + compressed;
+    central = next;
+  }
+  if (local !== directory || central !== end) reject('The executable ZIP contains unaccounted bytes.');
+  return result;
+}
+
+module.exports = { manifestPath, maxPackageBytes, unpackManifest, unpackPackage };

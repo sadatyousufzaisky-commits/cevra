@@ -14,4 +14,4 @@ Run `npm test` on Windows. Registry tests exercise digest verification, revocati
 
 Implementation `6c73f28fd4c48ab657aafd374896ae8b88cd9d62` passed 78 core tests, 66 desktop tests, and six isolation tests locally on Windows 11 x64 build 26300 and in hosted Windows Server 2025 x64 build 26100. The hosted run also checked the isolated host's clipboard fixture. Verification completed on 2026-11-11. [Windows verification](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42949730680)
 
-The extension registry is managed through the internal API until G6. G4's remaining acceptance work uses the G5 capability broker for commands, scoped diagnostics, and revision-checked edit proposals.
+The extension registry is managed through the internal API until G6. Commands, scoped diagnostics, and revision-checked edit proposals use the [G5 capability broker](g5-capability-broker.md).

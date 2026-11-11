@@ -15,6 +15,10 @@ const { createFormatService } = require('./format-service.cjs');
 const { createSemanticService } = require('./semantic-service.cjs');
 const { createPreferences } = require('./preferences.cjs');
 const { createExtensionRegistry } = require('./extensions/registry.cjs');
+const { createExtensionAudit } = require('./extensions/audit.cjs');
+const { createCapabilityBroker } = require('./extensions/broker.cjs');
+const { startExtensionHost, supportedRuntime } = require('./extensions/runtime.cjs');
+const { canonicalFile, digestPattern, exactKeys, permissionLabel } = require('./extensions/capabilities.cjs');
 const { createFlightpathStore } = require('./continuum/flightpath.cjs');
 const { createChangeLens } = require('./continuum/change-lens.cjs');
 const { createTestWorkstream, workstreamGoal } = require('./continuum/workstream.cjs');
@@ -58,6 +62,32 @@ let rendererReady = false;
 let closePending = false;
 let allowClose = false;
 let lastRendererCrash = 0;
+let authorizingExtension = false;
+const editorSnapshots = new Map();
+const extensionAudit = createExtensionAudit(app.getPath('userData'));
+const extensionBroker = createCapabilityBroker({
+  registry: extensions, audit: extensionAudit,
+  getWorkspace: () => changingWorkspace || closePending || allowClose || !rendererReady ? undefined : workspace,
+  isTrusted: project => preferences.isTrusted(project), safeStart, supported: supportedRuntime(),
+  startHost: startExtensionHost, editorSnapshot: readExtensionEditor,
+  consent: async ({ id, digest, manifest, project }) => {
+    const descriptions = manifest.permissions.map(permission => {
+      const files = permission.files ? '\n  ' + permission.files.join('\n  ') : '';
+      return permissionLabel(permission) + files;
+    }).join('\n\n');
+    const { response } = await dialog.showMessageBox(window, {
+      type: 'warning', title: 'Extension permissions',
+      message: 'Allow ' + manifest.displayName + ' in this workspace?',
+      detail: id + ' · Publisher unverified\nSHA-256 ' + digest + '\n\n' + project.root + '\n\n' + descriptions +
+        '\n\nAccess lasts until revocation, workspace change, or exit. Proposed edits require a separate preview and acceptance.',
+      buttons: ['Cancel', 'Allow for This Session'], defaultId: 0, cancelId: 0, noLink: true,
+    });
+    return response === 1;
+  },
+  changed: () => {
+    if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) window.webContents.send('cevra:extension-runtime-changed');
+  },
+});
 if (!safeStart) {
   app.once('will-quit', extensions.onChange(id => {
     if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
@@ -111,6 +141,44 @@ function currentWorkspace(id) {
   return workspace;
 }
 
+function readExtensionEditor(project, file, signal, allowedFiles) {
+  if (!rendererReady || !window || window.isDestroyed() || signal?.aborted || editorSnapshots.size >= 8) {
+    return Promise.reject(new Error('The editor is unavailable.'));
+  }
+  const requestId = randomUUID();
+  const owner = window.webContents;
+  return new Promise((resolve, reject) => {
+    function finish(error, value) {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', aborted);
+      editorSnapshots.delete(requestId);
+      if (error) reject(error);
+      else resolve(value);
+    }
+    const aborted = () => finish(new Error('The editor request expired.'));
+    const timer = setTimeout(aborted, 3000);
+    signal?.addEventListener('abort', aborted, { once: true });
+    editorSnapshots.set(requestId, { project, file, allowedFiles, owner, finish });
+    owner.send('cevra:extension-editor-snapshot', { requestId, workspaceId: project.id, path: file, allowedFiles });
+  });
+}
+
+handle('extension-editor-snapshot', (requestId, snapshot) => {
+  const request = editorSnapshots.get(requestId);
+  if (!request || request.owner !== window?.webContents || request.project !== workspace) return;
+  if (snapshot === null) return request.finish(undefined, null);
+  if (!exactKeys(snapshot, ['path', 'text', 'baseRevision', 'documentId', 'version', 'selection']) ||
+      !canonicalFile(snapshot.path) || (request.file && sourceFileKey(snapshot.path) !== sourceFileKey(request.file)) ||
+      (request.allowedFiles && !request.allowedFiles.some(file => sourceFileKey(file) === sourceFileKey(snapshot.path))) ||
+      typeof snapshot.text !== 'string' || !snapshot.text.isWellFormed() || Buffer.byteLength(snapshot.text) > 512 * 1024 ||
+      typeof snapshot.baseRevision !== 'string' || !digestPattern.test(snapshot.baseRevision) ||
+      !Number.isSafeInteger(snapshot.documentId) || snapshot.documentId < 1 || !Number.isSafeInteger(snapshot.version) || snapshot.version < 0 ||
+      !exactKeys(snapshot.selection, ['from', 'to']) || !Number.isInteger(snapshot.selection.from) || !Number.isInteger(snapshot.selection.to)) {
+    return request.finish(new Error('Invalid editor snapshot.'));
+  }
+  request.finish(undefined, snapshot);
+});
+
 async function readDrafts() {
   try {
     return await drafts.list();
@@ -147,6 +215,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
     const { entries, unreadable } = await readDrafts();
     const recovered = entries.filter(draft => draft.root === next.root);
     await terminals.closeAll();
+    await extensionBroker.suspend().catch(() => {});
     activeSearch?.controller.abort();
     syntax.stop();
     formatter.stop();
@@ -201,6 +270,47 @@ handle('set-extension-palette', async key => {
   }
   await preferences.setExtensionPalette(key);
 });
+handle('extension-runtime', async id => {
+  currentWorkspace(id);
+  return { catalog: (await extensions.list()).filter(extension => extension.executable), ...extensionBroker.snapshot() };
+});
+handle('activate-extension', async (id, extensionId, digest) => {
+  const project = currentWorkspace(id);
+  if (authorizingExtension || changingWorkspace || closePending || allowClose || !rendererReady || safeStart || !supportedRuntime()) {
+    throw new Error('Extension activation is unavailable.');
+  }
+  authorizingExtension = true;
+  const owner = window.webContents;
+  const activationEpoch = trustEpoch;
+  function checkOwner() {
+    currentWorkspace(id);
+    if (changingWorkspace || closePending || allowClose || !rendererReady || owner !== window?.webContents || activationEpoch !== trustEpoch) {
+      throw new Error('The extension activation request expired.');
+    }
+  }
+  try {
+    await extensions.executable(extensionId, digest);
+    checkOwner();
+    if (!await preferences.isTrusted(project)) {
+      const { response } = await dialog.showMessageBox(window, {
+        type: 'warning', title: 'Workspace trust', message: 'Trust this workspace to activate extensions?',
+        detail: project.root + '\n\nWorkspace execution will be trusted. Each extension also requires its own permission review.',
+        buttons: ['Cancel', 'Trust Workspace'], defaultId: 0, cancelId: 0, noLink: true,
+      });
+      checkOwner();
+      if (response !== 1) return false;
+      await preferences.setTrusted(project, true);
+    }
+    checkOwner();
+    return await extensionBroker.activate(extensionId, digest);
+  } finally { authorizingExtension = false; }
+});
+handle('revoke-extension', (id, extensionId) => { currentWorkspace(id); return extensionBroker.revoke(extensionId); });
+handle('extension-command', (id, extensionId, commandId) => { currentWorkspace(id); return extensionBroker.invoke(extensionId, commandId); });
+handle('extension-proposal', (id, extensionId, proposalId) => { currentWorkspace(id); return extensionBroker.proposal(extensionId, proposalId); });
+ipcMain.on('cevra:extension-document-changed', (event, id, file) => {
+  if (isWorkbench(event) && workspace?.id === id && typeof file === 'string') extensionBroker.documentChanged(id, file.replaceAll('\\', '/'));
+});
 handle('editor-settings', id => preferences.getEditor(id ? currentWorkspace(id) : undefined));
 handle('set-editor-settings', (id, scope, values) =>
   preferences.setEditor(id ? currentWorkspace(id) : undefined, scope, values));
@@ -208,6 +318,7 @@ handle('workspace-trust', id => preferences.isTrusted(currentWorkspace(id)));
 handle('revoke-trust', async id => {
   const project = currentWorkspace(id);
   trustEpoch++;
+  await extensionBroker.suspend().catch(() => {});
   runGrant = undefined;
   void sessions.cancel();
   await preferences.setTrusted(project, false);
@@ -376,7 +487,7 @@ handle('cancel-search', (id, requestId) => {
   if (activeSearch?.id === id && activeSearch.requestId === requestId) activeSearch.controller.abort();
 });
 handle('save', (id, file, text, revision) => saveSource(currentWorkspace(id), file, text, revision));
-handle('stage-edits', async (id, changes) => {
+handle('stage-edits', async (id, changes, authority) => {
   const project = currentWorkspace(id);
   if (!Array.isArray(changes) || !changes.length || changes.length > 64) throw new Error('Invalid edit batch.');
   const files = new Set();
@@ -395,7 +506,11 @@ handle('stage-edits', async (id, changes) => {
     }
   }
   currentWorkspace(id);
-  await drafts.setMany(project.root, changes);
+  if (authority !== undefined) {
+    if (!exactKeys(authority, ['extensionId', 'proposalId'])) throw new Error('Invalid extension proposal.');
+    await extensionBroker.commitProposal(authority.extensionId, authority.proposalId, changes,
+      beforeCommit => drafts.setMany(project.root, changes, { beforeCommit }));
+  } else await drafts.setMany(project.root, changes);
 });
 handle('save-copy', (id, file, text) => saveRecoveryCopy(currentWorkspace(id), file, text));
 handle('draft', (id, file, text, revision) => {
@@ -658,7 +773,7 @@ handle('close-ready', async (hasDrafts, backupFailed) => {
     window.webContents.send('cevra:close-canceled');
   } else {
     runGrant = undefined;
-    await Promise.all([sessions.cancel(), terminals.closeAll(), gitWrite?.catch(() => {})]);
+    await Promise.all([sessions.cancel(), terminals.closeAll(), gitWrite?.catch(() => {}), extensionBroker.suspend().catch(() => {})]);
     await flightpathStore.flush();
     if (!closePending || window !== closing) return;
     closePending = false;
@@ -696,6 +811,7 @@ async function launch() {
   workbench.webContents.on('render-process-gone', () => {
     if (window !== workbench) return;
     rendererReady = false;
+    void extensionBroker.suspend().catch(() => {});
     runGrant = undefined;
     closePending = false;
     activeSearch?.controller.abort();
@@ -718,6 +834,7 @@ async function launch() {
   });
   workbench.on('close', event => {
     if (allowClose || !rendererReady) {
+      void extensionBroker.suspend().catch(() => {});
       activeSearch?.controller.abort();
       void sessions.cancel();
       void terminals.closeAll();

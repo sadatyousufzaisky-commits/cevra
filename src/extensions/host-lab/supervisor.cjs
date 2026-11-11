@@ -8,9 +8,10 @@ const guestErrors = new Set(['engine-unavailable', 'invalid-module', 'imports-de
 
 function hostError(code, message) { return Object.assign(new Error(message), { code }); }
 
-async function openIsolationLab(scratch, { mode = 'worker', deadline = 5000 } = {}) {
+async function openIsolationLab(scratch, { mode = 'worker', deadline = 5000, onRequest } = {}) {
   if (process.platform !== 'win32' || process.arch !== 'x64' || !path.isAbsolute(scratch) ||
-      !['worker', 'probe'].includes(mode) || !Number.isInteger(deadline) || deadline < 50 || deadline > 15000) {
+      !['worker', 'probe'].includes(mode) || !Number.isInteger(deadline) || deadline < 50 || deadline > 15000 ||
+      (onRequest !== undefined && (typeof onRequest !== 'function' || mode !== 'worker'))) {
     throw hostError('HOST_CONFIGURATION', 'Use the Windows x64 isolation lab with a trusted scratch directory.');
   }
   const child = spawn(path.join(artifacts, 'extension-launcher.exe'), [String(process.pid), artifacts, scratch, mode], {
@@ -24,6 +25,8 @@ async function openIsolationLab(scratch, { mode = 'worker', deadline = 5000 } = 
   let stopping = false;
   let ended = false;
   let used = false;
+  let brokerActive = false;
+  let rpcBusy = false;
   let terminalError;
   let diagnosticBytes = 0;
   let finish;
@@ -63,16 +66,31 @@ async function openIsolationLab(scratch, { mode = 'worker', deadline = 5000 } = 
 
   child.stdout.on('data', chunk => {
     if (stopping) return;
-    if (buffer.length + chunk.length > maxResponse + 4) { malformed(); return; }
+    const responseLimit = onRequest ? maxRequest : maxResponse;
+    if (buffer.length + chunk.length > responseLimit + 4) { malformed(); return; }
     buffer = Buffer.concat([buffer, chunk]);
     if (buffer.length < 4) return;
     const length = buffer.readUInt32LE();
-    if (length < 1 || length > maxResponse || buffer.length > length + 4) { malformed(); return; }
+    if (length < 1 || length > responseLimit || buffer.length > length + 4) { malformed(); return; }
     if (buffer.length < length + 4) return;
     const type = buffer[4];
-    if (!pending?.types.includes(type)) { malformed(); return; }
     const payload = buffer.subarray(5);
     buffer = Buffer.alloc(0);
+    if (type === 21 && brokerActive && pending && !rpcBusy) {
+      const owner = pending;
+      rpcBusy = true;
+      void Promise.resolve().then(() => onRequest(payload)).then(response => {
+        if (stopping || ended || pending !== owner) return;
+        if (!Buffer.isBuffer(response) || !response.length || response.length > 1024 * 1024) return malformed();
+        const header = Buffer.alloc(5);
+        header.writeUInt32LE(response.length + 1);
+        header[4] = 12;
+        rpcBusy = false;
+        child.stdin.write(Buffer.concat([header, response]));
+      }).catch(() => malformed());
+      return;
+    }
+    if (rpcBusy || !pending?.types.includes(type)) { malformed(); return; }
     settle(undefined, { type, payload });
   });
   child.stderr.on('data', chunk => {
@@ -125,9 +143,30 @@ async function openIsolationLab(scratch, { mode = 'worker', deadline = 5000 } = 
       closed,
       stop,
       async ping() {
-        if (used || mode !== 'worker') throw hostError('HOST_STATE', 'The host cannot answer a heartbeat.');
+        if ((used && !brokerActive) || mode !== 'worker') throw hostError('HOST_STATE', 'The host cannot answer a heartbeat.');
         const { payload } = await send(1, Buffer.alloc(0), [17]);
         if (payload.length) { malformed(); throw hostError('HOST_PROTOCOL', 'The heartbeat response was invalid.'); }
+      },
+      async activate(bytes) {
+        if (!onRequest || used || !Buffer.isBuffer(bytes) || !bytes.length || bytes.length + 1 > maxRequest) {
+          throw hostError('HOST_STATE', 'Choose a bounded module for the unused broker host.');
+        }
+        used = brokerActive = true;
+        const reply = await send(10, bytes, [18, 19]);
+        if (reply.type === 18 && reply.payload.length === 4 && reply.payload.readInt32LE() === 0) return;
+        await stop();
+        throw hostError('HOST_ACTIVATION', 'The extension did not activate successfully.');
+      },
+      async invoke(handler) {
+        if (!brokerActive || !Number.isInteger(handler) || handler < 0 || handler > 31) {
+          throw hostError('HOST_STATE', 'Choose an active extension command.');
+        }
+        const payload = Buffer.alloc(4);
+        payload.writeUInt32LE(handler);
+        const reply = await send(11, payload, [18, 19]);
+        if (reply.type === 18 && reply.payload.length === 4) return reply.payload.readInt32LE();
+        await stop();
+        throw hostError('HOST_COMMAND', 'The extension command failed.');
       },
       async run(bytes) {
         if (used || mode !== 'worker' || !Buffer.isBuffer(bytes) || !bytes.length) {

@@ -59,14 +59,14 @@ function createDraftStore(folder) {
     });
   }
 
-  function setMany(root, changes) {
+  function setMany(root, changes, { beforeCommit } = {}) {
     return enqueue(async () => {
       const updated = Date.now();
       const entries = changes.map(({ path, text, revision }) => ({ version, root, path, text, revision, updated }));
       if (!entries.length || new Set(entries.map(validate)).size !== entries.length) throw new Error('Invalid draft batch.');
       await replay(await readBatch());
       await fs.mkdir(folder, { recursive: true, mode: 0o700 });
-      await writeAtomic(journal, JSON.stringify(entries));
+      await writeAtomic(journal, JSON.stringify(entries), { beforeCommit });
       // The journal is authoritative until every individual draft has been written.
       await replay(entries).catch(() => {});
     });

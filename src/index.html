@@ -324,6 +324,7 @@
     <button id="inspect-symbol" class="status-action" title="Inspect symbol (Ctrl+Alt+I)" disabled>Inspect symbol</button>
     <button id="go-definition" class="status-action" title="Go to Definition (F12)" disabled>Go to Definition</button>
     <button id="editor-settings" class="status-action" title="Editor settings (Ctrl+,)" disabled>Settings</button>
+    <button id="extension-permissions" class="status-action" disabled>Extensions</button>
     <label class="theme-control">Theme
       <select id="theme-choice" disabled>
         <option value="dark">CEVRA Dark</option>
@@ -367,6 +368,14 @@
         <button id="settings-save" type="submit" class="button primary">Save Settings</button>
       </div>
     </form>
+  </dialog>
+  <dialog id="extension-permissions-dialog" class="definition-dialog" aria-labelledby="extension-permissions-heading">
+    <h2 id="extension-permissions-heading">Extension Permissions</h2>
+    <p id="extension-permissions-status" role="status"></p>
+    <ul id="extension-permissions-list" class="definition-choices"></ul>
+    <div class="edits-actions">
+      <button id="extension-permissions-close" class="button">Close</button>
+    </div>
   </dialog>
   <dialog id="edits-dialog" class="definition-dialog edits-dialog" aria-labelledby="edits-heading">
     <h2 id="edits-heading"></h2>

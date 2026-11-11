@@ -47,5 +47,13 @@ function zip(entries) {
 
 const json = value => Buffer.from(JSON.stringify(value));
 const archive = (data = manifest(), entry = {}) => zip([{ bytes: Buffer.isBuffer(data) ? data : json(data), ...entry }]);
+const minimalModule = Buffer.from('0061736d010000000105016000017f030201000707010372756e00000a0601040041000b', 'hex');
+function executableManifest(permissions, options = {}) {
+  return { ...manifest({}), schemaVersion: 2, permissions,
+    runtime: { apiVersion: '0.1', entry: 'extension.wasm' }, ...options };
+}
+const executableArchive = (data, module = minimalModule) => zip([
+  { bytes: json(data) }, { name: 'extension.wasm', bytes: module },
+]);
 
-module.exports = { archive, json, manifest, manifestName, zip };
+module.exports = { archive, json, manifest, manifestName, zip, executableManifest, executableArchive, minimalModule };

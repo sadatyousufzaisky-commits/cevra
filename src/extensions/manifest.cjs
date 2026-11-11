@@ -1,4 +1,5 @@
 const { InspectionError } = require('./inspection-error.cjs');
+const { validPermissions } = require('./capabilities.cjs');
 
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 const versionPattern = /^(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})$/;
@@ -108,9 +109,9 @@ function themes(value, where) {
   }
 }
 
-function checkContributions(data) {
+function checkContributions(data, executable = false) {
   object(data, 'Contributions', [], ['snippets', 'themes']);
-  if (!Object.keys(data).length) reject('Manifest', 'must contain a snippet or theme.');
+  if (!Object.keys(data).length && !executable) reject('Manifest', 'must contain a snippet or theme.');
   for (const [key, max, validate] of [['snippets', 32, snippets], ['themes', 8, themes]]) {
     if (!Object.hasOwn(data, key)) continue;
     const entries = data[key];
@@ -131,17 +132,22 @@ function checkContributions(data) {
 
 function parseManifest(bytes, currentVersion) {
   const data = decode(bytes);
-  object(data, 'Manifest', ['schemaVersion', 'id', 'version', 'displayName', 'description', 'engines', 'permissions', 'contributes']);
-  if (data.schemaVersion !== 1) reject('Manifest', 'must use schema version 1.');
+  const executable = data?.schemaVersion === 2;
+  object(data, 'Manifest', ['schemaVersion', 'id', 'version', 'displayName', 'description', 'engines', 'permissions', 'contributes'], executable ? ['runtime'] : []);
+  if (data.schemaVersion !== 1 && !executable) reject('Manifest', 'must use schema version 1 or 2.');
   text(data.id, 'Extension ID', 3, 100);
   if (!packageId.test(data.id)) reject('Extension ID', 'must use a lowercase reverse-domain name.');
   version(data.version, 'Extension version');
   text(data.displayName, 'Display name', 1, 80);
   text(data.description, 'Description', 1, 320);
-  if (!Array.isArray(data.permissions) || data.permissions.length) reject('Permissions', 'must be an empty array in v1.');
-  checkContributions(data.contributes);
+  if (executable) {
+    object(data.runtime, 'Runtime', ['apiVersion', 'entry']);
+    if (data.runtime.apiVersion !== '0.1' || data.runtime.entry !== 'extension.wasm') reject('Runtime', 'must use API 0.1 and extension.wasm.');
+    if (!validPermissions(data.permissions)) reject('Permissions', 'must request supported capabilities with explicit file scopes.');
+  } else if (!Array.isArray(data.permissions) || data.permissions.length) reject('Permissions', 'must be an empty array in v1.');
+  checkContributions(data.contributes, executable);
   checkEngine(data.engines, currentVersion);
   return data;
 }
 
-module.exports = { packageId, parseManifest, versionPattern };
+module.exports = { checkKeys, packageId, parseManifest, versionPattern };

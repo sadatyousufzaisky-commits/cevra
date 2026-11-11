@@ -17,6 +17,10 @@
 #define RESULT 18
 #define REJECTED 19
 #define PROBE_RESULT 20
+#define ACTIVATE 10
+#define COMMAND 11
+#define RPC_REPLY 12
+#define RPC_REQUEST 21
 
 static uint32_t decode_word(const uint8_t *bytes) {
     return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) |

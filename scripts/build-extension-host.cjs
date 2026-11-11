@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 if (process.platform !== 'win32' || process.arch !== 'x64') {
+  if (process.argv.includes('--if-supported')) process.exit(0);
   throw new Error('The extension isolation lab requires Windows x64.');
 }
 const root = path.resolve(__dirname, '..');

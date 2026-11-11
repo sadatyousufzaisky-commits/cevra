@@ -120,5 +120,11 @@ export function createEditPreview({ prepare, stage, errorText }) {
       dialog.showModal();
       name.focus();
     },
+    extension(getFiles) {
+      heading.textContent = 'Review Extension Edit';
+      form.hidden = true;
+      dialog.showModal();
+      void load(getFiles, undefined, true);
+    },
   };
 }

@@ -10,6 +10,7 @@ import { createEditPreview } from './edit-preview.js';
 import { createEditorSettings, editorOptions, optionExtensions } from './editor-settings.js';
 import { colorModeExtension, editorColorMode, editorTheme } from './editor-theme.js';
 import { createExtensionContributions } from './extension-contributions.js';
+import { createExtensionPermissions } from './extension-permissions.js';
 import { createChangeLensPanel } from './change-lens-panel.js';
 import { createFailureLens, refreshDebugGutter } from './failure-lens.js';
 import { createFlightpathPanel } from './flightpath-panel.js';
@@ -193,6 +194,7 @@ function syncCommands() {
   const saving = savingAll || open.some(tab => tab.saving);
   const discarding = open.some(tab => tab.discarding);
   const runtime = runtimeKind(active?.path);
+  byId('extension-permissions').disabled = !project || changingProject;
   dock.dataset.runtime = runtime ?? '';
   runtimePanel.sync(project, runtime, Boolean(run || changingProject));
   dockButtons.terminal.disabled = !project?.terminalLimit || changingProject;
@@ -297,12 +299,13 @@ function updateDocument(tab, before, state, changes, docChanged) {
   tab.state = state;
   const endingChanged = before.field(lineEnding, false) !== state.field(lineEnding);
   if (docChanged) {
-    tab.syntaxIssues = tab.typeIssues = undefined;
+    tab.syntaxIssues = tab.typeIssues = tab.extensionIssues = undefined;
     tab.version++;
     navigation.map(tab.id, changes, state.doc);
     failureLens.mapBreakpoints(tab.path, before.doc, state.doc, changes);
   }
   if (docChanged || endingChanged) {
+    api.extensionDocumentChanged(tab.projectId, tab.path);
     testEvidence.changed();
     const dirty = isDirty(tab, state);
     if (dirty !== tab.dirty) {
@@ -599,6 +602,7 @@ async function adoptProject(next) {
   symbolPicker.close();
   semantic.changed();
   project = next;
+  extensionPermissions.reset();
   changePanel.reset(next);
   terminalPanel.reset(next);
   taskPanel.reset(next);
@@ -838,6 +842,7 @@ function showDock(name, focus = false) {
   failureLens.show(name === 'failure');
   changePanel.show(name === 'changes');
   problemsPanel.render();
+  if (name === 'problems') void extensionPermissions.refresh();
   if (focus && name !== 'terminal') dockButtons[name].focus();
 }
 
@@ -1341,7 +1346,7 @@ const semantic = createSemanticContext({
 });
 function showDiagnostics(tab) {
   if (documents.get(tab.path) !== tab) return;
-  const update = setDiagnostics(tab.state, [...(tab.syntaxIssues ?? []), ...(tab.typeIssues ?? [])]);
+  const update = setDiagnostics(tab.state, [...(tab.syntaxIssues ?? []), ...(tab.typeIssues ?? []), ...(tab.extensionIssues ?? [])]);
   if (tab === active) view.dispatch(update);
   else tab.state = tab.state.update(update).state;
 }
@@ -1396,7 +1401,7 @@ const staleEdits = path => new Error('The source changed. Refresh the preview fo
 
 const editPreview = createEditPreview({
   errorText,
-  async prepare({ files, skipped }, replacement) {
+  async prepare({ files, skipped, authority }, replacement) {
     if (!project || changingProject || run || files.length > 64) throw new Error('Preview at most 64 files at a time.');
     const workspace = project;
     const changes = [];
@@ -1427,7 +1432,7 @@ const editPreview = createEditPreview({
       }).sort((a, b) => a.from - b.from);
       let end = 0;
       for (const edit of edits) {
-        if (edit.from < end || edit.to <= edit.from || edit.to > original.length || typeof edit.insert !== 'string') {
+        if (edit.from < end || edit.to < edit.from || edit.to > original.length || typeof edit.insert !== 'string') {
           throw new Error('Invalid edit range in ' + path);
         }
         end = edit.to;
@@ -1435,7 +1440,7 @@ const editPreview = createEditPreview({
       const changed = edits.filter(edit => original.sliceString(edit.from, edit.to) !== edit.insert);
       if (changed.length) changes.push({ path, tab, version, eol, disk, doc: original, edits: changed });
     }
-    return { workspace, changes, skipped };
+    return { workspace, changes, skipped, authority };
   },
   stage(prepared, verify) {
     stagingEdits = stageEdits(prepared, verify).finally(() => { stagingEdits = undefined; });
@@ -1443,7 +1448,7 @@ const editPreview = createEditPreview({
   },
 });
 
-async function stageEdits({ workspace, changes }, verify) {
+async function stageEdits({ workspace, changes, authority }, verify) {
   if (project !== workspace || changingProject || run) throw new Error('The workspace is busy or has changed.');
   ++fileRequest;
   definitionNavigation.invalidate();
@@ -1459,7 +1464,7 @@ async function stageEdits({ workspace, changes }, verify) {
     const bom = tab?.bom ?? (disk.text.startsWith('\uFEFF') ? '\uFEFF' : '');
     return { path, text: bom + modified.toString().replaceAll('\n', eol), revision: disk.revision };
   });
-  await api.stageEdits(workspace.id, staged);
+  await api.stageEdits(workspace.id, staged, authority);
   let first;
   for (const file of changes) {
     const tab = file.tab ?? createTab(file.path, file.disk.text, file.disk.revision);
@@ -1471,6 +1476,63 @@ async function stageEdits({ workspace, changes }, verify) {
   showFile(active ?? first);
   notify('Created recoverable drafts in ' + changes.length + (changes.length === 1 ? ' file.' : ' files.'));
 }
+
+api.onExtensionEditorSnapshot(({ workspaceId, path, allowedFiles }) => {
+  if (project?.id !== workspaceId || changingProject) return null;
+  const tab = path ? findDocument(path) : active;
+  if (!tab || tab.recoveryConflict || tab.saving || tab.discarding || tab.formatting) return null;
+  if (allowedFiles && !allowedFiles.some(file => documentKey(file) === documentKey(tab.path))) return null;
+  const selection = tab.state.selection.main;
+  return { path: tab.path.replaceAll('\\', '/'), text: serialize(tab), baseRevision: tab.revision,
+    documentId: tab.id, version: tab.version, selection: { from: selection.from, to: selection.to } };
+});
+
+let renderedExtensionDiagnostics;
+const extensionPermissions = createExtensionPermissions({ api, getProject: () => project, report, errorText,
+  async review(extensionId, proposalId) {
+    editPreview.extension(async () => {
+      const proposal = await api.extensionProposal(project.id, extensionId, proposalId);
+      return { authority: { extensionId, proposalId }, files: [{
+        path: proposal.path, revision: proposal.revision, documentId: proposal.documentId, version: proposal.version,
+        matches: [{ offset: 0, length: proposal.original.length, replacement: proposal.proposedText }],
+      }] };
+    });
+  },
+  async diagnostics(sessions, current) {
+    const workspace = project;
+    const entries = [];
+    const issues = new Map();
+    for (const session of sessions) {
+      for (const diagnostic of session.diagnostics) {
+        const disk = await api.read(project.id, diagnostic.path).catch(() => null);
+        if (!current()) return;
+        if (!disk || disk.revision !== diagnostic.revision) continue;
+        const tab = findDocument(diagnostic.path);
+        let doc;
+        if (tab) {
+          if (diagnostic.documentId === undefined ? tab.dirty || tab.revision !== diagnostic.revision :
+            tab.id !== diagnostic.documentId || tab.version !== diagnostic.version) continue;
+          doc = tab.state.doc;
+          issues.set(tab, (issues.get(tab) ?? []).concat(diagnostic.items.map(item => ({ ...item, source: session.id }))));
+        } else {
+          if (diagnostic.documentId !== undefined) continue;
+          doc = Text.of(normalizeSource(disk.text).split('\n'));
+        }
+        entries.push({ extensionId: session.id, tab: { path: diagnostic.path, state: { doc } }, items: diagnostic.items,
+          expected: { revision: diagnostic.revision, documentId: diagnostic.documentId, version: diagnostic.version,
+            isCurrent: () => project === workspace && renderedExtensionDiagnostics === entries } });
+      }
+    }
+    if (!current()) return;
+    for (const tab of documents.values()) {
+      if (!tab.extensionIssues?.length && !issues.has(tab)) continue;
+      tab.extensionIssues = issues.get(tab);
+      if (tab.language) showDiagnostics(tab);
+    }
+    renderedExtensionDiagnostics = entries;
+    problemsPanel.setExtensions(entries);
+  },
+});
 
 function renameSymbol() {
   if (renameButton.disabled || !semantic.available()) return;

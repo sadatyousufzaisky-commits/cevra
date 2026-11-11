@@ -2,7 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { writeAtomic } = require('../atomic-file.cjs');
 const { describePackage, loadExtensionPackage, readCheckedFile, sha256 } = require('./inspect-package.cjs');
-const { maxPackageBytes } = require('./package-zip.cjs');
+const { maxPackageBytes, unpackPackage } = require('./package-zip.cjs');
 const { packageId, versionPattern } = require('./manifest.cjs');
 const { InspectionError } = require('./inspection-error.cjs');
 
@@ -105,7 +105,8 @@ function summary(data, entry) {
   const { id, current, previous } = entry;
   let state = current.quarantined ? 'quarantined' : entry.enabled ? 'enabled' : 'disabled';
   let failure;
-  try { checkPackage(data, id, current); }
+  let manifest;
+  try { manifest = checkPackage(data, id, current); }
   catch (error) {
     if (!(error instanceof InspectionError)) throw error;
     state = 'failed';
@@ -115,6 +116,7 @@ function summary(data, entry) {
     id, sha256: current.sha256, version: current.version, enabled: state === 'enabled', state,
     rollback: previous && { sha256: previous.sha256, version: previous.version },
     ...(failure && { failure }),
+    ...(manifest?.schemaVersion === 2 && { displayName: manifest.displayName, permissions: manifest.permissions, executable: true }),
   };
 }
 
@@ -185,6 +187,17 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
 
   return {
     list: () => run(data => data.entries.map(entry => summary(data, entry))),
+    executable(id, digest) {
+      request(id, digest);
+      return run(data => {
+        const entry = findCurrent(data, id, digest);
+        if (!entry.enabled || entry.current.quarantined) fail('EXTENSION_DISABLED', 'Enable the reviewed extension first.');
+        const manifest = checkPackage(data, id, entry.current);
+        if (manifest.schemaVersion !== 2) fail('NO_EXECUTABLE', 'This extension contains declarative contributions.');
+        const { module } = unpackPackage(Buffer.from(data.archives[digest], 'base64'));
+        return { manifest, module };
+      });
+    },
     contributions: () => run(data => {
       const packages = [];
       for (const { id, current, enabled } of data.entries) {

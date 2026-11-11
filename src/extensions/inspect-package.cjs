@@ -5,7 +5,7 @@ const path = require('node:path');
 const { version: engineVersion } = require('../../package.json');
 const { InspectionError } = require('./inspection-error.cjs');
 const { parseManifest } = require('./manifest.cjs');
-const { manifestPath, maxPackageBytes, unpackManifest } = require('./package-zip.cjs');
+const { manifestPath, maxPackageBytes, unpackPackage } = require('./package-zip.cjs');
 
 const windows = process.platform === 'win32';
 const reservedName = /^(?:con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³]) *(?:\.|$)/i;
@@ -65,15 +65,20 @@ const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 function describePackage(archive) {
   if (archive.length > maxPackageBytes) throw new InspectionError('PACKAGE_TOO_LARGE', 'The ZIP exceeds 256 KiB.');
-  const bytes = unpackManifest(archive);
+  const { manifest: bytes, module } = unpackPackage(archive);
   const manifest = parseManifest(bytes, engineVersion);
+  if (Boolean(module) !== (manifest.schemaVersion === 2) ||
+      (module && !module.subarray(0, 8).equals(Buffer.from('0061736d01000000', 'hex')))) {
+    throw new InspectionError('INVALID_ARCHIVE', 'Executable packages require a v2 manifest and one core WebAssembly module.');
+  }
   return {
-    format: 'cevra-zip-v1',
+    format: module ? 'cevra-zip-v2' : 'cevra-zip-v1',
     engineVersion,
     sha256: sha256(archive),
     publisher: 'unverified',
     manifest,
-    inventory: [{ path: manifestPath, bytes: bytes.length, sha256: sha256(bytes) }],
+    inventory: [{ path: manifestPath, bytes: bytes.length, sha256: sha256(bytes) },
+      ...(module ? [{ path: 'extension.wasm', bytes: module.length, sha256: sha256(module) }] : [])],
   };
 }
 
