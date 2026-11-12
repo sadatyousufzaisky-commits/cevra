@@ -32,3 +32,5 @@ This slice accepts prompt-only input in the preview. The ABI covers text, usage,
 ## Verification
 
 `node --test qa/intelligence-provider.test.cjs` checks deterministic text and usage, provider-neutral routing, immutable catalog snapshots, TypeScript declarations, invalid requests and events, retry, deadlines, and cancellation. It asserts the mock opens no HTTP or TCP connection. `node --test qa/intelligence-mock-desktop.test.cjs` after a build checks default-off behavior, the real Electron preview, stop and retry, workspace isolation, and absence of browser network requests. Both run through `npm test` on Windows. The existing extension-host suite remains in Windows CI.
+
+On 2026-11-12, implementation `8b43b3035b53286e50537af8b218188c4fc4f06b` passed 129 core, 76 desktop, and 17 extension-host tests on local Windows 11 x64 build 26300 and hosted Windows Server 2025 x64 build 26100. [Windows verification](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43145513825)

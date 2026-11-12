@@ -36,8 +36,24 @@
     {
       "id": "G1",
       "name": "Provider Abstraction & Capability Registry",
-      "status": "in_progress",
-      "evidence": ["g1-provider-contract.md", "../../qa/intelligence-provider.test.cjs", "../../qa/intelligence-mock-desktop.test.cjs"]
+      "status": "passed",
+      "evidence": ["g1-provider-contract.md", "../../src/intelligence/provider-registry.d.cts", "../../qa/intelligence-provider.test.cjs", "../../qa/intelligence-mock-desktop.test.cjs"],
+      "verification": {
+        "reviewer": "Codex",
+        "verifiedAt": "2026-11-12",
+        "implementationCommit": "8b43b3035b53286e50537af8b218188c4fc4f06b",
+        "testCommands": ["npm test", "npm run test:extension-host"],
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "nodeVersion": "24.15.0",
+        "electronVersion": "45.2.3",
+        "corePassed": 129,
+        "desktopPassed": 76,
+        "extensionHostPassed": 17,
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43145513825",
+        "scope": "Strict provider-neutral ABI and model metadata, bounded offline streaming, errors and cancellation, and an opt-in prompt-only Electron preview",
+        "knownLimitations": ["Only the deterministic offline mock is available", "Usage is simulated", "ABI 0.1 supports text and usage"]
+      }
     },
     { "id": "G2", "name": "Credential Vault & Connections", "status": "unverified", "evidence": [] },
     { "id": "G3", "name": "Conversation & Streaming", "status": "unverified", "evidence": [] },
