@@ -8,6 +8,21 @@ permissions:
   contents: read
 
 jobs:
+  vokri:
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Verify Vokri on the Windows desktop
+        env:
+          CEVRA_TEST_CLIPBOARD: '1'
+        run: npm run test:vokri
+
   test:
     runs-on: windows-2025
     timeout-minutes: 12

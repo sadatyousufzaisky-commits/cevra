@@ -22,7 +22,10 @@
     "validate:extension": "node scripts/validate-extension.cjs",
     "build:extension-example": "node scripts/build-extension-example.cjs",
     "test:extensions": "node --test --test-concurrency=1 qa/extensions.test.cjs qa/extension-packaging.test.cjs qa/extension-registry.test.cjs qa/extension-sdk.test.cjs",
-    "test:extension-host": "npm run build && node scripts/build-extension-fixture.cjs && npm run build:extension-example && node --test --test-concurrency=1 qa/extension-host.test.cjs qa/extension-runtime.test.cjs qa/extension-sdk-runtime.test.cjs qa/extension-integration.test.cjs"
+    "test:extension-host": "npm run build && node scripts/build-extension-fixture.cjs && npm run build:extension-example && node --test --test-concurrency=1 qa/extension-host.test.cjs qa/extension-runtime.test.cjs qa/extension-sdk-runtime.test.cjs qa/extension-integration.test.cjs",
+    "build:vokri": "node scripts/build-process-host.cjs && node scripts/build-vokri.cjs",
+    "start:vokri": "npm run build:vokri && node scripts/start-vokri.cjs",
+    "test:vokri": "npm run build:vokri && node --test --test-concurrency=1 qa/vokri.test.cjs"
   },
   "devDependencies": {
     "electron": "45.2.3",
