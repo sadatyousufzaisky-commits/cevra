@@ -58,8 +58,25 @@
     {
       "id": "G2",
       "name": "Credential Vault & Connections",
-      "status": "in_progress",
-      "evidence": ["g2-credential-vault.md", "../../qa/intelligence-connections.test.cjs", "../../qa/intelligence-vault-desktop.test.cjs", "../../qa/test-credential-account.ps1"]
+      "status": "passed",
+      "evidence": ["g2-credential-vault.md", "../../src/intelligence/windows-vault.cs", "../../qa/intelligence-connections.test.cjs", "../../qa/intelligence-vault-desktop.test.cjs", "../../qa/test-credential-account.ps1"],
+      "verification": {
+        "reviewer": "Codex",
+        "verifiedAt": "2026-11-12",
+        "implementationCommit": "c9e42cc2260dcfd8a7beed93642c907faae311ee",
+        "testCommands": ["npm test", "npm run test:extension-host"],
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "nodeVersion": "24.15.0",
+        "electronVersion": "45.2.3",
+        "corePassed": 136,
+        "desktopPassed": 77,
+        "extensionHostPassed": 17,
+        "accountIsolationCi": "passed",
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43148330065",
+        "scope": "Native password entry, Windows Credential Manager, nonsecret profile metadata, local key checks, rotation, restart, cleanup, and separate Windows accounts",
+        "knownLimitations": ["Windows x64 preview", "One key slot per provider", "Local key checks only until live provider integration"]
+      }
     },
     { "id": "G3", "name": "Conversation & Streaming", "status": "unverified", "evidence": [] },
     { "id": "G4", "name": "Context Broker & Personalization", "status": "unverified", "evidence": [] },
