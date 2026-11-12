@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CEVRA Intelligence · Offline mock</title>
+  <link rel="stylesheet" href="mock.css">
+  <script defer src="mock-panel.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Intelligence</h1>
+    <p class="muted">Offline mock. Responses and usage are simulated.</p>
+    <form id="prompt-form">
+      <label for="model">Model</label>
+      <select id="model" disabled></select>
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt" rows="3" maxlength="8192" required></textarea>
+      <div class="actions">
+        <button id="send" type="submit" disabled>Send</button>
+        <button id="stop" type="button" disabled>Stop</button>
+        <button id="retry" type="button" hidden>Retry</button>
+      </div>
+    </form>
+    <section aria-labelledby="response-title">
+      <h2 id="response-title">Response</h2>
+      <pre id="response" tabindex="0" aria-label="Mock response"></pre>
+      <p id="usage" class="muted"></p>
+    </section>
+    <p id="status" role="status">Loading model…</p>
+  </main>
+</body>
+</html>

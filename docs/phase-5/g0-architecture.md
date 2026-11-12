@@ -1,6 +1,6 @@
 # Phase 5 G0 — Intelligence architecture and threat model
 
-**Status** · Design ready for owner signoff. **Baseline** · Phase 4 completion `4960ef251237583f9ee7a21e067f949dd2f6d4b0` on `cevra/phase4-g3`. The Phase 5 development branch starts from that revision. The package handoff describes an earlier G3 snapshot. All ten Phase 4 gates have since passed, including the confined host, capability broker, and Windows integration. [Phase 4 ledger](../phase-4/PHASE4_STATUS.json)
+**Status** · G0 design signed off on 2026-11-12. The project owner directed proceeding with the next build after the design was presented for signoff. **Baseline** · Phase 4 completion `4960ef251237583f9ee7a21e067f949dd2f6d4b0` on `cevra/phase4-g3`. The Phase 5 development branch starts from that revision. All ten Phase 4 gates have passed, including the confined host, capability broker, and Windows integration. [Phase 4 ledger](../phase-4/PHASE4_STATUS.json)
 
 ## Product scope
 
@@ -107,4 +107,4 @@ On 2026-11-12, `npm run test:core` passed all 118 tests with Node.js 24.15.0 on 
 
 ## Gate handoff
 
-G0 is the design review gate. The architecture, integration map, provider policy, and threat matrix are ready for owner signoff. G1 starts with the built-in mock adapter, strict provider events, cancellation, and no-network tests. The starter is a reference for G1 policy and mock behavior. Its schema and validator need a single agreed contract before adoption. G2 then proves credential isolation on Windows before G3 enables a reviewed live adapter. [Phase 5 ledger](PHASE5_STATUS.json)
+The signoff covers the architecture, integration map, provider policy, and threat matrix. G1 uses a built-in mock adapter, strict provider events, cancellation, and no-network tests. G2 then proves credential isolation on Windows before G3 enables a reviewed live adapter. [G1 provider contract](g1-provider-contract.md) · [Phase 5 ledger](PHASE5_STATUS.json)

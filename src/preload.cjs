@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('cevra', {
   initial: () => ipcRenderer.invoke('cevra:initial'),
   appearance: () => ipcRenderer.invoke('cevra:appearance'),
   setTheme: choice => ipcRenderer.invoke('cevra:set-theme', choice),
+  openIntelligenceMock: () => ipcRenderer.invoke('cevra:open-intelligence-mock'),
   extensionContributions: () => ipcRenderer.invoke('cevra:extension-contributions'),
   setExtensionPalette: key => ipcRenderer.invoke('cevra:set-extension-palette', key),
   onExtensionContributionsChanged: callback => ipcRenderer.on('cevra:extension-contributions-changed', (_event, id) => callback(id)),

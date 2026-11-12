@@ -195,6 +195,7 @@ function syncCommands() {
   const discarding = open.some(tab => tab.discarding);
   const runtime = runtimeKind(active?.path);
   byId('extension-manager-open').disabled = changingProject;
+  byId('intelligence-mock-open').disabled = changingProject;
   dock.dataset.runtime = runtime ?? '';
   runtimePanel.sync(project, runtime, Boolean(run || changingProject));
   dockButtons.terminal.disabled = !project?.terminalLimit || changingProject;
@@ -1558,6 +1559,7 @@ backButton.onclick = () => travel('back').catch(report);
 forwardButton.onclick = () => travel('forward').catch(report);
 openButton.onclick = welcomeOpen.onclick = () => openProject(api.chooseFolder).catch(report);
 exampleButton.onclick = () => openProject(api.openExample).catch(report);
+byId('intelligence-mock-open').onclick = () => api.openIntelligenceMock().catch(report);
 saveButton.onclick = () => saveFile(active).catch(report);
 formatButton.onclick = formatDocument;
 inspectButton.onclick = () => {
@@ -1615,6 +1617,7 @@ async function initialize() {
     applyColorMode(mode);
     await extensionContributions.refresh();
     const initial = await api.initial();
+    byId('intelligence-mock-open').hidden = initial.intelligenceMock !== true;
     if (initial.project) await adoptProject(initial.project);
     else applyEditorSettings((await api.editorSettings()).effective);
     if (initial.unavailable) notify('A draft workspace is unavailable. Reopen it when it is accessible.', true);

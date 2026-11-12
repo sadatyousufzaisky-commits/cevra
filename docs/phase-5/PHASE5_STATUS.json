@@ -12,8 +12,15 @@
     {
       "id": "G0",
       "name": "Architecture & Threat Model",
-      "status": "in_progress",
-      "review": "awaiting_owner_signoff",
+      "status": "passed",
+      "review": "signed_off",
+      "signoff": {
+        "reviewer": "Codex",
+        "authorization": "Project owner directed proceeding with the next build after G0 was presented for signoff",
+        "reviewedAt": "2026-11-12",
+        "reviewBaseCommit": "b910146f03561cadfc91e3e2df4730c684046bb8",
+        "scope": "Intelligence architecture and threat model"
+      },
       "evidence": ["g0-architecture.md"],
       "verification": {
         "reviewer": "Codex",
@@ -23,11 +30,15 @@
         "baselineCoreCommand": "npm run test:core",
         "baselineCorePassed": 118,
         "localPlatform": "Windows 11 x64 build 26300",
-        "nodeVersion": "24.15.0",
-        "remainingEvidence": ["Owner design signoff"]
+        "nodeVersion": "24.15.0"
       }
     },
-    { "id": "G1", "name": "Provider Abstraction & Capability Registry", "status": "unverified", "evidence": [] },
+    {
+      "id": "G1",
+      "name": "Provider Abstraction & Capability Registry",
+      "status": "in_progress",
+      "evidence": ["g1-provider-contract.md", "../../qa/intelligence-provider.test.cjs", "../../qa/intelligence-mock-desktop.test.cjs"]
+    },
     { "id": "G2", "name": "Credential Vault & Connections", "status": "unverified", "evidence": [] },
     { "id": "G3", "name": "Conversation & Streaming", "status": "unverified", "evidence": [] },
     { "id": "G4", "name": "Context Broker & Personalization", "status": "unverified", "evidence": [] },

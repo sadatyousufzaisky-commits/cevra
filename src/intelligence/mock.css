@@ -1,0 +1,16 @@
+:root { color-scheme: light dark; font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+body { margin: 0; color: CanvasText; background: Canvas; }
+main { max-width: 52rem; padding: 1.25rem; margin-inline: auto; }
+h1, h2 { margin: 0; line-height: 1.25; }
+h1 { font-size: 1.55rem; }
+h2 { font-size: 1rem; }
+.muted { color: GrayText; }
+form { display: grid; gap: .4rem; }
+label { font-weight: 600; }
+select, textarea, button { font: inherit; }
+textarea { resize: vertical; min-height: 4.5rem; }
+select, textarea, pre { padding: .45rem .55rem; border: 1px solid GrayText; border-radius: 4px; }
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: .4rem 1rem; }
+button { padding: .3rem .85rem; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; min-height: 3rem; max-height: 12rem; overflow: auto; margin-block: .45rem; }
+:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }

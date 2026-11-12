@@ -41,6 +41,8 @@ const tests = createTestSession(app.getPath('temp'));
 const drafts = createDraftStore(path.join(app.getPath('userData'), 'drafts'));
 const preferences = createPreferences(app.getPath('userData'));
 const safeStart = app.commandLine.hasSwitch('disable-extensions');
+const intelligenceMock = app.commandLine.hasSwitch('enable-intelligence-mock') ?
+  require('./intelligence/mock-window.cjs').createIntelligenceMockWindow() : undefined;
 const extensions = createExtensionRegistry(app.getPath('userData'));
 const flightpathStore = createFlightpathStore(path.join(app.getPath('userData'), 'flightpath'));
 const syntax = createSyntaxService();
@@ -244,6 +246,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
     if (discard && workspace) await drafts.clear(workspace.root);
     const { entries, unreadable } = await readDrafts();
     const recovered = entries.filter(draft => draft.root === next.root);
+    intelligenceMock?.close();
     await terminals.closeAll();
     await extensionBroker.suspend().catch(() => {});
     activeSearch?.controller.abort();
@@ -268,17 +271,26 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
 
 handle('initial', async () => {
   const { entries, unreadable } = await readDrafts();
+  const features = intelligenceMock ? { intelligenceMock: true } : {};
   const roots = new Set([workspace?.root, ...entries.map(draft => draft.root)]);
   let unavailable = false;
   for (const root of roots) {
     if (!root) continue;
     try {
-      return { project: await openWorkspace(root, { recovering: true }), unavailable };
+      return { ...features, project: await openWorkspace(root, { recovering: true }), unavailable };
     } catch {
       unavailable = true;
     }
   }
-  return { unavailable, unreadable };
+  return { ...features, unavailable, unreadable };
+});
+
+handle('open-intelligence-mock', () => {
+  if (!intelligenceMock) throw new Error('The Intelligence mock is disabled.');
+  if (!rendererReady || changingWorkspace || closePending || allowClose || !window || window.isDestroyed()) {
+    throw new Error('Wait for the workbench to become available.');
+  }
+  return intelligenceMock.open(window);
 });
 
 handle('appearance', () => ({ theme: nativeTheme.themeSource, mode: colorMode() }));
@@ -373,6 +385,7 @@ handle('revoke-trust', async id => {
   const project = currentWorkspace(id);
   trustEpoch++;
   runGrant = undefined;
+  intelligenceMock?.close();
   void sessions.cancel();
   await Promise.all([extensionBroker.suspend().catch(() => {}), preferences.setTrusted(project, false)]);
 });
@@ -877,6 +890,7 @@ async function launch() {
   workbench.webContents.on('render-process-gone', () => {
     if (window !== workbench) return;
     rendererReady = false;
+    intelligenceMock?.close();
     extensionManager.clearReview();
     restartExtensions = undefined;
     void extensionBroker.suspend().catch(() => {});
@@ -914,7 +928,11 @@ async function launch() {
       workbench.webContents.send('cevra:before-close');
     }
   });
-  workbench.on('closed', () => { if (window === workbench) window = undefined; });
+  workbench.on('closed', () => {
+    if (window !== workbench) return;
+    intelligenceMock?.close();
+    window = undefined;
+  });
   if (maximized) workbench.maximize();
   previous?.destroy();
   await workbench.loadFile(page);
