@@ -7,6 +7,7 @@
   <title>CEVRA Intelligence · Offline mock</title>
   <link rel="stylesheet" href="mock.css">
   <script defer src="mock-panel.js"></script>
+  <script defer src="connection-panel.js"></script>
 </head>
 <body>
   <main>
@@ -29,6 +30,12 @@
       <p id="usage" class="muted"></p>
     </section>
     <p id="status" role="status">Loading model…</p>
+    <details id="connections">
+      <summary>Provider connections</summary>
+      <p class="muted">Windows Credential Manager stores your API keys. Check key verifies local storage.</p>
+      <ul id="connection-list" aria-label="Provider connections"></ul>
+      <p id="connection-status" role="status"></p>
+    </details>
   </main>
 </body>
 </html>

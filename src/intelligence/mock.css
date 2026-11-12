@@ -14,3 +14,9 @@ select, textarea, pre { padding: .45rem .55rem; border: 1px solid GrayText; bord
 button { padding: .3rem .85rem; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; min-height: 3rem; max-height: 12rem; overflow: auto; margin-block: .45rem; }
 :focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+details { padding-block: .65rem; border-top: 1px solid GrayText; }
+summary { cursor: pointer; font-weight: 600; }
+#connection-list { padding: 0; list-style: none; }
+#connection-list li { padding: .65rem 0; border-bottom: 1px solid GrayText; }
+#connection-list p { margin: .25rem 0; }
+#connection-list .actions { margin: .4rem 0 0; }

@@ -55,7 +55,12 @@
         "knownLimitations": ["Only the deterministic offline mock is available", "Usage is simulated", "ABI 0.1 supports text and usage"]
       }
     },
-    { "id": "G2", "name": "Credential Vault & Connections", "status": "unverified", "evidence": [] },
+    {
+      "id": "G2",
+      "name": "Credential Vault & Connections",
+      "status": "in_progress",
+      "evidence": ["g2-credential-vault.md", "../../qa/intelligence-connections.test.cjs", "../../qa/intelligence-vault-desktop.test.cjs", "../../qa/test-credential-account.ps1"]
+    },
     { "id": "G3", "name": "Conversation & Streaming", "status": "unverified", "evidence": [] },
     { "id": "G4", "name": "Context Broker & Personalization", "status": "unverified", "evidence": [] },
     { "id": "G5", "name": "Editor Actions & Patch Review", "status": "unverified", "evidence": [] },

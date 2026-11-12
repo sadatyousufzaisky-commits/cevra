@@ -37,6 +37,8 @@ jobs:
           }
           exit 1
       - run: npm test
+      - name: Verify Windows credential account separation
+        run: pwsh -NoProfile -File qa/test-credential-account.ps1
       - name: Verify extension host isolation
         env:
           CEVRA_TEST_CLIPBOARD: '1'

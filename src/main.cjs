@@ -42,7 +42,7 @@ const drafts = createDraftStore(path.join(app.getPath('userData'), 'drafts'));
 const preferences = createPreferences(app.getPath('userData'));
 const safeStart = app.commandLine.hasSwitch('disable-extensions');
 const intelligenceMock = app.commandLine.hasSwitch('enable-intelligence-mock') ?
-  require('./intelligence/mock-window.cjs').createIntelligenceMockWindow() : undefined;
+  require('./intelligence/mock-window.cjs').createIntelligenceMockWindow(app.getPath('userData')) : undefined;
 const extensions = createExtensionRegistry(app.getPath('userData'));
 const flightpathStore = createFlightpathStore(path.join(app.getPath('userData'), 'flightpath'));
 const syntax = createSyntaxService();
