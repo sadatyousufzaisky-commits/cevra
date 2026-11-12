@@ -23,6 +23,16 @@ The workbench uses Electron for the desktop shell and CodeMirror for the editor.
 
 On Windows, CEVRA starts programs and tests inside a Job Object and waits for the process tree to stop before releasing its execution session. This covers detached children after a script exits and cleanup after the app's main process dies. Finish or cancel the active run before switching workspaces. [Windows Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)
 
+## Run CEVRA on Vokri
+
+Vokri is CEVRA's original Windows desktop framework. The native workbench supports browsing and editing a workspace, recovering drafts, running JavaScript and TypeScript, and jumping to errors across files. Start it on Windows x64 with Node.js 24 and the .NET Framework 4.x compiler.
+
+```powershell
+npm run start:vokri -- "C:\path\to\project"
+```
+
+Run `npm run test:vokri` to build and verify the native SDK and workbench. The SDK guide covers building an independent desktop app and connecting a service. [Vokri SDK guide](vokri/README.md)
+
 ## Run TypeScript and Python
 
 **TypeScript** `.ts`, `.mts`, and `.cts` entry files run through the bundled Node.js runtime. The direct profile uses Node's TypeScript transform and source maps. Use **Problems** for type checking and **Tasks** for project-specific builds, including TSX and projects that need `tsconfig.json` compilation settings. TypeScript imports in direct runs use explicit file extensions. [Node.js TypeScript support](https://nodejs.org/docs/latest-v24.x/api/typescript.html)
