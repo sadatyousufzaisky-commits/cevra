@@ -14,6 +14,7 @@
     "benchmark": "npm run build && node qa/benchmark.cjs",
     "benchmark:continuum": "npm run build && node --test qa/continuum.test.cjs",
     "benchmark:extensions": "npm run build && npm run build:extension-example && node --test qa/extension-benchmark.test.cjs",
+    "benchmark:intelligence": "npm run build && node --test qa/intelligence-benchmark.test.cjs",
     "inspect:extension": "node scripts/inspect-extension.cjs",
     "pack:extension": "node scripts/pack-extension.cjs",
     "validate:extension": "node scripts/validate-extension.cjs",

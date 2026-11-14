@@ -45,3 +45,27 @@ jobs:
         run: |
           Get-CimInstance Win32_OperatingSystem | Select-Object Caption, BuildNumber | Format-List
           npm run test:extension-host
+      - name: Reproduce the Intelligence benchmark on Windows
+        env:
+          CEVRA_PHASE5_SAMPLES: '3'
+        run: |
+          $baseline = Join-Path $env:RUNNER_TEMP 'cevra-phase4-benchmark'
+          git fetch --no-tags --depth=1 origin 4960ef251237583f9ee7a21e067f949dd2f6d4b0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git worktree add --detach $baseline FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $cache = Join-Path $baseline 'dist/g3-runtime'
+          New-Item -ItemType Directory -Path $cache | Out-Null
+          Copy-Item -LiteralPath 'dist/g3-runtime/zig-0.15.2.zip','dist/g3-runtime/wasmtime-v36.0.20.zip' -Destination $cache
+          Push-Location -LiteralPath $baseline
+          try {
+            $env:ELECTRON_SKIP_BINARY_DOWNLOAD = '1'
+            npm ci
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            npm run build
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+          $env:CEVRA_PHASE5_BASELINE = $baseline
+          node --test qa/intelligence-benchmark.test.cjs

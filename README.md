@@ -44,6 +44,8 @@ Open **Models and local connection** to save model defaults for chat, explanatio
 
 Open **OpenAI usage and daily estimate limit** to track estimated usage and set an optional daily cap. OpenAI still bills actual usage through your account. [Privacy and cost controls](docs/phase-5/g8-privacy-costs-and-hardening.md)
 
+The Phase 5 acceptance guide records the Windows integration checks, benchmark method, and supported provider scope. [Integration and benchmarking](docs/phase-5/g9-integration-and-benchmarking.md)
+
 ## Run TypeScript and Python
 
 **TypeScript** `.ts`, `.mts`, and `.cts` entry files run through the bundled Node.js runtime. The direct profile uses Node's TypeScript transform and source maps. Use **Problems** for type checking and **Tasks** for project-specific builds, including TSX and projects that need `tsconfig.json` compilation settings. TypeScript imports in direct runs use explicit file extensions. [Node.js TypeScript support](https://nodejs.org/docs/latest-v24.x/api/typescript.html)

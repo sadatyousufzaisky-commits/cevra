@@ -6,7 +6,7 @@ const { test } = require('node:test');
 const { setTimeout: delay } = require('node:timers/promises');
 const { buildVaultProbe, vaultProbe } = require('./credential-vault-probe.cjs');
 const { createWindowsCredentialVault } = require('../src/intelligence/credential-vault-win.cjs');
-const { openWorkbench } = require('./desktop-workbench.cjs');
+const { openWorkbench, replaceEditor } = require('./desktop-workbench.cjs');
 const { ollamaFixture } = require('./ollama-fixture.cjs');
 
 const supported = process.platform === 'win32' && process.arch === 'x64';
@@ -472,12 +472,12 @@ test('Windows Intelligence limits proposals to reviewed targets and applies undo
   assert.match(await restarted.editor.textContent(), /helper = 5/);
 });
 
-test('Windows coding task diagnoses failing tests, applies a reviewed draft and verifies saved code', { skip: !supported, timeout: 85_000 }, async t => {
+test('Windows integrates native key capture, a reviewed coding repair, and AI-off recovery', { skip: !supported, timeout: 85_000 }, async t => {
   buildVaultProbe();
-  const keyRef = randomUUID();
   const vault = createWindowsCredentialVault();
   let scope;
-  t.after(async () => { if (scope) assert.equal(await vault.remove(scope, 'openai', keyRef), 'ok'); });
+  let keyRef;
+  t.after(async () => { if (keyRef) assert.equal(await vault.remove(scope, 'openai', keyRef), 'ok'); });
   const workbench = await openWorkbench(t, {
     'helper.js': 'export const helper = 2;\n',
     'helper.test.mjs': 'import { test } from "node:test";\nimport assert from "node:assert/strict";\n' +
@@ -485,12 +485,6 @@ test('Windows coding task diagnoses failing tests, applies a reviewed draft and 
     'package.json': '{"type":"module"}',
   }, async (_project, profile) => {
     scope = createHash('sha256').update((await fs.realpath(profile)).toLowerCase()).digest('hex');
-    const folder = path.join(profile, 'intelligence');
-    await fs.mkdir(folder);
-    await fs.writeFile(path.join(folder, 'connections.json'), JSON.stringify({
-      schemaVersion: 1, entries: [{ providerId: 'openai', current: keyRef, pending: null, cleanup: [] }],
-    }));
-    assert.equal(await vaultProbe('seed', scope, 'openai', keyRef, 'first'), 0);
   }, { args: [flag] });
   const { app, page, editor, project } = workbench;
   await installFixture(app);
@@ -501,6 +495,21 @@ test('Windows coding task diagnoses failing tests, applies a reviewed draft and 
   const opened = app.waitForEvent('window');
   await page.getByRole('button', { name: 'Intelligence', exact: true }).click();
   const panel = await opened;
+  await panel.locator('#status').getByText('Ready.', { exact: true }).waitFor();
+  assert.equal((await app.evaluate(() => globalThis.g3)).count, 0);
+  assert.equal(await panel.getByRole('list', { name: 'Attachments' }).locator('li').count(), 0);
+  await panel.getByText('Provider connections', { exact: true }).click();
+  const connection = panel.getByRole('listitem').filter({ has: panel.getByRole('heading', { name: 'OpenAI', exact: true }) });
+  const owner = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
+    .find(window => window.getTitle() === 'CEVRA Intelligence').getNativeWindowHandle().readBigUInt64LE().toString(16));
+  await connection.getByRole('button', { name: 'Add key', exact: true }).click();
+  assert.equal(await vaultProbe('prompt', owner, 'first'), 0);
+  await panel.locator('#connection-status').getByText('Key stored in Windows Credential Manager.', { exact: true }).waitFor();
+  const metadata = path.join(workbench.profile, 'intelligence', 'connections.json');
+  const saved = await fs.readFile(metadata, 'utf8');
+  keyRef = JSON.parse(saved).entries.find(item => item.providerId === 'openai').current;
+  assert.equal(await vaultProbe('verify', scope, 'openai', keyRef, 'first'), 0);
+  assert.doesNotMatch(saved, /G2-SYNTHETIC-KEY-ONE/);
   await panel.getByLabel('Model', { exact: true }).selectOption('gpt-5.6-terra');
   await panel.getByRole('button', { name: 'Attach saved file', exact: true }).click();
   await panel.getByRole('list', { name: 'Attachments' }).getByText('helper.js · Saved file', { exact: false }).waitFor();
@@ -530,6 +539,7 @@ test('Windows coding task diagnoses failing tests, applies a reviewed draft and 
   await closed;
   await codingStatus('Review the proposed edits in the workbench.');
   assert.equal((await traffic()).count, 1);
+  await connection.getByText('Key configured · Model access verified this session', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Review Intelligence edit', exact: true }).press('Enter');
   const diff = page.getByRole('dialog', { name: 'Review Intelligence Edit', exact: true });
   await diff.locator('ins').getByText('export const helper = 5;', { exact: false }).waitFor();
@@ -550,6 +560,20 @@ test('Windows coding task diagnoses failing tests, applies a reviewed draft and 
     { title: 'Verify Intelligence change', buttons: ['Cancel', 'Run Tests'], defaultId: 0 },
   ]);
   assert.equal((await traffic()).count, 1);
+  await connection.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await connection.getByText('No key configured', { exact: true }).waitFor();
+  assert.equal(await vault.inspect(scope, 'openai', keyRef), 'missing');
+  assert.equal((await traffic()).count, 1);
+
+  await replaceEditor(workbench, 'export const helper = 5;\n// G9_RECOVERY_FIXTURE\n');
+  const restarted = await workbench.restart({ crash: true, args: ['--disable-extensions'] });
+  await restarted.selected('helper.js').waitFor();
+  assert.match(await restarted.editor.textContent(), /G9_RECOVERY_FIXTURE/);
+  assert.equal(await fs.readFile(path.join(project, 'helper.js'), 'utf8'), 'export const helper = 5;\n');
+  assert.equal(await restarted.page.getByRole('button', { name: 'Intelligence', exact: true }).count(), 0);
+  await restarted.editor.press('Control+s');
+  await restarted.page.locator('#message').getByText('Saved helper.js', { exact: true }).waitFor();
+  assert.match(await fs.readFile(path.join(project, 'helper.js'), 'utf8'), /G9_RECOVERY_FIXTURE/);
 });
 
 test('Windows Stop terminates a coding test tree and reopening leaves the task idle', { skip: !supported, timeout: 65_000 }, async t => {
@@ -713,10 +737,15 @@ test('Windows routes tasks to saved models and requires a new review before swit
   assert.equal(await fs.readFile(path.join(workbench.project, 'main.js'), 'utf8'), 'const scoped = "G7_SELECTED";\n');
 
   await task().selectOption('explain');
+  local.state.mode = '10k';
+  await request('Stream the bounded fixture.', 'Explain code', 'Ollama');
+  await status('Response complete.');
+  assert.equal(await panel.getByLabel('Model response', { exact: true }).textContent(), 'x'.repeat(10 * 1024));
+  assert.equal(await cloud(), 0);
   local.state.cloud = true;
   await request('Try this with the local model.', 'Explain code', 'Ollama');
   await status('Ollama must report that its cloud features are disabled. Check its local-only configuration.');
-  assert.equal(local.state.chats.length, 2);
+  assert.equal(local.state.chats.length, 3);
   assert.equal(await cloud(), 0);
   await panel.getByRole('button', { name: 'Choose another model', exact: true }).press('Enter');
   await model().selectOption('gpt-5.6-terra');

@@ -4,7 +4,7 @@
   "name": "CEVRA Intelligence",
   "status": "in_progress",
   "isImplementationComplete": false,
-  "branch": "cevra/phase5-g8",
+  "branch": "cevra/phase5-g9",
   "baselineCommit": "4960ef251237583f9ee7a21e067f949dd2f6d4b0",
   "baselinePhase4Ledger": "../phase-4/PHASE4_STATUS.json",
   "lastVerifiedPhase4Ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42988060217",
@@ -204,6 +204,7 @@
           "Synthetic provider verification. No paid provider request or invoice was exercised."]
       }
     },
-    { "id": "G9", "name": "Integration & Benchmarking", "status": "unverified", "evidence": [] }
+    { "id": "G9", "name": "Integration & Benchmarking", "status": "implemented", "evidence": [
+      "g9-integration-and-benchmarking.md", "../../qa/intelligence-stream-desktop.test.cjs", "../../qa/intelligence-benchmark.test.cjs"] }
   ]
 }

@@ -50,6 +50,11 @@ async function ollamaFixture(t) {
       response.end(row(content, { remote_host: 'https://ollama.com' }));
       return;
     }
+    if (state.mode === '10k') {
+      for (let chunk = 0; chunk < 20; chunk++) response.write(row('x'.repeat(512)));
+      response.end(row('', { done: true, done_reason: 'stop', prompt_eval_count: 12, eval_count: 800 }));
+      return;
+    }
     const bytes = Buffer.from(row(content));
     const split = bytes.indexOf(0xc3) + 1;
     response.write(bytes.subarray(0, split));
