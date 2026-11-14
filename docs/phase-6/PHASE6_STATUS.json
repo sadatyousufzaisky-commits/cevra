@@ -17,7 +17,7 @@
     {
       "id": "G0",
       "name": "Complete identity transition",
-      "status": "in_progress",
+      "status": "passed",
       "dependsOn": [],
       "commit": "05127ece53d29127fcff902cdc52238d8ead87ff",
       "evidence": [
@@ -30,8 +30,12 @@
         "../../qa/identity-desktop.test.cjs"
       ],
       "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43600144627",
-      "ownerSignoff": null,
-      "openBlockers": ["Owner review of the VC artwork and transition scope"],
+      "ownerSignoff": {
+        "date": "2026-11-14",
+        "authorization": "Project owner directed completion of the G0 signoff and commencement of G1 after the VC artwork, profile transition, and verification evidence were presented.",
+        "reviewedRevision": "2315df0"
+      },
+      "openBlockers": [],
       "verification": {
         "verifiedAt": "2026-11-14",
         "localPlatform": "Windows 11 x64 build 26300",

@@ -37,4 +37,4 @@ The identity scan covers current source and build entry points. Historical evide
 
 Windows CI passed 167 core, 86 desktop, 18 extension-host, and 13 benchmark checks. Credential Manager account isolation passed separately. Local Windows verified the profile transition and rollback. The Windows shortcut fixture verified the icon path and application ID. The native helpers reported VOKRI Code as their product in Windows file metadata. [Windows CI](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43600144627)
 
-The build and test evidence are ready for owner review. The G0 ledger retains the owner signoff checkpoint for the artwork and compatibility approach. [Phase 6 ledger](PHASE6_STATUS.json)
+On 2026-11-14, the project owner authorized recording G0 signoff and proceeding to G1 after receiving the artwork, profile transition, and Windows verification evidence. [Phase 6 ledger](PHASE6_STATUS.json)
