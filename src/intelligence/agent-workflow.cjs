@@ -111,6 +111,7 @@ function createAgentWorkflow(project, { current, publish, runTests, recheckBasel
   return {
     state,
     get active() { return active(); },
+    usesProvider(providerId) { return active() && task.modelId.startsWith(providerId + '|'); },
     prepare(input, sources) {
       if (active()) throw new Error('Stop or finish the current coding task.');
       if (!exactRecord(input, ['goal', 'modelId']) || typeof input.goal !== 'string' || !input.goal.trim() ||

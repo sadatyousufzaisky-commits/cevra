@@ -18,6 +18,7 @@ const errors = Object.freeze({
   QUOTA_EXHAUSTED: 'The provider quota is exhausted.',
   RATE_LIMIT: 'The provider rate limit was reached.',
   NETWORK_BLOCKED: 'The provider connection was blocked.',
+  LOCAL_MODE_REQUIRED: 'Ollama must report that its cloud features are disabled. Check its local-only configuration.',
 });
 const reportedErrors = new Set([
   'PROVIDER_UNAVAILABLE', 'AUTH_INVALID', 'AUTH_EXPIRED', 'QUOTA_EXHAUSTED', 'RATE_LIMIT', 'NETWORK_BLOCKED',

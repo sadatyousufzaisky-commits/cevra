@@ -7,6 +7,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { buildVaultProbe, vaultProbe } = require('./credential-vault-probe.cjs');
 const { createWindowsCredentialVault } = require('../src/intelligence/credential-vault-win.cjs');
 const { openWorkbench } = require('./desktop-workbench.cjs');
+const { ollamaFixture } = require('./ollama-fixture.cjs');
 
 const supported = process.platform === 'win32' && process.arch === 'x64';
 const flag = '--enable-intelligence';
@@ -605,4 +606,133 @@ test('Windows Stop terminates a coding test tree and reopening leaves the task i
   assert.equal(await fresh.getByRole('region', { name: 'Coding task', exact: true }).count(), 0);
   assert.equal(await fresh.getByRole('list', { name: 'Attachments' }).locator('li').count(), 0);
   assert.equal(await page.isClosed(), true);
+});
+
+test('Windows routes tasks to saved models and requires a new review before switching providers', { skip: !supported, timeout: 60_000 }, async t => {
+  const local = await ollamaFixture(t);
+  let scope;
+  const keyRef = randomUUID();
+  t.after(async () => { if (scope) await createWindowsCredentialVault().remove(scope, 'openai', keyRef); });
+  buildVaultProbe();
+  let workbench = await openWorkbench(t, { 'main.js': 'const scoped = "G7_SELECTED";\n' }, async (_project, profile) => {
+    scope = createHash('sha256').update((await fs.realpath(profile)).toLowerCase()).digest('hex');
+    const folder = path.join(profile, 'intelligence');
+    await fs.mkdir(folder);
+    await fs.writeFile(path.join(folder, 'connections.json'), JSON.stringify({
+      schemaVersion: 1, entries: [{ providerId: 'openai', current: keyRef, pending: null, cleanup: [] }],
+    }));
+    assert.equal(await vaultProbe('seed', scope, 'openai', keyRef, 'first'), 0);
+  }, { args: [flag] });
+  const launch = async () => {
+    const opened = workbench.app.waitForEvent('window');
+    await workbench.page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+    const panel = await opened;
+    await panel.locator('#status').getByText('Ready.', { exact: true }).waitFor();
+    return panel;
+  };
+  await installFixture(workbench.app);
+  let panel = await launch();
+  assert.deepEqual(local.state.requests, []);
+  const details = () => panel.getByText('Models and local connection', { exact: true });
+  await details().click();
+  await panel.getByLabel('Ollama loopback port').fill(String(local.port));
+  await panel.getByRole('button', { name: 'Discover local models', exact: true }).press('Enter');
+  await panel.locator('#local-model-status').getByText('Discovered 1 installed local models.').waitFor();
+  const localKey = 'ollama|' + local.model;
+  await panel.getByLabel('Chat model', { exact: true }).selectOption('gpt-5.6-terra');
+  await panel.getByLabel('Explain code model', { exact: true }).selectOption(localKey);
+  await panel.getByLabel('Patch proposal model', { exact: true }).selectOption(localKey);
+  await panel.getByLabel('Coding task model', { exact: true }).selectOption(localKey);
+  await panel.getByRole('button', { name: 'Save model profiles', exact: true }).press('Enter');
+  await panel.locator('#model-profile-status').getByText('Model profiles saved.').waitFor();
+  const model = () => panel.getByLabel('Model', { exact: true });
+  const task = () => panel.getByLabel('Task', { exact: true });
+  assert.equal(await model().inputValue(), 'gpt-5.6-terra');
+  await task().selectOption('explain');
+  assert.equal(await model().inputValue(), localKey);
+  const status = text => panel.locator('#status').getByText(text, { exact: true }).waitFor();
+  const cloud = () => workbench.app.evaluate(() => globalThis.g3.count);
+  const request = async (text, button, provider, accept = true) => {
+    await panel.getByLabel('Prompt', { exact: true }).fill(text);
+    const opened = workbench.app.waitForEvent('window');
+    await panel.getByRole('button', { name: button, exact: true }).press('Enter');
+    const review = await opened;
+    const choice = review.getByRole('button', { name: accept ? 'Send to ' + provider : 'Cancel', exact: true });
+    await review.getByRole('heading', { name: 'Send conversation to ' + provider + '?', exact: true }).waitFor();
+    const destination = await review.locator('#destination').textContent();
+    const messages = await review.locator('#review-messages pre').allTextContents();
+    const closed = review.waitForEvent('close');
+    try { await choice.press('Enter'); }
+    catch (error) { if (!/Target page, context or browser has been closed/.test(error.message)) throw error; }
+    await closed;
+    return { destination, messages };
+  };
+  const declined = await request('Explain the local fixture.', 'Explain code', 'Ollama', false);
+  assert.match(declined.destination, new RegExp('127\\.0\\.0\\.1:' + local.port));
+  await status('Send canceled.');
+  assert.equal(local.state.chats.length, 0);
+  const approved = await request('Explain the local fixture.', 'Explain code', 'Ollama');
+  await status('Response complete.');
+  assert.deepEqual(local.state.chats[0].body.messages.map(item => item.content), approved.messages);
+  assert.equal(await panel.getByLabel('Model response', { exact: true }).textContent(), 'Local response café 🌱');
+  assert.equal(await cloud(), 0);
+
+  await workbench.app.evaluate(({ dialog }, target) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] });
+  }, path.join(workbench.project, 'main.js'));
+  await panel.getByRole('button', { name: 'Attach saved file', exact: true }).click();
+  await panel.getByRole('list', { name: 'Attachments' }).getByText('main.js · Saved file', { exact: false }).waitFor();
+  await task().selectOption('coding');
+  await panel.getByLabel('Prompt', { exact: true }).fill('Update the local fixture.');
+  await panel.getByRole('button', { name: 'Plan coding task', exact: true }).press('Enter');
+  await panel.locator('#coding-plan-model').getByText('Ollama · ' + local.model, { exact: true }).waitFor();
+  await panel.getByRole('button', { name: 'Stop coding task', exact: true }).press('Enter');
+  await panel.locator('#coding-status').getByText('Coding task stopped.', { exact: true }).waitFor();
+  assert.equal(local.state.chats.length, 1);
+
+  await task().selectOption('patch');
+  local.state.mode = 'patch';
+  const patch = await request('Update the local fixture.', 'Propose edits', 'Ollama');
+  await status('Edit proposal ready. Review it in the workbench.');
+  assert.deepEqual(local.state.chats[1].body.messages.map(item => item.content), patch.messages);
+  await workbench.page.getByRole('button', { name: 'Review Intelligence edit', exact: true }).press('Enter');
+  const diff = workbench.page.getByRole('dialog', { name: 'Review Intelligence Edit', exact: true });
+  await diff.locator('ins').getByText('const updated = true;', { exact: false }).waitFor();
+  await diff.getByRole('button', { name: 'Cancel', exact: true }).press('Enter');
+  await diff.waitFor({ state: 'hidden' });
+  assert.equal(await fs.readFile(path.join(workbench.project, 'main.js'), 'utf8'), 'const scoped = "G7_SELECTED";\n');
+
+  await task().selectOption('explain');
+  local.state.cloud = true;
+  await request('Try this with the local model.', 'Explain code', 'Ollama');
+  await status('Ollama must report that its cloud features are disabled. Check its local-only configuration.');
+  assert.equal(local.state.chats.length, 2);
+  assert.equal(await cloud(), 0);
+  await panel.getByRole('button', { name: 'Choose another model', exact: true }).press('Enter');
+  await model().selectOption('gpt-5.6-terra');
+  const fallback = await request('Try this with the local model.', 'Explain code', 'OpenAI', false);
+  assert.match(fallback.destination, /api\.openai\.com/);
+  assert.doesNotMatch(fallback.messages.join('\n'), /Local response/);
+  await status('Send canceled.');
+  assert.equal(await cloud(), 0);
+  await request('Try this with the local model.', 'Explain code', 'OpenAI');
+  await status('Response complete.');
+  assert.equal(await cloud(), 1);
+
+  const requests = local.state.requests.length;
+  const panelClosed = panel.waitForEvent('close');
+  await workbench.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.getTitle() === 'CEVRA Intelligence').close());
+  await panelClosed;
+  workbench = await workbench.restart({ args: [flag] });
+  await installFixture(workbench.app);
+  await workbench.page.locator('#open-folder').click();
+  await workbench.open('main.js');
+  assert.match(await workbench.editor.textContent(), /G7_SELECTED/);
+  panel = await launch();
+  await task().selectOption('explain');
+  await panel.getByText('Saved model unavailable. Connect its provider or choose another model.', { exact: true }).waitFor();
+  assert.equal(await model().inputValue(), '');
+  assert.equal(await panel.getByRole('button', { name: 'Explain code', exact: true }).isDisabled(), true);
+  assert.equal(local.state.requests.length, requests);
+  assert.equal(await cloud(), 0);
 });

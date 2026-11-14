@@ -4,18 +4,18 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Send conversation to OpenAI</title>
+  <title>Review provider request</title>
   <link rel="stylesheet" href="mock.css">
   <script defer src="send-review.js"></script>
 </head>
 <body>
   <main>
-    <h1>Send conversation to OpenAI?</h1>
+    <h1 id="review-heading">Review provider request</h1>
     <p id="destination"></p>
-    <p>The OpenAI API may charge your account and retain content under its API data policies.</p>
+    <p id="review-privacy"></p>
     <div class="actions">
       <button id="cancel" type="button" disabled>Cancel</button>
-      <button id="approve" type="button" disabled>Send to OpenAI</button>
+      <button id="approve" type="button" disabled>Send</button>
     </div>
     <section aria-labelledby="review-title">
       <h2 id="review-title">Text included in this request</h2>

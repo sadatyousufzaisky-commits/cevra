@@ -40,6 +40,8 @@ Choose **Propose edits** to request a change to attached code. Use **Review Inte
 
 Choose **Plan coding task** to review a test-and-fix plan. Intelligence uses the supervised Node.js runner to establish a baseline, offers one reviewed patch if tests fail, and can verify the exact saved changes. Each test run requires separate approval. [Coding task guide](docs/phase-5/g6-controlled-agentic-coding.md)
 
+Open **Models and local connection** to save model defaults for chat, explanations, patch proposals, and coding tasks. A local-only Ollama server can supply installed models for these tasks. Switching providers after a failed request requires selecting a model and approving its send review. [Model routing and local inference guide](docs/phase-5/g7-model-routing-and-offline.md)
+
 ## Run TypeScript and Python
 
 **TypeScript** `.ts`, `.mts`, and `.cts` entry files run through the bundled Node.js runtime. The direct profile uses Node's TypeScript transform and source maps. Use **Problems** for type checking and **Tasks** for project-specific builds, including TSX and projects that need `tsconfig.json` compilation settings. TypeScript imports in direct runs use explicit file extensions. [Node.js TypeScript support](https://nodejs.org/docs/latest-v24.x/api/typescript.html)

@@ -2,6 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { writeAtomic } = require('./atomic-file.cjs');
 const { responsePreferences } = require('./intelligence/response-preferences.cjs');
+const { profile: modelProfile } = require('./intelligence/model-profiles.cjs');
 
 const themes = new Set(['dark', 'light', 'system']);
 const defaultTheme = 'dark';
@@ -105,6 +106,14 @@ function createPreferences(directory) {
       const intelligence = responsePreferences(values, true);
       await save(data => ({ ...data, intelligence }));
       return intelligence;
+    },
+    async getIntelligenceModels() {
+      return modelProfile((await current()).intelligenceModels);
+    },
+    async setIntelligenceModels(value) {
+      const intelligenceModels = modelProfile(value, true);
+      await save(data => ({ ...data, intelligenceModels }));
+      return intelligenceModels;
     },
     async getEditor(workspace) {
       return editorSettings(await current(), workspace && workspaceKey(workspace));

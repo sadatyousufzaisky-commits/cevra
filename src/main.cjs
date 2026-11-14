@@ -50,6 +50,7 @@ const intelligenceMock = liveIntelligence || app.commandLine.hasSwitch('enable-i
   require('./intelligence/mock-window.cjs').createIntelligenceMockWindow(app.getPath('userData'), {
     live: liveIntelligence, getWorkspace: intelligenceWorkspace, readEditor: readContextEditor, openSource: openIntelligenceSource,
     getPreferences: () => preferences.getIntelligence(), setPreferences: values => preferences.setIntelligence(values),
+    getModels: () => preferences.getIntelligenceModels(), setModels: values => preferences.setIntelligenceModels(values),
     patches: intelligencePatches, runAgentTests, recheckBaseline: (project, id) =>
       intelligenceWorkspace() === project ? workstream.recheck(id) : undefined,
   }) : undefined;

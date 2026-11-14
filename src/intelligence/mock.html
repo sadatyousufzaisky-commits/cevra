@@ -17,6 +17,14 @@
     <form id="prompt-form">
       <label for="model">Model</label>
       <select id="model" disabled></select>
+      <label for="task-model-profile" id="task-model-label" hidden>Task</label>
+      <select id="task-model-profile" hidden>
+        <option value="chat">Chat</option>
+        <option value="explain">Explain code</option>
+        <option value="patch">Propose edits</option>
+        <option value="coding">Coding task</option>
+      </select>
+      <p id="task-model-status" class="muted" hidden></p>
       <label for="prompt">Prompt</label>
       <textarea id="prompt" rows="3" maxlength="8192" required></textarea>
       <div class="actions">
@@ -25,6 +33,7 @@
         <button id="plan-coding-task" type="submit" hidden disabled>Plan coding task</button>
         <button id="stop" type="button" disabled>Stop</button>
         <button id="retry" type="button" hidden>Retry</button>
+        <button id="choose-fallback" type="button" hidden>Choose another model</button>
         <button id="clear" type="button" disabled>New conversation</button>
       </div>
     </form>
@@ -37,6 +46,7 @@
     <section id="coding-task" hidden aria-labelledby="coding-task-title">
       <h2 id="coding-task-title">Coding task</h2>
       <p id="coding-goal"></p>
+      <p id="coding-plan-model" class="muted"></p>
       <ol id="coding-plan"></ol>
       <p id="coding-targets"></p>
       <p id="coding-steps" class="muted"></p>
@@ -90,6 +100,27 @@
         </select>
         <div class="actions"><button type="submit" id="save-response-preferences">Save preferences</button></div>
         <p id="preference-status" role="status"></p>
+      </form>
+    </details>
+    <details id="models-and-local" hidden>
+      <summary>Models and local connection</summary>
+      <form id="local-model-form">
+        <label for="local-port">Ollama loopback port</label>
+        <input id="local-port" type="number" min="1024" max="65535" required>
+        <p class="muted">Start Ollama with its cloud features disabled and install a model in Ollama first.</p>
+        <div class="actions">
+          <button type="submit">Discover local models</button>
+          <button id="disconnect-local" type="button" disabled>Disconnect Ollama</button>
+        </div>
+        <p id="local-model-status" role="status"></p>
+      </form>
+      <form id="model-profile-form">
+        <label for="chat-model">Chat model</label><select id="chat-model" name="chat"></select>
+        <label for="explain-model">Explain code model</label><select id="explain-model" name="explain"></select>
+        <label for="patch-model">Patch proposal model</label><select id="patch-model" name="patch"></select>
+        <label for="coding-model">Coding task model</label><select id="coding-model" name="coding"></select>
+        <div class="actions"><button type="submit">Save model profiles</button></div>
+        <p id="model-profile-status" role="status"></p>
       </form>
     </details>
     <section id="conversation" hidden aria-labelledby="conversation-title">

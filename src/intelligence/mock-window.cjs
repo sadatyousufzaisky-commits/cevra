@@ -6,6 +6,8 @@ const { providerAbi, limits, request: validateRequest, ProviderError, exactRecor
 const { createProviderRegistry } = require('./provider-registry.cjs');
 const { mockProvider } = require('./providers/mock.cjs');
 const { createOpenAIProvider, endpoint } = require('./providers/openai.cjs');
+const { discoverOllama, defaultPort } = require('./providers/ollama.cjs');
+const { modelRoute, profile: validateProfile } = require('./model-profiles.cjs');
 const { createConnectionManager, providers, connectionErrorMessage } = require('./connection-manager.cjs');
 const { createWindowsCredentialVault } = require('./credential-vault-win.cjs');
 const { createContextBroker, ContextError, contextMessages, describe, instructionPath, checkPath } = require('./context-broker.cjs');
@@ -19,27 +21,36 @@ const page = path.join(__dirname, 'mock.html');
 const pageURL = pathToFileURL(page).href;
 
 function createIntelligenceMockWindow(profile, {
-  live = false, getWorkspace, readEditor, openSource, getPreferences, setPreferences, patches, runAgentTests, recheckBaseline,
+  live = false, getWorkspace, readEditor, openSource, getPreferences, setPreferences, getModels, setModels,
+  patches, runAgentTests, recheckBaseline,
 } = {}) {
   const connections = createConnectionManager(profile, createWindowsCredentialVault());
   let panel;
-  const registry = createProviderRegistry(live ? [mockProvider, createOpenAIProvider(async signal => {
+  const adapters = live ? [mockProvider, createOpenAIProvider(async signal => {
     const owner = panel;
     const active = owner?.active;
     const key = await connections.readOpenAIKey(signal);
     try {
-      if (!active || owner.active !== active || panel !== owner) throw new ProviderError('CANCELLED');
-      await verifySources(owner, active, signal);
-      await active.recheck?.();
-      signal.throwIfAborted();
+      await verifyDelivery(owner, active, signal);
       return key;
     } catch (error) {
       key.fill(0);
+      throw error;
+    }
+  })] : [mockProvider];
+  const baseRegistry = createProviderRegistry(adapters);
+
+  async function verifyDelivery(owner, active, signal) {
+    if (!active || owner.active !== active || panel !== owner) throw new ProviderError('CANCELLED');
+    try {
+      await verifySources(owner, active, signal);
+      await active.recheck?.();
+    } catch (error) {
       if (error instanceof ContextError) throw new ProviderError('CONTEXT_CHANGED');
       throw error;
     }
-  })] : [mockProvider]);
-  const catalogs = registry.list();
+    signal.throwIfAborted();
+  }
 
   async function verifySources(owner, active, signal = active.controller.signal) {
     if (active.sources.some(item => active.changed.has(item.id))) {
@@ -69,10 +80,10 @@ function createIntelligenceMockWindow(profile, {
     }
   }
 
-  async function authorize(owner, model, value, labels, signal) {
+  async function authorize(owner, provider, model, value, labels, signal) {
     if (signal.aborted) return false;
     const review = new BrowserWindow({
-      parent: owner.window, modal: true, show: false, title: 'Send conversation to OpenAI',
+      parent: owner.window, modal: true, show: false, title: 'Send conversation to ' + provider.label,
       width: 620, height: 520, minWidth: 380, minHeight: 320,
       webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, devTools: false },
     });
@@ -86,12 +97,12 @@ function createIntelligenceMockWindow(profile, {
     try {
       await review.loadFile(path.join(__dirname, 'send-review.html'));
       if (signal.aborted || review.isDestroyed()) return false;
-      const data = JSON.stringify({ model: model.label, endpoint, messages: value.messages, labels, maxOutputTokens: value.maxOutputTokens });
+      const data = JSON.stringify({ provider, model: model.label, messages: value.messages, labels, maxOutputTokens: value.maxOutputTokens });
       const decision = review.webContents.executeJavaScript('window.reviewConversation(' + data + ')');
       review.show();
       return await Promise.race([decision, closed]) === true && !signal.aborted;
     } catch {
-      if (!signal.aborted && !review.isDestroyed()) throw new Error('Could not open the OpenAI send review.');
+      if (!signal.aborted && !review.isDestroyed()) throw new Error('Could not open the send review.');
       return false;
     } finally {
       signal.removeEventListener('abort', cancel);
@@ -119,10 +130,8 @@ function createIntelligenceMockWindow(profile, {
   function invalidateConnection(owner, providerId) {
     if (owner.active?.providerId === providerId) stop(owner);
     owner.verified.delete(providerId);
-    if (providerId === 'openai') {
-      owner.agent?.stop('The OpenAI connection changed.');
-      patches?.retire();
-    }
+    if (owner.agent?.usesProvider(providerId)) owner.agent.stop('The model connection changed.');
+    if (owner.proposalProvider === providerId) patches?.retire();
   }
 
   function close() {
@@ -161,7 +170,8 @@ function createIntelligenceMockWindow(profile, {
       if (!live) return { ok: false, message: 'Context is unavailable in this preview.' };
       try { return { ok: true, value: await action(owner, value) }; }
       catch (error) {
-        return { ok: false, message: error instanceof ContextError ? error.message : 'The Intelligence operation could not finish.' };
+        return { ok: false, message: error instanceof ContextError ? error.message :
+          error instanceof ProviderError ? safeProviderError(error).message : 'The Intelligence operation could not finish.' };
       }
     });
   }
@@ -228,11 +238,15 @@ function createIntelligenceMockWindow(profile, {
   handle('agent-state', owner => owner.agent?.state() ?? { stage: 'unavailable' });
   contextAction('prepare-agent', (owner, input) => {
     const context = requireContext(owner);
-    if (!catalogs.find(catalog => catalog.providerId === 'openai')?.models.some(model => model.id === input?.modelId)) {
-      throw new ContextError('Choose an OpenAI model for this coding task.');
+    if (owner.localConnecting) throw new ContextError('Wait for model discovery to finish.');
+    const route = modelRoute(owner.registry.list(), input?.providerId, input?.modelId);
+    if (!route || route.catalog.providerId === 'mock') throw new ContextError('Choose a connected model for this coding task.');
+    if (!exactRecord(input, ['providerId', 'modelId', 'goal']) && !exactRecord(input, ['modelId', 'goal'])) {
+      throw new ContextError('Choose a model and enter a coding goal.');
     }
-    try { owner.agent.prepare(input, context.items()); }
+    try { owner.agent.prepare({ goal: input.goal, modelId: route.catalog.providerId + '|' + route.model.id }, context.items()); }
     catch (error) { throw new ContextError(error.message); }
+    return { providerId: route.catalog.providerId, modelId: route.model.id, label: route.model.label };
   });
   contextAction('agent-test', async owner => {
     if (owner.active || !owner.agent) throw new ContextError('This coding step is no longer available.');
@@ -243,67 +257,108 @@ function createIntelligenceMockWindow(profile, {
   });
   handle('stop-agent', owner => owner.agent?.stop());
 
-  handle('models', () => catalogs);
+  handle('models', owner => owner.registry.list());
+  contextAction('model-profile', () => getModels());
+  contextAction('save-model-profile', async (owner, input) => {
+    let value;
+    try { value = validateProfile(input, true); }
+    catch (error) { throw new ContextError(error.message); }
+    return setModels(value);
+  });
+  contextAction('connect-local', async (owner, port) => {
+    if (owner.active || owner.agent?.active || owner.localConnecting) throw new ContextError('Finish the current Intelligence operation first.');
+    owner.localConnecting = true;
+    try {
+      const adapter = await discoverOllama(port, owner.connectionOwner.signal,
+        signal => verifyDelivery(owner, owner.active, signal));
+      if (owner.connectionOwner.signal.aborted || panel !== owner) return;
+      invalidateConnection(owner, 'ollama');
+      owner.local = adapter;
+      owner.registry = createProviderRegistry([...adapters, adapter]);
+      if (owner.providerId === 'ollama') clearConversation(owner);
+      return owner.registry.list();
+    } catch (error) {
+      if (error instanceof ProviderError) throw error;
+      throw new ContextError('Ollama is unavailable at the selected loopback port.');
+    } finally { owner.localConnecting = false; }
+  });
+  contextAction('disconnect-local', owner => {
+    if (owner.localConnecting) throw new ContextError('Wait for model discovery to finish.');
+    invalidateConnection(owner, 'ollama');
+    owner.local = undefined;
+    owner.registry = baseRegistry;
+    if (owner.providerId === 'ollama') clearConversation(owner);
+    return owner.registry.list();
+  });
+  handle('local-status', () => ({ enabled: live, defaultPort }));
+
+  function clearConversation(owner) {
+    owner.messages = [];
+    owner.modelId = owner.providerId = undefined;
+    owner.sources = new Map();
+    owner.historical = new Set();
+    sendContext(owner);
+  }
   handle('clear', owner => {
     owner.agent?.stop();
     stop(owner);
     patches?.retire();
-    owner.messages = [];
-    owner.modelId = undefined;
     owner.context?.clear();
-    owner.sources.clear();
-    owner.historical.clear();
-    sendContext(owner);
+    clearConversation(owner);
   });
   handle('switch-model', owner => {
     if (owner.active) return false;
     owner.agent?.stop('The model changed.');
     patches?.retire();
-    owner.messages = [];
-    owner.modelId = undefined;
-    owner.sources = new Map();
-    owner.historical = new Set();
-    sendContext(owner);
+    clearConversation(owner);
     return true;
   });
   handle('start', async (owner, input) => {
-    if (owner.active || owner.attachingSelection) return { message: 'Wait for the current Intelligence operation.' };
-    if (!exactRecord(input, ['modelId', 'prompt']) &&
-        !(exactRecord(input, ['modelId', 'prompt', 'mode']) && ['patch', 'agent'].includes(input.mode))) {
+    if (owner.active || owner.attachingSelection || owner.localConnecting) return { message: 'Wait for the current Intelligence operation.' };
+    const keys = ['modelId', 'prompt', ...(Object.hasOwn(input ?? {}, 'providerId') ? ['providerId'] : []),
+      ...(Object.hasOwn(input ?? {}, 'mode') ? ['mode'] : [])];
+    if (!exactRecord(input, keys) || (keys.includes('mode') && !['patch', 'agent', 'explain'].includes(input.mode)) ||
+        (keys.includes('providerId') && typeof input.providerId !== 'string')) {
       throw new ProviderError('INVALID_REQUEST');
     }
     const agentStep = input.mode === 'agent';
     if (owner.agent?.active && !agentStep) return { message: 'Finish or stop the coding task before sending a different request.' };
     owner.cancelledId = undefined;
-    const catalog = catalogs.find(item => item.models.some(model => model.id === input.modelId));
-    const model = catalog?.models.find(item => item.id === input.modelId);
-    if (!model) throw new ProviderError('MODEL_UNSUPPORTED');
+    const route = modelRoute(owner.registry.list(), input.providerId, input.modelId);
+    if (!route) return { message: 'The selected model is unavailable. Choose a model to continue.', fallback: true };
+    const { catalog, model } = route;
+    const local = catalog.providerId === 'ollama';
+    const realProvider = catalog.providerId !== 'mock';
+    const registry = owner.registry;
     if (typeof input.prompt !== 'string' || Buffer.byteLength(input.prompt) > 8192) {
       return { message: 'Enter a valid prompt of up to 8 KiB.' };
     }
     const patch = input.mode === 'patch' || agentStep;
-    const history = !patch && live && owner.modelId === model.id ? owner.messages : [];
+    const history = !patch && input.mode !== 'explain' && realProvider &&
+      owner.modelId === model.id && owner.providerId === catalog.providerId ? owner.messages : [];
     const id = randomUUID();
     const controller = new AbortController();
     let step;
     if (agentStep) {
       if (!owner.agent) return { message: 'Open a workspace to start a coding task.' };
-      try { step = await owner.agent.beginProposal(model.id); }
+      try { step = await owner.agent.beginProposal(catalog.providerId + '|' + model.id); }
       catch (error) { return { message: error.message }; }
       if (panel !== owner || step.signal.aborted) return null;
     }
-    const sources = step?.sources ?? (catalog.providerId === 'openai' ? owner.context?.items() ?? [] : []);
+    const sources = step?.sources ?? (realProvider ? owner.context?.items() ?? [] : []);
     if (patch && !sources.some(item => item.kind !== 'instructions')) {
-      return { message: 'Select OpenAI and attach an editor selection or saved file to propose edits.' };
+      return { message: 'Choose a connected model and attach an editor selection or saved file to propose edits.' };
     }
-    if (catalog.providerId !== 'openai' && owner.context?.items().length) return { message: 'Select OpenAI to send attachments.' };
+    if (!realProvider && owner.context?.items().length) return { message: 'Choose a connected model to send attachments.' };
     const active = { id, providerId: catalog.providerId, controller, pulling: false, sources, changed: new Set(),
-      modelId: model.id, patch, agentStep, recheck: step?.recheck, text: '',
+      modelId: model.id, patch, isolated: input.mode === 'explain', agentStep, recheck: step?.recheck, text: '',
       conversation: [...history, { role: 'user', content: step?.goal ?? input.prompt }],
       proposalScope: patch ? new AbortController() : undefined };
     owner.active = active;
     try {
-      const additions = catalog.providerId === 'openai' ? contextMessages(sources, preferenceMessage(await getPreferences())) : [];
+      const additions = realProvider ? contextMessages(sources, preferenceMessage(await getPreferences())) : [];
+      if (realProvider && input.mode === 'explain') additions.push({ role: 'user', label: 'Explain code',
+        content: 'Explain the supplied code or question. Identify any assumptions and distinguish observed source from inference.' });
       if (step) additions.push({ role: 'user', label: 'Observed baseline test counts',
         content: 'Local test runner summary for this task. No test output is attached.\n' + step.feedback });
       if (patch) additions.push(patchInstruction(sources));
@@ -317,17 +372,20 @@ function createIntelligenceMockWindow(profile, {
         ({ value } = validateRequest({ abiVersion: providerAbi, requestId: id, providerId: catalog.providerId, modelId: model.id,
           messages, maxOutputTokens: model.maxOutputTokens }));
       } catch { return { message: 'Enter a valid prompt of up to 8 KiB.' }; }
-      if (catalog.providerId === 'openai') {
-        if (owner.connectionBusy) return { message: 'Wait for the current connection operation.' };
-        if (!connections.available()) return { message: 'Windows Credential Manager is unavailable.' };
+      if (realProvider) {
+        if (!local && owner.connectionBusy) return { message: 'Wait for the current connection operation.' };
+        if (!local && !connections.available()) return { message: 'Windows Credential Manager is unavailable.', fallback: true };
         await verifySources(owner, active);
         const labels = [...history.map(() => null), ...additions.map(item => item.label), null];
         let approved;
-        try { approved = await authorize(owner, model, value, labels, controller.signal); }
-        catch { return { message: 'Could not open the OpenAI send review.' }; }
+        const destination = local ? { label: 'Ollama', endpoint: owner.local?.destination, local: true } :
+          { label: 'OpenAI', endpoint };
+        try { approved = await authorize(owner, destination, model, value, labels, controller.signal); }
+        catch { return { message: 'Could not open the send review.' }; }
         if (!approved || owner.active !== active || panel !== owner || controller.signal.aborted) return null;
         await verifySources(owner, active);
       }
+      if (local && registry !== owner.registry) return { message: 'The local model connection changed.', fallback: true };
       active.stream = registry.stream(value, { signal: controller.signal });
       patches?.retire();
       owner.sources = new Map();
@@ -356,7 +414,7 @@ function createIntelligenceMockWindow(profile, {
       if (owner.active !== request) throw new ProviderError('CANCELLED');
       if (done) throw new ProviderError('PROVIDER_PROTOCOL');
       if (value.kind === 'text.delta') request.text += value.text;
-      const retained = !request.sources.length;
+      const retained = !request.sources.length && !request.isolated;
       if (value.kind === 'complete' && request.patch) {
         if (value.finishReason !== 'stop') {
           stop(owner, false);
@@ -381,15 +439,17 @@ function createIntelligenceMockWindow(profile, {
           throw new ProviderError('CANCELLED');
         }
         for (const item of request.sources) owner.context.remove(item.id);
+        owner.proposalProvider = request.providerId;
         sendContext(owner);
-        owner.verified.add(request.providerId);
+        if (request.providerId === 'openai') owner.verified.add(request.providerId);
         if (request.agentStep) owner.agent.proposalReady();
         stop(owner, false);
         return { ...value, retained: false, proposalId };
       }
-      if (value.kind === 'complete' && request.text && live) {
+      if (value.kind === 'complete' && request.text && request.providerId !== 'mock') {
         if (retained) {
           owner.modelId = request.modelId;
+          owner.providerId = request.providerId;
           owner.messages = [...request.conversation, { role: 'assistant', content: request.text }];
         }
         if (request.providerId === 'openai') owner.verified.add(request.providerId);
@@ -531,7 +591,7 @@ function createIntelligenceMockWindow(profile, {
         sandbox: true, contextIsolation: true, nodeIntegration: false,
       },
     });
-    const opened = { window, project, messages: [], verified: new Set(), sources: new Map(), historical: new Set(),
+    const opened = { window, project, registry: baseRegistry, messages: [], verified: new Set(), sources: new Map(), historical: new Set(),
       connectionOwner: new AbortController(), connectionBusy: false };
     if (project) opened.context = createContextBroker(project, { readEditor, current: item => item === getWorkspace() });
     if (project && live) opened.agent = createAgentWorkflow(project, {
