@@ -144,9 +144,22 @@
     {
       "id": "G6",
       "name": "Controlled Agentic Coding",
-      "status": "implemented",
+      "status": "passed",
       "evidence": ["g6-controlled-agentic-coding.md", "../../qa/intelligence-agent.test.cjs",
-        "../../qa/intelligence-stream-desktop.test.cjs"]
+        "../../qa/intelligence-stream-desktop.test.cjs"],
+      "verification": {
+        "verifiedAt": "2026-11-14",
+        "implementationCommit": "ef9e2765f2afcfa6596b47e1a6a2e3e19908cb3b",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassed": 152,
+        "desktopPassed": 82,
+        "extensionHostPassed": 17,
+        "accountIsolationCi": "passed",
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43551408808",
+        "scope": "Reviewed test-and-fix plan, scoped patch, exact saved-byte verification, cancellation, process-tree cleanup and restart",
+        "knownLimitations": ["Electron preview only", "Synthetic provider responses in automated verification", "One proposal and Node.js project tests"]
+      }
     },
     { "id": "G7", "name": "Model Routing, Profiles & Offline", "status": "unverified", "evidence": [] },
     { "id": "G8", "name": "Privacy, Costs & Hardening", "status": "unverified", "evidence": [] },

@@ -14,3 +14,5 @@ The task has up to three steps, a 15-minute lifetime, and a three-minute deadlin
 ## Verification
 
 `npm test` covers bounded steps, stale evidence, late results after cancellation, and the Windows workflow. The desktop fixtures use the real Node.js runner and a synthetic provider stream. They verify separate approvals, test-output privacy, exact saved bytes, a failed baseline followed by a passing rerun, and termination of a detached child after Stop.
+
+On 2026-11-14, hosted Windows Server 2025 x64 build 26100 passed 152 core, 82 desktop, and 17 extension-host tests. The Windows credential account isolation check also passed. [Windows verification](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43551408808)
