@@ -1,0 +1,1269 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "4960ef251237583f9ee7a21e067f949dd2f6d4b0",
+  "implementationCommit": "d102b272e66f8b3c49972ee4366745289ced6f1b",
+  "platform": "win32",
+  "arch": "x64",
+  "osRelease": "10.0.26300",
+  "cpu": "11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz",
+  "logicalCpus": 8,
+  "ramMiB": 7835,
+  "node": "v24.15.0",
+  "runtime": {
+    "node": "24.22.2",
+    "electron": "45.2.3"
+  },
+  "fixtureFiles": 49,
+  "measuredPerMode": 20,
+  "warmupsPerMode": 1,
+  "runs": [
+    {
+      "order": [
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ],
+        [
+          "phase5Enabled",
+          "phase4",
+          "phase5Off"
+        ],
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ],
+        [
+          "phase5Enabled",
+          "phase4",
+          "phase5Off"
+        ],
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ],
+        [
+          "phase5Enabled",
+          "phase4",
+          "phase5Off"
+        ],
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ],
+        [
+          "phase5Enabled",
+          "phase4",
+          "phase5Off"
+        ],
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ],
+        [
+          "phase5Enabled",
+          "phase4",
+          "phase5Off"
+        ],
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ],
+        [
+          "phase5Enabled",
+          "phase4",
+          "phase5Off"
+        ],
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ]
+      ],
+      "samples": {
+        "phase4": [
+          {
+            "startupMs": 755,
+            "editorPaintMs": 20.600000000093132,
+            "workingSetMiB": 413.15234375,
+            "cpuSeconds": 1.9194930000000001
+          },
+          {
+            "startupMs": 760,
+            "editorPaintMs": 20.700000000186265,
+            "workingSetMiB": 412.46875,
+            "cpuSeconds": 1.90625
+          },
+          {
+            "startupMs": 758,
+            "editorPaintMs": 20.399999999906868,
+            "workingSetMiB": 415.828125,
+            "cpuSeconds": 1.9550359999999998
+          },
+          {
+            "startupMs": 811,
+            "editorPaintMs": 24.5,
+            "workingSetMiB": 418.3984375,
+            "cpuSeconds": 1.926075
+          },
+          {
+            "startupMs": 715,
+            "editorPaintMs": 21.200000000186265,
+            "workingSetMiB": 415.4375,
+            "cpuSeconds": 1.881045
+          },
+          {
+            "startupMs": 695,
+            "editorPaintMs": 25,
+            "workingSetMiB": 417.6484375,
+            "cpuSeconds": 1.8799189999999997
+          },
+          {
+            "startupMs": 702,
+            "editorPaintMs": 21.399999999906868,
+            "workingSetMiB": 421.2890625,
+            "cpuSeconds": 1.8292849999999998
+          },
+          {
+            "startupMs": 709,
+            "editorPaintMs": 28.300000000279397,
+            "workingSetMiB": 423.46875,
+            "cpuSeconds": 1.843572
+          },
+          {
+            "startupMs": 670,
+            "editorPaintMs": 16.699999999720603,
+            "workingSetMiB": 424.44140625,
+            "cpuSeconds": 1.8280100000000001
+          },
+          {
+            "startupMs": 601,
+            "editorPaintMs": 21.399999999906868,
+            "workingSetMiB": 416.890625,
+            "cpuSeconds": 1.788999
+          },
+          {
+            "startupMs": 645,
+            "editorPaintMs": 18.600000000093132,
+            "workingSetMiB": 418.20703125,
+            "cpuSeconds": 1.7382900000000001
+          },
+          {
+            "startupMs": 755,
+            "editorPaintMs": 30.300000000279397,
+            "workingSetMiB": 417.19140625,
+            "cpuSeconds": 1.96875
+          },
+          {
+            "startupMs": 661,
+            "editorPaintMs": 20,
+            "workingSetMiB": 416.65625,
+            "cpuSeconds": 1.821946
+          },
+          {
+            "startupMs": 727,
+            "editorPaintMs": 38.39999999990687,
+            "workingSetMiB": 413.48046875,
+            "cpuSeconds": 1.911083
+          },
+          {
+            "startupMs": 700,
+            "editorPaintMs": 16.5,
+            "workingSetMiB": 417.921875,
+            "cpuSeconds": 1.877542
+          },
+          {
+            "startupMs": 717,
+            "editorPaintMs": 18.5,
+            "workingSetMiB": 415.265625,
+            "cpuSeconds": 1.893177
+          },
+          {
+            "startupMs": 782,
+            "editorPaintMs": 26.59999999962747,
+            "workingSetMiB": 415.4375,
+            "cpuSeconds": 1.886773
+          },
+          {
+            "startupMs": 715,
+            "editorPaintMs": 25.299999999813735,
+            "workingSetMiB": 420.65234375,
+            "cpuSeconds": 1.929574
+          },
+          {
+            "startupMs": 577,
+            "editorPaintMs": 22.5,
+            "workingSetMiB": 419.30859375,
+            "cpuSeconds": 1.8322599999999998
+          },
+          {
+            "startupMs": 632,
+            "editorPaintMs": 21.300000000279397,
+            "workingSetMiB": 415.18359375,
+            "cpuSeconds": 1.82017
+          }
+        ],
+        "phase5Off": [
+          {
+            "startupMs": 746,
+            "editorPaintMs": 30.5,
+            "workingSetMiB": 421.12109375,
+            "cpuSeconds": 1.91991
+          },
+          {
+            "startupMs": 783,
+            "editorPaintMs": 25.5,
+            "workingSetMiB": 411.16796875,
+            "cpuSeconds": 1.913712
+          },
+          {
+            "startupMs": 663,
+            "editorPaintMs": 39.6999999997206,
+            "workingSetMiB": 413.37890625,
+            "cpuSeconds": 1.822155
+          },
+          {
+            "startupMs": 766,
+            "editorPaintMs": 25.199999999720603,
+            "workingSetMiB": 411.9375,
+            "cpuSeconds": 1.9653570000000002
+          },
+          {
+            "startupMs": 692,
+            "editorPaintMs": 17.700000000186265,
+            "workingSetMiB": 410.1640625,
+            "cpuSeconds": 1.779357
+          },
+          {
+            "startupMs": 720,
+            "editorPaintMs": 19.800000000279397,
+            "workingSetMiB": 411.53515625,
+            "cpuSeconds": 1.8340699999999999
+          },
+          {
+            "startupMs": 739,
+            "editorPaintMs": 24.200000000186265,
+            "workingSetMiB": 415.40234375,
+            "cpuSeconds": 1.886468
+          },
+          {
+            "startupMs": 753,
+            "editorPaintMs": 18.90000000037253,
+            "workingSetMiB": 414.55078125,
+            "cpuSeconds": 1.904089
+          },
+          {
+            "startupMs": 702,
+            "editorPaintMs": 28.59999999962747,
+            "workingSetMiB": 417.9453125,
+            "cpuSeconds": 1.877764
+          },
+          {
+            "startupMs": 656,
+            "editorPaintMs": 26.299999999813735,
+            "workingSetMiB": 410.921875,
+            "cpuSeconds": 1.815664
+          },
+          {
+            "startupMs": 692,
+            "editorPaintMs": 28.299999999813735,
+            "workingSetMiB": 416.02734375,
+            "cpuSeconds": 1.835499
+          },
+          {
+            "startupMs": 680,
+            "editorPaintMs": 40.40000000037253,
+            "workingSetMiB": 411.109375,
+            "cpuSeconds": 1.822923
+          },
+          {
+            "startupMs": 704,
+            "editorPaintMs": 24,
+            "workingSetMiB": 413.1171875,
+            "cpuSeconds": 1.9134639999999998
+          },
+          {
+            "startupMs": 630,
+            "editorPaintMs": 20.899999999906868,
+            "workingSetMiB": 413.484375,
+            "cpuSeconds": 1.8533169999999999
+          },
+          {
+            "startupMs": 625,
+            "editorPaintMs": 26.899999999906868,
+            "workingSetMiB": 413.94921875,
+            "cpuSeconds": 1.8605050000000003
+          },
+          {
+            "startupMs": 694,
+            "editorPaintMs": 24.399999999906868,
+            "workingSetMiB": 413.83203125,
+            "cpuSeconds": 1.8653039999999999
+          },
+          {
+            "startupMs": 729,
+            "editorPaintMs": 32.60000000009313,
+            "workingSetMiB": 420.86328125,
+            "cpuSeconds": 1.8577500000000002
+          },
+          {
+            "startupMs": 764,
+            "editorPaintMs": 16.5,
+            "workingSetMiB": 413.88671875,
+            "cpuSeconds": 1.8702770000000002
+          },
+          {
+            "startupMs": 809,
+            "editorPaintMs": 22.800000000279397,
+            "workingSetMiB": 410.828125,
+            "cpuSeconds": 1.907242
+          },
+          {
+            "startupMs": 685,
+            "editorPaintMs": 38.5,
+            "workingSetMiB": 414.01171875,
+            "cpuSeconds": 1.847391
+          }
+        ],
+        "phase5Enabled": [
+          {
+            "startupMs": 715,
+            "editorPaintMs": 19.399999999906868,
+            "workingSetMiB": 424.53125,
+            "cpuSeconds": 1.852697,
+            "panelOpenMs": 155.0574000000015,
+            "mockFirstTextMs": 136.20000000018626,
+            "mockFirstTextLessDelayMs": 16.200000000186265,
+            "panelWorkingSetMiB": 567.05859375
+          },
+          {
+            "startupMs": 793,
+            "editorPaintMs": 16.800000000279397,
+            "workingSetMiB": 428.5546875,
+            "cpuSeconds": 1.983272,
+            "panelOpenMs": 162.20809999999983,
+            "mockFirstTextMs": 138.79999999981374,
+            "mockFirstTextLessDelayMs": 18.799999999813735,
+            "panelWorkingSetMiB": 572.14453125
+          },
+          {
+            "startupMs": 688,
+            "editorPaintMs": 20.600000000093132,
+            "workingSetMiB": 424.81640625,
+            "cpuSeconds": 1.881528,
+            "panelOpenMs": 175.97639999999956,
+            "mockFirstTextMs": 140.40000000037253,
+            "mockFirstTextLessDelayMs": 20.40000000037253,
+            "panelWorkingSetMiB": 568.74609375
+          },
+          {
+            "startupMs": 760,
+            "editorPaintMs": 18,
+            "workingSetMiB": 425.28515625,
+            "cpuSeconds": 1.872385,
+            "panelOpenMs": 172.13300000000163,
+            "mockFirstTextMs": 142.39999999990687,
+            "mockFirstTextLessDelayMs": 22.399999999906868,
+            "panelWorkingSetMiB": 565.82421875
+          },
+          {
+            "startupMs": 723,
+            "editorPaintMs": 33.89999999990687,
+            "workingSetMiB": 428.1953125,
+            "cpuSeconds": 1.8338240000000001,
+            "panelOpenMs": 160.97529999999824,
+            "mockFirstTextMs": 141.10000000009313,
+            "mockFirstTextLessDelayMs": 21.100000000093132,
+            "panelWorkingSetMiB": 574.484375
+          },
+          {
+            "startupMs": 683,
+            "editorPaintMs": 22.199999999720603,
+            "workingSetMiB": 426.171875,
+            "cpuSeconds": 1.8611469999999999,
+            "panelOpenMs": 162.87940000000162,
+            "mockFirstTextMs": 132,
+            "mockFirstTextLessDelayMs": 12,
+            "panelWorkingSetMiB": 566.671875
+          },
+          {
+            "startupMs": 689,
+            "editorPaintMs": 17.899999999906868,
+            "workingSetMiB": 427.91015625,
+            "cpuSeconds": 1.92267,
+            "panelOpenMs": 179.02079999999842,
+            "mockFirstTextMs": 136,
+            "mockFirstTextLessDelayMs": 16,
+            "panelWorkingSetMiB": 568.9375
+          },
+          {
+            "startupMs": 721,
+            "editorPaintMs": 22.600000000093132,
+            "workingSetMiB": 424.73046875,
+            "cpuSeconds": 1.734375,
+            "panelOpenMs": 184.056700000001,
+            "mockFirstTextMs": 143.20000000018626,
+            "mockFirstTextLessDelayMs": 23.200000000186265,
+            "panelWorkingSetMiB": 571.4453125
+          },
+          {
+            "startupMs": 683,
+            "editorPaintMs": 25.799999999813735,
+            "workingSetMiB": 430.14453125,
+            "cpuSeconds": 1.876389,
+            "panelOpenMs": 167.2740999999951,
+            "mockFirstTextMs": 144.20000000018626,
+            "mockFirstTextLessDelayMs": 24.200000000186265,
+            "panelWorkingSetMiB": 575.09765625
+          },
+          {
+            "startupMs": 706,
+            "editorPaintMs": 28,
+            "workingSetMiB": 427.65234375,
+            "cpuSeconds": 1.867261,
+            "panelOpenMs": 161.37919999999576,
+            "mockFirstTextMs": 140,
+            "mockFirstTextLessDelayMs": 20,
+            "panelWorkingSetMiB": 569.73828125
+          },
+          {
+            "startupMs": 745,
+            "editorPaintMs": 44,
+            "workingSetMiB": 427.59375,
+            "cpuSeconds": 1.9206260000000002,
+            "panelOpenMs": 200.86970000000292,
+            "mockFirstTextMs": 143.59999999962747,
+            "mockFirstTextLessDelayMs": 23.59999999962747,
+            "panelWorkingSetMiB": 572.203125
+          },
+          {
+            "startupMs": 636,
+            "editorPaintMs": 21.100000000093132,
+            "workingSetMiB": 428.08203125,
+            "cpuSeconds": 1.7686950000000001,
+            "panelOpenMs": 172.6993999999977,
+            "mockFirstTextMs": 130.10000000009313,
+            "mockFirstTextLessDelayMs": 10.100000000093132,
+            "panelWorkingSetMiB": 569.33984375
+          },
+          {
+            "startupMs": 816,
+            "editorPaintMs": 20.299999999813735,
+            "workingSetMiB": 422.40234375,
+            "cpuSeconds": 1.859375,
+            "panelOpenMs": 158.49469999999565,
+            "mockFirstTextMs": 130.6999999997206,
+            "mockFirstTextLessDelayMs": 10.699999999720603,
+            "panelWorkingSetMiB": 569.046875
+          },
+          {
+            "startupMs": 718,
+            "editorPaintMs": 32,
+            "workingSetMiB": 428.55078125,
+            "cpuSeconds": 1.91796,
+            "panelOpenMs": 172.90619999999763,
+            "mockFirstTextMs": 144.3000000002794,
+            "mockFirstTextLessDelayMs": 24.300000000279397,
+            "panelWorkingSetMiB": 569.22265625
+          },
+          {
+            "startupMs": 756,
+            "editorPaintMs": 19.700000000186265,
+            "workingSetMiB": 422.97265625,
+            "cpuSeconds": 1.962616,
+            "panelOpenMs": 181.43889999999374,
+            "mockFirstTextMs": 136.89999999990687,
+            "mockFirstTextLessDelayMs": 16.899999999906868,
+            "panelWorkingSetMiB": 567.3828125
+          },
+          {
+            "startupMs": 778,
+            "editorPaintMs": 22.399999999906868,
+            "workingSetMiB": 429.48828125,
+            "cpuSeconds": 1.890625,
+            "panelOpenMs": 162.90720000000147,
+            "mockFirstTextMs": 139,
+            "mockFirstTextLessDelayMs": 19,
+            "panelWorkingSetMiB": 567.4453125
+          },
+          {
+            "startupMs": 812,
+            "editorPaintMs": 26.600000000093132,
+            "workingSetMiB": 425.7109375,
+            "cpuSeconds": 2.098673,
+            "panelOpenMs": 318.46510000000126,
+            "mockFirstTextMs": 132.89999999990687,
+            "mockFirstTextLessDelayMs": 12.899999999906868,
+            "panelWorkingSetMiB": 609.14453125
+          },
+          {
+            "startupMs": 706,
+            "editorPaintMs": 17.90000000037253,
+            "workingSetMiB": 425.97265625,
+            "cpuSeconds": 1.8611679999999997,
+            "panelOpenMs": 171.6149000000005,
+            "mockFirstTextMs": 136.5,
+            "mockFirstTextLessDelayMs": 16.5,
+            "panelWorkingSetMiB": 567.80078125
+          },
+          {
+            "startupMs": 723,
+            "editorPaintMs": 23.300000000279397,
+            "workingSetMiB": 426.51953125,
+            "cpuSeconds": 1.861858,
+            "panelOpenMs": 156.87159999999858,
+            "mockFirstTextMs": 148.5,
+            "mockFirstTextLessDelayMs": 28.5,
+            "panelWorkingSetMiB": 568.703125
+          },
+          {
+            "startupMs": 773,
+            "editorPaintMs": 18.100000000093132,
+            "workingSetMiB": 425.35546875,
+            "cpuSeconds": 2.004186,
+            "panelOpenMs": 177.83840000000782,
+            "mockFirstTextMs": 137.89999999990687,
+            "mockFirstTextLessDelayMs": 17.899999999906868,
+            "panelWorkingSetMiB": 567.57421875
+          }
+        ]
+      },
+      "summaries": {
+        "phase4": {
+          "startupMs": {
+            "p50": 712,
+            "p95": 782
+          },
+          "editorPaintMs": {
+            "p50": 21.35,
+            "p95": 30.3
+          },
+          "workingSetMiB": {
+            "p50": 417.04,
+            "p95": 423.47
+          },
+          "cpuSeconds": {
+            "p50": 1.88,
+            "p95": 1.96
+          }
+        },
+        "phase5Off": {
+          "startupMs": {
+            "p50": 703,
+            "p95": 783
+          },
+          "editorPaintMs": {
+            "p50": 25.35,
+            "p95": 39.7
+          },
+          "workingSetMiB": {
+            "p50": 413.66,
+            "p95": 420.86
+          },
+          "cpuSeconds": {
+            "p50": 1.86,
+            "p95": 1.92
+          }
+        },
+        "phase5Enabled": {
+          "startupMs": {
+            "p50": 722,
+            "p95": 812
+          },
+          "editorPaintMs": {
+            "p50": 21.65,
+            "p95": 33.9
+          },
+          "workingSetMiB": {
+            "p50": 426.35,
+            "p95": 429.49
+          },
+          "cpuSeconds": {
+            "p50": 1.87,
+            "p95": 2
+          },
+          "panelOpenMs": {
+            "p50": 171.87,
+            "p95": 200.87
+          },
+          "mockFirstTextMs": {
+            "p50": 138.9,
+            "p95": 144.3
+          },
+          "mockFirstTextLessDelayMs": {
+            "p50": 18.9,
+            "p95": 24.3
+          },
+          "panelWorkingSetMiB": {
+            "p50": 568.99,
+            "p95": 575.1
+          }
+        }
+      }
+    },
+    {
+      "order": [
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ],
+        [
+          "phase5Enabled",
+          "phase4",
+          "phase5Off"
+        ],
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ],
+        [
+          "phase5Enabled",
+          "phase4",
+          "phase5Off"
+        ],
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ],
+        [
+          "phase5Enabled",
+          "phase4",
+          "phase5Off"
+        ],
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ],
+        [
+          "phase5Enabled",
+          "phase4",
+          "phase5Off"
+        ],
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ],
+        [
+          "phase5Enabled",
+          "phase4",
+          "phase5Off"
+        ],
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ],
+        [
+          "phase5Enabled",
+          "phase4",
+          "phase5Off"
+        ],
+        [
+          "phase4",
+          "phase5Off",
+          "phase5Enabled"
+        ],
+        [
+          "phase5Off",
+          "phase5Enabled",
+          "phase4"
+        ]
+      ],
+      "samples": {
+        "phase4": [
+          {
+            "startupMs": 754,
+            "editorPaintMs": 26.600000000093132,
+            "workingSetMiB": 416.57421875,
+            "cpuSeconds": 1.933259
+          },
+          {
+            "startupMs": 663,
+            "editorPaintMs": 23,
+            "workingSetMiB": 419.96875,
+            "cpuSeconds": 1.8179450000000001
+          },
+          {
+            "startupMs": 596,
+            "editorPaintMs": 27.399999999906868,
+            "workingSetMiB": 421.76953125,
+            "cpuSeconds": 1.995448
+          },
+          {
+            "startupMs": 887,
+            "editorPaintMs": 20.700000000186265,
+            "workingSetMiB": 421.01953125,
+            "cpuSeconds": 2.733577
+          },
+          {
+            "startupMs": 729,
+            "editorPaintMs": 19.299999999813735,
+            "workingSetMiB": 422.421875,
+            "cpuSeconds": 1.859375
+          },
+          {
+            "startupMs": 632,
+            "editorPaintMs": 28,
+            "workingSetMiB": 414.30859375,
+            "cpuSeconds": 1.8161779999999998
+          },
+          {
+            "startupMs": 659,
+            "editorPaintMs": 24.899999999906868,
+            "workingSetMiB": 422.40625,
+            "cpuSeconds": 1.8178489999999998
+          },
+          {
+            "startupMs": 662,
+            "editorPaintMs": 28,
+            "workingSetMiB": 417.58984375,
+            "cpuSeconds": 1.837743
+          },
+          {
+            "startupMs": 704,
+            "editorPaintMs": 39.39999999990687,
+            "workingSetMiB": 418.4453125,
+            "cpuSeconds": 1.794595
+          },
+          {
+            "startupMs": 699,
+            "editorPaintMs": 22,
+            "workingSetMiB": 415.21484375,
+            "cpuSeconds": 1.8404829999999999
+          },
+          {
+            "startupMs": 740,
+            "editorPaintMs": 20,
+            "workingSetMiB": 422.94140625,
+            "cpuSeconds": 1.8659530000000002
+          },
+          {
+            "startupMs": 702,
+            "editorPaintMs": 33.39999999990687,
+            "workingSetMiB": 420.30078125,
+            "cpuSeconds": 1.85842
+          },
+          {
+            "startupMs": 728,
+            "editorPaintMs": 17.600000000093132,
+            "workingSetMiB": 423.6640625,
+            "cpuSeconds": 1.897646
+          },
+          {
+            "startupMs": 757,
+            "editorPaintMs": 27.200000000186265,
+            "workingSetMiB": 421.9140625,
+            "cpuSeconds": 1.926673
+          },
+          {
+            "startupMs": 716,
+            "editorPaintMs": 21.799999999813735,
+            "workingSetMiB": 419.78125,
+            "cpuSeconds": 1.951046
+          },
+          {
+            "startupMs": 777,
+            "editorPaintMs": 26,
+            "workingSetMiB": 415.5078125,
+            "cpuSeconds": 1.90625
+          },
+          {
+            "startupMs": 766,
+            "editorPaintMs": 17.899999999906868,
+            "workingSetMiB": 418.5859375,
+            "cpuSeconds": 1.931723
+          },
+          {
+            "startupMs": 687,
+            "editorPaintMs": 26.199999999720603,
+            "workingSetMiB": 427.2578125,
+            "cpuSeconds": 1.853406
+          },
+          {
+            "startupMs": 720,
+            "editorPaintMs": 23.100000000093132,
+            "workingSetMiB": 414.8984375,
+            "cpuSeconds": 1.9415229999999999
+          },
+          {
+            "startupMs": 668,
+            "editorPaintMs": 21.899999999906868,
+            "workingSetMiB": 412.97265625,
+            "cpuSeconds": 1.787054
+          }
+        ],
+        "phase5Off": [
+          {
+            "startupMs": 777,
+            "editorPaintMs": 25.799999999813735,
+            "workingSetMiB": 409.98828125,
+            "cpuSeconds": 1.8844729999999998
+          },
+          {
+            "startupMs": 742,
+            "editorPaintMs": 29.800000000279397,
+            "workingSetMiB": 416.921875,
+            "cpuSeconds": 1.9123430000000001
+          },
+          {
+            "startupMs": 935,
+            "editorPaintMs": 30,
+            "workingSetMiB": 412.62109375,
+            "cpuSeconds": 2.506888
+          },
+          {
+            "startupMs": 974,
+            "editorPaintMs": 21.800000000279397,
+            "workingSetMiB": 415.66015625,
+            "cpuSeconds": 3.0625
+          },
+          {
+            "startupMs": 1435,
+            "editorPaintMs": 28.09999999962747,
+            "workingSetMiB": 414.359375,
+            "cpuSeconds": 3.8101580000000004
+          },
+          {
+            "startupMs": 672,
+            "editorPaintMs": 20.100000000093132,
+            "workingSetMiB": 416.38671875,
+            "cpuSeconds": 1.821313
+          },
+          {
+            "startupMs": 615,
+            "editorPaintMs": 22.100000000093132,
+            "workingSetMiB": 417.38671875,
+            "cpuSeconds": 1.8408440000000001
+          },
+          {
+            "startupMs": 717,
+            "editorPaintMs": 22.200000000186265,
+            "workingSetMiB": 421.58984375,
+            "cpuSeconds": 1.872673
+          },
+          {
+            "startupMs": 674,
+            "editorPaintMs": 26.300000000279397,
+            "workingSetMiB": 415.79296875,
+            "cpuSeconds": 1.7805719999999998
+          },
+          {
+            "startupMs": 716,
+            "editorPaintMs": 28.300000000279397,
+            "workingSetMiB": 418.60546875,
+            "cpuSeconds": 1.8180710000000002
+          },
+          {
+            "startupMs": 602,
+            "editorPaintMs": 28.899999999906868,
+            "workingSetMiB": 417.72265625,
+            "cpuSeconds": 1.792898
+          },
+          {
+            "startupMs": 746,
+            "editorPaintMs": 22.09999999962747,
+            "workingSetMiB": 418.1953125,
+            "cpuSeconds": 1.8597669999999997
+          },
+          {
+            "startupMs": 661,
+            "editorPaintMs": 26.100000000093132,
+            "workingSetMiB": 418.3984375,
+            "cpuSeconds": 1.8175280000000003
+          },
+          {
+            "startupMs": 710,
+            "editorPaintMs": 19.299999999813735,
+            "workingSetMiB": 417.12890625,
+            "cpuSeconds": 1.906262
+          },
+          {
+            "startupMs": 677,
+            "editorPaintMs": 29.699999999720603,
+            "workingSetMiB": 413.44140625,
+            "cpuSeconds": 1.8329440000000001
+          },
+          {
+            "startupMs": 654,
+            "editorPaintMs": 18.40000000037253,
+            "workingSetMiB": 413.3515625,
+            "cpuSeconds": 1.748098
+          },
+          {
+            "startupMs": 791,
+            "editorPaintMs": 30.200000000186265,
+            "workingSetMiB": 411.58984375,
+            "cpuSeconds": 2.003829
+          },
+          {
+            "startupMs": 662,
+            "editorPaintMs": 29.09999999962747,
+            "workingSetMiB": 410.5625,
+            "cpuSeconds": 1.811632
+          },
+          {
+            "startupMs": 650,
+            "editorPaintMs": 18.299999999813735,
+            "workingSetMiB": 411.15234375,
+            "cpuSeconds": 1.777126
+          },
+          {
+            "startupMs": 764,
+            "editorPaintMs": 31.5,
+            "workingSetMiB": 410.80078125,
+            "cpuSeconds": 1.9233959999999999
+          }
+        ],
+        "phase5Enabled": [
+          {
+            "startupMs": 715,
+            "editorPaintMs": 17.200000000186265,
+            "workingSetMiB": 425.94140625,
+            "cpuSeconds": 1.882986,
+            "panelOpenMs": 171.61449999999968,
+            "mockFirstTextMs": 145.60000000009313,
+            "mockFirstTextLessDelayMs": 25.600000000093132,
+            "panelWorkingSetMiB": 567.375
+          },
+          {
+            "startupMs": 701,
+            "editorPaintMs": 27.600000000093132,
+            "workingSetMiB": 426.828125,
+            "cpuSeconds": 1.869879,
+            "panelOpenMs": 172.36390000000029,
+            "mockFirstTextMs": 136.89999999990687,
+            "mockFirstTextLessDelayMs": 16.899999999906868,
+            "panelWorkingSetMiB": 573.8515625
+          },
+          {
+            "startupMs": 757,
+            "editorPaintMs": 31.700000000186265,
+            "workingSetMiB": 427.5234375,
+            "cpuSeconds": 2.001773,
+            "panelOpenMs": 171.26740000000063,
+            "mockFirstTextMs": 138.70000000018626,
+            "mockFirstTextLessDelayMs": 18.700000000186265,
+            "panelWorkingSetMiB": 572.53515625
+          },
+          {
+            "startupMs": 1219,
+            "editorPaintMs": 30.200000000186265,
+            "workingSetMiB": 433.49609375,
+            "cpuSeconds": 3.7118870000000004,
+            "panelOpenMs": 415.5701000000008,
+            "mockFirstTextMs": 157.39999999990687,
+            "mockFirstTextLessDelayMs": 37.39999999990687,
+            "panelWorkingSetMiB": 614.7265625
+          },
+          {
+            "startupMs": 733,
+            "editorPaintMs": 16.899999999906868,
+            "workingSetMiB": 425.3984375,
+            "cpuSeconds": 1.8848950000000002,
+            "panelOpenMs": 180.744200000001,
+            "mockFirstTextMs": 133.3000000002794,
+            "mockFirstTextLessDelayMs": 13.300000000279397,
+            "panelWorkingSetMiB": 566.796875
+          },
+          {
+            "startupMs": 698,
+            "editorPaintMs": 21.700000000186265,
+            "workingSetMiB": 428.2109375,
+            "cpuSeconds": 1.8012009999999998,
+            "panelOpenMs": 159.13960000000225,
+            "mockFirstTextMs": 138.20000000018626,
+            "mockFirstTextLessDelayMs": 18.200000000186265,
+            "panelWorkingSetMiB": 569.90625
+          },
+          {
+            "startupMs": 607,
+            "editorPaintMs": 29.799999999813735,
+            "workingSetMiB": 426.43359375,
+            "cpuSeconds": 1.80073,
+            "panelOpenMs": 172.84339999999793,
+            "mockFirstTextMs": 130.3000000002794,
+            "mockFirstTextLessDelayMs": 10.300000000279397,
+            "panelWorkingSetMiB": 568.953125
+          },
+          {
+            "startupMs": 742,
+            "editorPaintMs": 22.5,
+            "workingSetMiB": 426.99609375,
+            "cpuSeconds": 1.905157,
+            "panelOpenMs": 159.7989000000016,
+            "mockFirstTextMs": 138,
+            "mockFirstTextLessDelayMs": 18,
+            "panelWorkingSetMiB": 568.8203125
+          },
+          {
+            "startupMs": 747,
+            "editorPaintMs": 19.700000000186265,
+            "workingSetMiB": 432.75,
+            "cpuSeconds": 1.9513320000000003,
+            "panelOpenMs": 182.36360000000423,
+            "mockFirstTextMs": 132.79999999981374,
+            "mockFirstTextLessDelayMs": 12.799999999813735,
+            "panelWorkingSetMiB": 576.83984375
+          },
+          {
+            "startupMs": 682,
+            "editorPaintMs": 25.699999999720603,
+            "workingSetMiB": 427.29296875,
+            "cpuSeconds": 1.805973,
+            "panelOpenMs": 162.2893999999942,
+            "mockFirstTextMs": 139.60000000009313,
+            "mockFirstTextLessDelayMs": 19.600000000093132,
+            "panelWorkingSetMiB": 571.078125
+          },
+          {
+            "startupMs": 734,
+            "editorPaintMs": 25.200000000186265,
+            "workingSetMiB": 426.6328125,
+            "cpuSeconds": 1.8732140000000002,
+            "panelOpenMs": 159.42659999999887,
+            "mockFirstTextMs": 142.39999999990687,
+            "mockFirstTextLessDelayMs": 22.399999999906868,
+            "panelWorkingSetMiB": 568.27734375
+          },
+          {
+            "startupMs": 673,
+            "editorPaintMs": 24.799999999813735,
+            "workingSetMiB": 423.96875,
+            "cpuSeconds": 1.820822,
+            "panelOpenMs": 163.59569999999803,
+            "mockFirstTextMs": 137.70000000018626,
+            "mockFirstTextLessDelayMs": 17.700000000186265,
+            "panelWorkingSetMiB": 568.00390625
+          },
+          {
+            "startupMs": 687,
+            "editorPaintMs": 32.59999999962747,
+            "workingSetMiB": 426.859375,
+            "cpuSeconds": 1.95883,
+            "panelOpenMs": 169.64420000000246,
+            "mockFirstTextMs": 145,
+            "mockFirstTextLessDelayMs": 25,
+            "panelWorkingSetMiB": 569.5390625
+          },
+          {
+            "startupMs": 663,
+            "editorPaintMs": 30.899999999906868,
+            "workingSetMiB": 421.5703125,
+            "cpuSeconds": 1.9920870000000002,
+            "panelOpenMs": 183.11639999999898,
+            "mockFirstTextMs": 135.89999999990687,
+            "mockFirstTextLessDelayMs": 15.899999999906868,
+            "panelWorkingSetMiB": 567.88671875
+          },
+          {
+            "startupMs": 750,
+            "editorPaintMs": 40.60000000009313,
+            "workingSetMiB": 422.734375,
+            "cpuSeconds": 1.906006,
+            "panelOpenMs": 160.5402000000031,
+            "mockFirstTextMs": 144.39999999990687,
+            "mockFirstTextLessDelayMs": 24.399999999906868,
+            "panelWorkingSetMiB": 566.69921875
+          },
+          {
+            "startupMs": 701,
+            "editorPaintMs": 24.299999999813735,
+            "workingSetMiB": 427.3203125,
+            "cpuSeconds": 1.8721269999999999,
+            "panelOpenMs": 169.40409999999974,
+            "mockFirstTextMs": 137.70000000018626,
+            "mockFirstTextLessDelayMs": 17.700000000186265,
+            "panelWorkingSetMiB": 568.59765625
+          },
+          {
+            "startupMs": 732,
+            "editorPaintMs": 19.800000000279397,
+            "workingSetMiB": 422.73046875,
+            "cpuSeconds": 1.84375,
+            "panelOpenMs": 155.20209999999497,
+            "mockFirstTextMs": 132.70000000018626,
+            "mockFirstTextLessDelayMs": 12.700000000186265,
+            "panelWorkingSetMiB": 567.109375
+          },
+          {
+            "startupMs": 703,
+            "editorPaintMs": 29.899999999906868,
+            "workingSetMiB": 425.76953125,
+            "cpuSeconds": 1.8978949999999999,
+            "panelOpenMs": 172.04090000000724,
+            "mockFirstTextMs": 138.5,
+            "mockFirstTextLessDelayMs": 18.5,
+            "panelWorkingSetMiB": 567.3515625
+          },
+          {
+            "startupMs": 691,
+            "editorPaintMs": 30.899999999906868,
+            "workingSetMiB": 426.01171875,
+            "cpuSeconds": 1.952089,
+            "panelOpenMs": 186.13990000000922,
+            "mockFirstTextMs": 139.5,
+            "mockFirstTextLessDelayMs": 19.5,
+            "panelWorkingSetMiB": 568.12109375
+          },
+          {
+            "startupMs": 660,
+            "editorPaintMs": 21.700000000186265,
+            "workingSetMiB": 422.8046875,
+            "cpuSeconds": 1.828345,
+            "panelOpenMs": 156.90119999999297,
+            "mockFirstTextMs": 139.6999999997206,
+            "mockFirstTextLessDelayMs": 19.699999999720603,
+            "panelWorkingSetMiB": 566.50390625
+          }
+        ]
+      },
+      "summaries": {
+        "phase4": {
+          "startupMs": {
+            "p50": 710,
+            "p95": 777
+          },
+          "editorPaintMs": {
+            "p50": 24,
+            "p95": 33.4
+          },
+          "workingSetMiB": {
+            "p50": 419.88,
+            "p95": 423.66
+          },
+          "cpuSeconds": {
+            "p50": 1.86,
+            "p95": 2
+          }
+        },
+        "phase5Off": {
+          "startupMs": {
+            "p50": 713,
+            "p95": 974
+          },
+          "editorPaintMs": {
+            "p50": 26.2,
+            "p95": 30.2
+          },
+          "workingSetMiB": {
+            "p50": 415.73,
+            "p95": 418.61
+          },
+          "cpuSeconds": {
+            "p50": 1.85,
+            "p95": 3.06
+          }
+        },
+        "phase5Enabled": {
+          "startupMs": {
+            "p50": 702,
+            "p95": 757
+          },
+          "editorPaintMs": {
+            "p50": 25.45,
+            "p95": 32.6
+          },
+          "workingSetMiB": {
+            "p50": 426.53,
+            "p95": 432.75
+          },
+          "cpuSeconds": {
+            "p50": 1.88,
+            "p95": 2
+          },
+          "panelOpenMs": {
+            "p50": 170.46,
+            "p95": 186.14
+          },
+          "mockFirstTextMs": {
+            "p50": 138.35,
+            "p95": 145.6
+          },
+          "mockFirstTextLessDelayMs": {
+            "p50": 18.35,
+            "p95": 25.6
+          },
+          "panelWorkingSetMiB": {
+            "p50": 568.44,
+            "p95": 576.84
+          }
+        }
+      }
+    }
+  ]
+}

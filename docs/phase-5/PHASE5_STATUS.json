@@ -2,8 +2,9 @@
   "project": "CEVRA",
   "phase": 5,
   "name": "CEVRA Intelligence",
-  "status": "in_progress",
-  "isImplementationComplete": false,
+  "status": "completed",
+  "completedAt": "2026-11-14",
+  "isImplementationComplete": true,
   "branch": "cevra/phase5-g9",
   "baselineCommit": "4960ef251237583f9ee7a21e067f949dd2f6d4b0",
   "baselinePhase4Ledger": "../phase-4/PHASE4_STATUS.json",
@@ -204,7 +205,33 @@
           "Synthetic provider verification. No paid provider request or invoice was exercised."]
       }
     },
-    { "id": "G9", "name": "Integration & Benchmarking", "status": "implemented", "evidence": [
-      "g9-integration-and-benchmarking.md", "../../qa/intelligence-stream-desktop.test.cjs", "../../qa/intelligence-benchmark.test.cjs"] }
+    {
+      "id": "G9",
+      "name": "Integration & Benchmarking",
+      "status": "passed",
+      "evidence": ["g9-integration-and-benchmarking.md", "g9-benchmark-windows-26300.json",
+        "../../qa/intelligence-stream-desktop.test.cjs", "../../qa/intelligence-benchmark.test.cjs"],
+      "verification": {
+        "verifiedAt": "2026-11-14",
+        "implementationCommit": "d102b272e66f8b3c49972ee4366745289ced6f1b",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "nodeVersion": "24.15.0",
+        "electronVersion": "45.2.3",
+        "corePassed": 163,
+        "desktopPassed": 84,
+        "extensionHostPassed": 18,
+        "accountIsolationCi": "passed",
+        "localBenchmarkRuns": 2,
+        "localBenchmarkSamplesPerMode": 20,
+        "ciBenchmarkSamplesPerMode": 3,
+        "ciBenchmarkPassed": 13,
+        "npmAuditFindings": 0,
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43573565167",
+        "scope": "Native credential capture, reviewed coding and save, AI-off recovery, bounded loopback streaming, prior phase regression, and matched Phase 4 performance",
+        "knownLimitations": ["Opt-in Windows Electron preview", "No subscription sign-in adapter", "Live OpenAI and installed Ollama model inference remain opt-in smoke checks",
+          "Benchmark uses a small synthetic project. Local startup tail latency varied across runs."]
+      }
+    }
   ]
 }
