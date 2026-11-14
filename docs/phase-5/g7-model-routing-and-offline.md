@@ -17,3 +17,7 @@ CEVRA connects directly to `127.0.0.1`, checks the connected peer, blocks redire
 The send review shows the provider endpoint, model, and outbound messages. **Choose another model** after a provider failure returns focus to the model picker. Sending through the new provider opens a new review. Chat history is scoped to its provider and model. Explain, patch, and coding requests start with their own messages and any approved attachments. Start a new coding plan to change its model.
 
 Editor features remain available with Intelligence disabled or a model disconnected. A local Ollama model runs inference through the loopback service. OpenAI requests require a configured key and can incur API charges.
+
+## Windows verification
+
+The implementation passed 156 core, 83 desktop, and 17 extension-host tests on Windows 11 and GitHub's Windows Server 2025 runner. The credential account-separation check also passed in CI. The desktop tests exercised a loopback HTTP fixture for Ollama and a simulated OpenAI endpoint. Inference with an installed Ollama model remains unverified. [Windows CI results](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43570665307)

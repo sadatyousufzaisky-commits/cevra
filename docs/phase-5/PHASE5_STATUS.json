@@ -164,9 +164,22 @@
     {
       "id": "G7",
       "name": "Model Routing, Profiles & Offline",
-      "status": "implemented",
+      "status": "passed",
       "evidence": ["g7-model-routing-and-offline.md", "../../qa/intelligence-routing.test.cjs",
-        "../../qa/intelligence-stream-desktop.test.cjs"]
+        "../../qa/intelligence-stream-desktop.test.cjs"],
+      "verification": {
+        "verifiedAt": "2026-11-14",
+        "implementationCommit": "079e30d7be258b783af9c9372ad1b51f8cf5196c",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassed": 156,
+        "desktopPassed": 83,
+        "extensionHostPassed": 17,
+        "accountIsolationCi": "passed",
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43570665307",
+        "scope": "Four persisted task routes, local-only loopback admission, scoped proposals, separate approval for fallback, and editor operation with Intelligence disabled or disconnected",
+        "knownLimitations": ["Opt-in Windows Electron preview", "Provider responses tested with fixtures. Live Ollama inference was not exercised."]
+      }
     },
     { "id": "G8", "name": "Privacy, Costs & Hardening", "status": "unverified", "evidence": [] },
     { "id": "G9", "name": "Integration & Benchmarking", "status": "unverified", "evidence": [] }
