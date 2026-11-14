@@ -5,13 +5,14 @@
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --radius-control: 2px;
+  --radius-control: 5px;
   --radius-dialog: var(--radius-control);
   --target-min: 24px;
   --target-control: 33px;
   --focus-width: 2px;
   --focus-ring: var(--accent);
   --control-border: #8d88a5;
+  --button-fill: #252539;
   --button-pressed: #3d3658;
   --primary-pressed: #9a8df2;
   --disabled-fill: #222231;
@@ -25,12 +26,12 @@
 }
 
 :root[data-direction="midnight"] {
-  --radius-control: 5px;
   --radius-dialog: 9px;
 }
 
 :root[data-color-mode="light"] {
   --control-border: #6d648b;
+  --button-fill: #e9e8f5;
   --button-pressed: #cec4e9;
   --primary-pressed: #37247b;
   --disabled-fill: #e9e8f1;
@@ -47,6 +48,7 @@
   :root, :root[data-color-mode="light"] {
     --control-border: ButtonText;
     --focus-ring: Highlight;
+    --button-fill: ButtonFace;
     --button-hover: Canvas;
     --button-pressed: Canvas;
     --primary-hover: Highlight;
@@ -83,7 +85,7 @@ button:not(:disabled) { cursor: pointer; }
   padding: 4px 10px;
   border: 1px solid var(--control-border);
   border-radius: var(--radius-control);
-  background: var(--raised);
+  background: var(--button-fill);
   color: var(--text);
   font-weight: 600;
   white-space: nowrap;

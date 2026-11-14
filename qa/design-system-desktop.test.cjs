@@ -33,7 +33,7 @@ async function auditContrast(page, mode) {
     ['text', 'base', 4.5], ['text', 'panel', 4.5], ['text', 'raised', 4.5],
     ['muted', 'chrome', 4.5], ['muted', 'dock', 4.5], ['current-text', 'selected', 4.5],
     ['ink', 'accent', 4.5], ['ink', 'primary-hover', 4.5], ['ink', 'primary-pressed', 4.5],
-    ['text', 'button-hover', 4.5], ['text', 'button-pressed', 4.5],
+    ['text', 'button-fill', 4.5], ['text', 'button-hover', 4.5], ['text', 'button-pressed', 4.5],
     ['danger', 'error-surface', 4.5], ['warning', 'dock', 4.5], ['verified', 'panel', 4.5],
     ['focus-ring', 'base', 3], ['focus-ring', 'chrome', 3],
     ['focus-ring', 'selected', 3], ['accent', 'chrome', 3], ['control-border', 'base', 3],
@@ -95,6 +95,7 @@ test('G1 workbench shares semantic states and file artwork across list and tabs'
   await page.getByRole('button', { name: /Run file/ }).press('Enter');
   await wb.output.getByText('G1 observed failure', { exact: false }).waitFor();
   await page.locator('#run-state[data-state="error"]').waitFor();
+  await page.mouse.move(4, 4);
   assert.deepEqual(await page.evaluate(() => {
     const workbench = document.getElementById('workbench').getBoundingClientRect();
     const explorer = document.getElementById('workspace-sidebar').getBoundingClientRect();
@@ -106,9 +107,10 @@ test('G1 workbench shares semantic states and file artwork across list and tabs'
     return {
       radius: styles.borderRadius,
       outputRadius: getComputedStyle(document.getElementById('run-panel')).borderRadius,
+      buttonFill: getComputedStyle(document.getElementById('open-folder')).backgroundColor,
       chrome: getComputedStyle(document.querySelector('.titlebar')).backgroundColor,
     };
-  }), { radius: '2px', outputRadius: '2px', chrome: 'rgb(19, 19, 23)' });
+  }), { radius: '5px', outputRadius: '5px', buttonFill: 'rgb(37, 37, 57)', chrome: 'rgb(19, 19, 23)' });
   await screenshot(page, 'g1-workbench-dark');
   await page.locator('#jump-to-error').press('Enter');
   await page.waitForFunction(() => document.activeElement?.matches('.cm-content'));
@@ -151,7 +153,7 @@ test('G1 prototypes exercise keyboard flows and draw distinct accessible states 
   preview.setDefaultTimeout(5_000);
   const direction = preview.getByLabel('Direction');
   assert.equal(await direction.inputValue(), 'ink');
-  assert.equal(await preview.locator('.workspace').evaluate(node => getComputedStyle(node).borderRadius), '2px');
+  assert.equal(await preview.locator('.workspace').evaluate(node => getComputedStyle(node).borderRadius), '5px');
   const appearance = preview.getByLabel('Appearance');
   const source = preview.getByRole('textbox', { name: 'main.ts', exact: true });
   const run = preview.getByRole('button', { name: 'Run sample' });
@@ -257,6 +259,7 @@ test('Midnight Atelier follows the saved theme through restart and Intelligence'
   };
   await workbench.open('app.js');
   await select(workbench.page, 'midnight', 'midnight');
+  assert.equal(await workbench.page.locator('#open-folder').evaluate(node => getComputedStyle(node).borderRadius), '5px');
   t.diagnostic('Midnight Atelier minimum contrast ratios ' + JSON.stringify(await auditContrast(workbench.page, 'Midnight Atelier')));
   await screenshot(workbench.page, 'g1-workbench-midnight');
   const appArgs = ['--enable-intelligence-mock'];

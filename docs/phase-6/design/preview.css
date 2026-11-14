@@ -64,6 +64,7 @@ dialog .actions { margin-top: var(--space-2); justify-content: flex-end; }
   --chrome: #262a36;
   --panel: #2d3240;
   --raised: #34394a;
+  --button-fill: var(--raised);
   --dock: #202430;
   --line: #62677a;
   --control-border: #878ba3;
