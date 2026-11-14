@@ -36,6 +36,14 @@ The blueprint’s future component states include offline and unread navigation,
 
 The contrast test reads the rendered palette and checks practical text and UI pairs against [WCAG 2.2 AA](https://www.w3.org/TR/WCAG22/). It enforces 4.5:1 for normal text and 3:1 for the audited non-text marks, control borders and focus rings. The snapshot matrix uses Electron’s Chromium device-scale emulation for 100%, 125%, 150%, and 200%. The forced-colors and reduced-motion tests exercise the corresponding Chromium media settings.
 
+| Proposal | Dark text / non-text | Light text / non-text |
+| --- | --- | --- |
+| Midnight Atelier | 5.90:1 / 5.01:1 | 5.61:1 / 4.74:1 |
+| Platinum Draft | 5.90:1 / 3.81:1 | 5.33:1 / 4.58:1 |
+| Iris Ink | 5.90:1 / 5.22:1 | 5.65:1 / 4.86:1 |
+
+[Windows reliability](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43603322763) passed on `0dce679` with 167 core, 88 desktop, 18 extension-host and 13 Intelligence benchmark tests. Windows credential account separation also passed. See the [captured images](evidence/g1/) for the workbench, alternatives, and interaction states.
+
 ## Human acceptance
 
 Use a fresh sample for each participant. Record first attempt, completion without help, time to act, error or hesitation, and any inaccessible control. Report completed tasks divided by attempted tasks for each cohort.
