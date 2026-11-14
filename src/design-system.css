@@ -5,8 +5,8 @@
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --radius-control: 5px;
-  --radius-dialog: 9px;
+  --radius-control: 2px;
+  --radius-dialog: var(--radius-control);
   --target-min: 24px;
   --target-control: 33px;
   --focus-width: 2px;
@@ -22,6 +22,11 @@
   --icon-cyan: #84d8e3;
   --icon-coral: #f3a8ba;
   --icon-iris: #c4b4ff;
+}
+
+:root[data-direction="midnight"] {
+  --radius-control: 5px;
+  --radius-dialog: 9px;
 }
 
 :root[data-color-mode="light"] {

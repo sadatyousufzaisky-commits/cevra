@@ -52,7 +52,7 @@ contextBridge.exposeInMainWorld('cevra', {
   workspaceTrust: id => ipcRenderer.invoke('cevra:workspace-trust', id),
   revokeTrust: id => ipcRenderer.invoke('cevra:revoke-trust', id),
   authorizeRun: (id, runId) => ipcRenderer.invoke('cevra:authorize-run', id, runId),
-  onColorMode: callback => ipcRenderer.on('cevra:color-mode', (_event, mode) => callback(mode)),
+  onAppearance: callback => ipcRenderer.on('cevra:appearance-changed', (_event, appearance) => callback(appearance)),
   chooseFolder: discard => ipcRenderer.invoke('cevra:choose-folder', discard),
   openExample: discard => ipcRenderer.invoke('cevra:open-example', discard),
   confirmDiscard: name => ipcRenderer.invoke('cevra:discard', name),

@@ -15,7 +15,7 @@ h3 { font-size: 12px; font-weight: 650; color: var(--muted); }
   grid-template-columns: clamp(136px, 19vw, 206px) minmax(0, 1fr);
   grid-template-areas: "bar bar" "nav editor" "nav output";
   border: 1px solid var(--line);
-  border-radius: var(--radius-dialog);
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 .workspace-bar { grid-area: bar; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); background: var(--chrome); }
@@ -51,6 +51,14 @@ dialog form { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
 dialog .actions { margin-top: var(--space-2); justify-content: flex-end; }
 
 @media (forced-colors: none) {
+[data-direction="midnight"][data-color-mode="light"] {
+  --base: #fafaff;
+  --chrome: #eeeef9;
+  --panel: #f4f4fc;
+  --raised: #e9e8f5;
+  --dock: #f0f0fa;
+  --line: #cbc8df;
+}
 [data-direction="platinum"] {
   --base: #171921;
   --chrome: #262a36;
@@ -70,24 +78,6 @@ dialog .actions { margin-top: var(--space-2); justify-content: flex-end; }
   --dock: #e8ebf4;
   --line: #b0b5cd;
   --control-border: #6d648b;
-}
-[data-direction="ink"] {
-  --base: #131317;
-  --chrome: #18181d;
-  --panel: #18181d;
-  --raised: #202027;
-  --dock: #18181d;
-  --line: #51505d;
-  --radius-control: 2px;
-  --radius-dialog: 2px;
-}
-[data-direction="ink"][data-color-mode="light"] {
-  --base: #fff;
-  --chrome: #f2f1f5;
-  --panel: #f7f6f9;
-  --raised: #e9e8ef;
-  --dock: #f2f1f5;
-  --line: #aaa5b7;
 }
 }
 

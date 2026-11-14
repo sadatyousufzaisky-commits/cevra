@@ -23,13 +23,20 @@ const page = path.join(__dirname, 'mock.html');
 const pageURL = pathToFileURL(page).href;
 
 function createIntelligenceMockWindow(profile, {
-  live = false, getWorkspace, readEditor, openSource, getPreferences, setPreferences, getModels, setModels,
+  live = false, getWorkspace, readEditor, openSource, getPreferences, setPreferences, getModels, setModels, getAppearance,
   patches, runAgentTests, recheckBaseline,
 } = {}) {
   const connections = createConnectionManager(profile, createWindowsCredentialVault());
   const budget = live ? createUsageBudget(profile) : undefined;
   let retryAfter = -Infinity;
   let panel;
+  const reviewWindows = new Set();
+
+  function applyAppearance(window) {
+    const { theme, mode } = getAppearance();
+    const dataset = JSON.stringify({ direction: theme === 'midnight' ? 'midnight' : 'ink', colorMode: mode });
+    return window.webContents.executeJavaScript('void Object.assign(document.documentElement.dataset, ' + dataset + ')');
+  }
   const adapters = live ? [mockProvider, createOpenAIProvider(async signal => {
     const owner = panel;
     const active = owner?.active;
@@ -106,7 +113,11 @@ function createIntelligenceMockWindow(profile, {
     review.setMenuBarVisibility(false);
     review.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     review.webContents.on('will-navigate', event => event.preventDefault());
-    const closed = new Promise(resolve => review.once('closed', () => resolve(false)));
+    reviewWindows.add(review);
+    const closed = new Promise(resolve => review.once('closed', () => {
+      reviewWindows.delete(review);
+      resolve(false);
+    }));
     const cancel = () => { if (!review.isDestroyed()) review.destroy(); };
     const expiry = setTimeout(cancel, 5 * 60_000);
     expiry.unref();
@@ -114,6 +125,8 @@ function createIntelligenceMockWindow(profile, {
     signal.addEventListener('abort', cancel, { once: true });
     try {
       await review.loadFile(path.join(__dirname, 'send-review.html'));
+      if (signal.aborted || review.isDestroyed()) return false;
+      await applyAppearance(review);
       if (signal.aborted || review.isDestroyed()) return false;
       const data = JSON.stringify({ provider, model: model.label, messages: value.messages, labels, maxOutputTokens: value.maxOutputTokens, cost });
       const decision = review.webContents.executeJavaScript('window.reviewConversation(' + data + ')');
@@ -565,6 +578,12 @@ function createIntelligenceMockWindow(profile, {
   });
 
   return {
+    syncAppearance() {
+      const windows = panel?.loaded ? [panel.window, ...reviewWindows] : [...reviewWindows];
+      for (const window of windows) {
+        if (!window.isDestroyed()) void applyAppearance(window).catch(() => {});
+      }
+    },
     async open(parent, selection) {
       let owner = panel;
       if (selection !== undefined) {
@@ -670,6 +689,8 @@ function createIntelligenceMockWindow(profile, {
     const { window } = opened;
     try {
       await window.loadFile(page);
+      if (panel !== opened) return;
+      await applyAppearance(window);
       if (panel !== opened) return;
       opened.loaded = true;
       window.show();

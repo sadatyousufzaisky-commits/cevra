@@ -57,6 +57,7 @@ const intelligencePatches = liveIntelligence ?
 const intelligenceMock = liveIntelligence || app.commandLine.hasSwitch('enable-intelligence-mock') ?
   require('./intelligence/mock-window.cjs').createIntelligenceMockWindow(app.getPath('userData'), {
     live: liveIntelligence, getWorkspace: intelligenceWorkspace, readEditor: readContextEditor, openSource: openIntelligenceSource,
+    getAppearance: appearance,
     getPreferences: () => preferences.getIntelligence(), setPreferences: values => preferences.setIntelligence(values),
     getModels: () => preferences.getIntelligenceModels(), setModels: values => preferences.setIntelligenceModels(values),
     patches: intelligencePatches, runAgentTests, recheckBaseline: (project, id) =>
@@ -69,6 +70,7 @@ const formatter = createFormatService();
 const semantics = createSemanticService();
 const terminals = createTerminalSessions();
 let window;
+let selectedTheme = 'dark';
 let workspace;
 let workstream;
 let taskRunner;
@@ -164,19 +166,25 @@ function colorMode() {
 
 function windowAppearance(mode) {
   const dark = mode === 'dark';
+  const backgroundColor = selectedTheme === 'midnight' ? '#11111c' : dark ? '#131317' : '#ffffff';
   return {
-    backgroundColor: dark ? '#11111c' : '#fafaff',
-    titleBarOverlay: { color: dark ? '#171724' : '#eeeef9', symbolColor: dark ? '#f0f3fb' : '#22213a', height: 51 },
+    backgroundColor,
+    titleBarOverlay: { color: selectedTheme === 'midnight' ? '#171724' : backgroundColor, symbolColor: dark ? '#f0f3fb' : '#22213a', height: 51 },
   };
+}
+
+function appearance() {
+  return { theme: selectedTheme, mode: colorMode() };
 }
 
 function syncWindowAppearance() {
   if (!window || window.isDestroyed()) return;
-  const mode = colorMode();
-  const { backgroundColor, titleBarOverlay } = windowAppearance(mode);
+  const state = appearance();
+  const { backgroundColor, titleBarOverlay } = windowAppearance(state.mode);
   window.setBackgroundColor(backgroundColor);
   if (process.platform === 'win32' || process.platform === 'linux') window.setTitleBarOverlay(titleBarOverlay);
-  if (!window.webContents.isDestroyed()) window.webContents.send('cevra:color-mode', mode);
+  if (!window.webContents.isDestroyed()) window.webContents.send('cevra:appearance-changed', state);
+  intelligenceMock?.syncAppearance();
 }
 
 nativeTheme.on('updated', syncWindowAppearance);
@@ -417,12 +425,12 @@ handle('open-intelligence-mock', input => {
 handle('intelligence-proposal', (id, proposalId) => intelligencePatches?.preview(currentWorkspace(id), proposalId));
 handle('dismiss-intelligence-proposal', (id, proposalId) => intelligencePatches?.dismiss(currentWorkspace(id), proposalId));
 
-handle('appearance', () => ({ theme: nativeTheme.themeSource, mode: colorMode() }));
+handle('appearance', appearance);
 handle('set-theme', async choice => {
-  const theme = await preferences.setTheme(choice);
-  nativeTheme.themeSource = theme;
+  selectedTheme = await preferences.setTheme(choice);
+  nativeTheme.themeSource = selectedTheme === 'midnight' ? 'dark' : selectedTheme;
   syncWindowAppearance();
-  return { theme, mode: colorMode() };
+  return appearance();
 });
 handle('extension-contributions', async () => {
   if (safeStart) return { packages: [], palette: null };
@@ -1012,7 +1020,8 @@ handle('close-ready', async (hasDrafts, backupFailed) => {
 });
 
 async function launch() {
-  nativeTheme.themeSource = await preferences.getTheme();
+  selectedTheme = await preferences.getTheme();
+  nativeTheme.themeSource = selectedTheme === 'midnight' ? 'dark' : selectedTheme;
   const previous = window;
   const bounds = previous?.getBounds();
   const maximized = previous?.isMaximized();

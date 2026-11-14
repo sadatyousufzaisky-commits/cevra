@@ -746,7 +746,7 @@ test('theme preferences default safely and persist concurrent changes in order',
   await fs.writeFile(file, JSON.stringify({ theme: 'unknown', fontSize: 16 }));
   const preferences = createPreferences(folder);
   assert.equal(await preferences.getTheme(), 'dark');
-  await assert.rejects(preferences.setTheme({ theme: 'light' }), /Choose Dark, Light, or System/);
+  await assert.rejects(preferences.setTheme({ theme: 'light' }), /Choose Dark, Light, System, or Midnight Atelier/);
   const light = preferences.setTheme('light');
   const system = preferences.setTheme('system');
   assert.deepEqual(await Promise.all([light, system, preferences.getTheme()]), ['light', 'system', 'system']);

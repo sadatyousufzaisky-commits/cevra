@@ -1463,11 +1463,11 @@ test('switching themes updates the window and editor and preserves drafts and un
   assert.equal(await keyword.evaluate(element => getComputedStyle(element).color), 'rgb(102, 51, 140)');
   assert.deepEqual(await page.evaluate(() => ['.titlebar', '.cm-editor', '.run-panel'].map(selector =>
     getComputedStyle(document.querySelector(selector)).backgroundColor)), [
-    'rgb(238, 238, 249)', 'rgb(250, 250, 255)', 'rgb(240, 240, 250)',
+    'rgb(255, 255, 255)', 'rgb(255, 255, 255)', 'rgb(242, 241, 245)',
   ]);
   assert.deepEqual(await app.evaluate(({ BrowserWindow, nativeTheme }) => ({
     mode: nativeTheme.themeSource, background: BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase(),
-  })), { mode: 'light', background: '#fafaff' });
+  })), { mode: 'light', background: '#ffffff' });
   assert.equal(await page.locator('#cursor').textContent(), cursor);
   assert.match(await editor.textContent(), /second = "draft"/);
 
@@ -1515,7 +1515,7 @@ test('System theme follows native color changes and a failed theme save rolls ba
   await app.evaluate(({ nativeTheme }, mode) => { nativeTheme.themeSource = mode; }, opposite);
   await waitForTheme(page, 'system', opposite);
   assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase()),
-    opposite === 'dark' ? '#11111c' : '#fafaff');
+    opposite === 'dark' ? '#131317' : '#ffffff');
   await app.evaluate(({ nativeTheme }) => { nativeTheme.themeSource = 'system'; });
   await waitForTheme(page, 'system', native.dark ? 'dark' : 'light');
 });

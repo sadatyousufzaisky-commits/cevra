@@ -159,11 +159,16 @@ function report(error) {
   notify(errorText(error), true);
 }
 
-function applyColorMode(mode) {
-  if (mode === colorMode) return;
+function applyAppearance({ theme, mode }) {
+  const root = document.documentElement;
+  const direction = theme === 'midnight' ? 'midnight' : 'ink';
+  const modeChanged = mode !== colorMode;
+  if (!modeChanged && root.dataset.direction === direction) return;
   colorMode = mode;
-  document.documentElement.dataset.colorMode = mode;
+  root.dataset.colorMode = mode;
+  root.dataset.direction = direction;
   terminalPanel.refreshTheme();
+  if (!modeChanged) return;
   const effects = editorColorMode.reconfigure(colorModeExtension(mode === 'dark'));
   for (const tab of documents.values()) {
     if (tab === active) view.dispatch({ effects });
@@ -171,7 +176,7 @@ function applyColorMode(mode) {
   }
 }
 
-api.onColorMode(applyColorMode);
+api.onAppearance(applyAppearance);
 
 themeChoice.onchange = async () => {
   const choice = themeChoice.value;
@@ -180,9 +185,9 @@ themeChoice.onchange = async () => {
     if (choice.includes(':')) {
       await api.setExtensionPalette(choice);
     } else {
-      const { theme, mode } = await api.setTheme(choice);
-      selectedTheme = theme;
-      applyColorMode(mode);
+      const appearance = await api.setTheme(choice);
+      selectedTheme = appearance.theme;
+      applyAppearance(appearance);
     }
     notify('Theme saved.');
     await extensionContributions.refresh();
@@ -1692,9 +1697,9 @@ api.onCloseCanceled(() => {
 async function initialize() {
   syncCommands();
   try {
-    const { theme, mode } = await api.appearance();
-    themeChoice.value = selectedTheme = theme;
-    applyColorMode(mode);
+    const appearance = await api.appearance();
+    themeChoice.value = selectedTheme = appearance.theme;
+    applyAppearance(appearance);
     await extensionContributions.refresh();
     const initial = await api.initial();
     byId('intelligence-mock-open').hidden = initial.intelligenceMock !== true;

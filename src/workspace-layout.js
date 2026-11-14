@@ -3,7 +3,6 @@ export function createWorkspaceLayout() {
   const workbench = byId('workbench');
   const sidebar = byId('workspace-sidebar');
   const sidebarToggle = byId('toggle-sidebar');
-  const studio = byId('studio');
   const dock = byId('run-panel');
   const dockContent = byId('dock-content');
   const dockToggle = byId('toggle-dock');
@@ -23,7 +22,7 @@ export function createWorkspaceLayout() {
     if (!visible && focusWasInside) sidebarToggle.focus();
   }
 
-  const maxDock = () => Math.max(minDock, Math.floor(studio.clientHeight * 0.48));
+  const maxDock = () => Math.max(minDock, Math.floor(workbench.clientHeight * 0.48));
 
   function syncHandle() {
     handle.setAttribute('aria-valuemax', String(maxDock()));
@@ -69,7 +68,7 @@ export function createWorkspaceLayout() {
     resizeDock(sizes[event.key]);
   });
   const observer = new ResizeObserver(() => { if (!handle.hidden) syncHandle(); });
-  observer.observe(studio);
+  observer.observe(workbench);
   observer.observe(dock);
 
   const toggleSidebar = () => setSidebarVisible(sidebar.hidden);

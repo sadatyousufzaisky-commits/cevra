@@ -4,7 +4,7 @@ const { writeAtomic } = require('./atomic-file.cjs');
 const { responsePreferences } = require('./intelligence/response-preferences.cjs');
 const { profile: modelProfile } = require('./intelligence/model-profiles.cjs');
 
-const themes = new Set(['dark', 'light', 'system']);
+const themes = new Set(['dark', 'light', 'system', 'midnight']);
 const defaultTheme = 'dark';
 const editorDefaults = Object.freeze({
   fontSize: 14, fontFamily: 'default', indentWidth: 2, indentStyle: 'spaces',
@@ -84,7 +84,7 @@ function createPreferences(directory) {
       return themes.has(theme) ? theme : defaultTheme;
     },
     async setTheme(theme) {
-      if (!themes.has(theme)) throw new Error('Choose Dark, Light, or System.');
+      if (!themes.has(theme)) throw new Error('Choose Dark, Light, System, or Midnight Atelier.');
       await save(data => {
         const next = { ...data, theme };
         delete next.extensionPalette;

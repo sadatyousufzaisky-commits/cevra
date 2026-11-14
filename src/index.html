@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-color-mode="dark">
+<html lang="en" data-color-mode="dark" data-direction="ink">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -66,258 +66,260 @@
     </div>
   </header>
   <main id="workbench" class="workbench">
-    <aside id="workspace-sidebar" class="explorer" aria-label="Project explorer">
-      <header class="sidebar-header">
-        <h2 id="sidebar-heading" class="section-label">Explorer</h2>
-        <div class="sidebar-actions">
-          <button id="nav-back" class="sidebar-action" aria-label="Go back" title="Go back (Alt+Left)" disabled><svg aria-hidden="true"><use href="#back"></use></svg></button>
-          <button id="nav-forward" class="sidebar-action" aria-label="Go forward" title="Go forward (Alt+Right)" disabled><svg aria-hidden="true"><use href="#forward"></use></svg></button>
-          <button id="search-toggle" class="sidebar-action" aria-label="Search project" aria-pressed="false" title="Search project (Ctrl+Shift+F)" disabled><svg aria-hidden="true"><use href="#search"></use></svg></button>
-        </div>
-      </header>
-      <div id="explorer-content" class="explorer-content">
-        <div id="project-root" class="project-root" hidden>
-          <svg aria-hidden="true"><use href="#folder"></use></svg><span></span>
-        </div>
-        <p id="tree-empty" class="tree-empty">Open a folder to browse its files.</p>
-        <nav id="tree" aria-label="Project files"></nav>
-      </div>
-      <section id="project-search" class="project-search" aria-label="Project search" hidden>
-        <div class="search-controls">
-          <input id="search-query" type="search" aria-label="Search project" maxlength="256" placeholder="Find text in project" spellcheck="false" autocomplete="off">
-          <div class="search-options">
-            <label><input id="search-case" type="checkbox"> Match case</label>
-            <button id="search-cancel" class="button" disabled>Cancel</button>
+    <div class="workspace-body">
+      <aside id="workspace-sidebar" class="explorer" aria-label="Project explorer">
+        <header class="sidebar-header">
+          <h2 id="sidebar-heading" class="section-label">Explorer</h2>
+          <div class="sidebar-actions">
+            <button id="nav-back" class="sidebar-action" aria-label="Go back" title="Go back (Alt+Left)" disabled><svg aria-hidden="true"><use href="#back"></use></svg></button>
+            <button id="nav-forward" class="sidebar-action" aria-label="Go forward" title="Go forward (Alt+Right)" disabled><svg aria-hidden="true"><use href="#forward"></use></svg></button>
+            <button id="search-toggle" class="sidebar-action" aria-label="Search project" aria-pressed="false" title="Search project (Ctrl+Shift+F)" disabled><svg aria-hidden="true"><use href="#search"></use></svg></button>
           </div>
-          <p id="search-status" class="search-status" role="status"></p>
-          <input id="replace-text" aria-label="Replacement text" maxlength="256" placeholder="Replace with (empty deletes)" spellcheck="false" autocomplete="off">
-          <button id="preview-replace" class="button" disabled>Preview Replace</button>
-        </div>
-        <ul id="search-results" class="search-results" aria-label="Search matches"></ul>
-      </section>
-      <div class="explorer-footer"><span class="status-dot"></span> Local workspace</div>
-    </aside>
-    <section id="studio" class="studio" aria-label="Editor and execution">
-      <div id="tabs" class="tabs" aria-label="Open files" hidden></div>
-      <div id="file-breadcrumbs" class="file-breadcrumbs" role="group" aria-label="Current file path" hidden></div>
-      <div id="editor" class="editor" hidden></div>
-      <section id="welcome" class="welcome">
-        <div class="welcome-content">
-          <div class="eyebrow"><span></span> VOKRI CODE</div>
-          <h1>Your project starts here.</h1>
-          <p id="welcome-copy">Open a project folder, or try the built-in JavaScript example to see how editing and execution fit together.</p>
-          <div class="welcome-actions">
-            <button id="welcome-open" class="button primary" disabled><svg aria-hidden="true"><use href="#folder"></use></svg> Open folder</button>
-            <button id="open-example" class="button" disabled><svg aria-hidden="true"><use href="#play"></use></svg> Open example</button>
-          </div>
-        </div>
-      </section>
-      <section id="run-panel" class="run-panel" aria-label="Workbench panel" data-collapsed="true" data-pane="output">
-        <div id="dock-resizer" class="dock-resizer" role="separator" aria-label="Resize bottom panel" aria-controls="dock-content" aria-orientation="horizontal" aria-valuemin="126" tabindex="0" hidden></div>
-        <header class="run-header">
-          <div class="dock-views" role="group" aria-label="Workbench views">
-            <button id="show-output" class="dock-view" aria-pressed="true"><span id="run-heading">Run output</span></button>
-            <button id="show-problems" class="dock-view" aria-label="Problems" aria-pressed="false" title="Problems (Ctrl+Shift+M)">Problems <span id="problems-count" class="problems-count" aria-hidden="true" hidden></span></button>
-            <button id="show-references" class="dock-view" aria-pressed="false" title="References (Shift+F12 to search)">References</button>
-            <button id="show-terminal" class="dock-view" aria-pressed="false" title="Terminal (Ctrl+`)" disabled>Terminal</button>
-            <button id="show-flightpath" class="dock-view" aria-pressed="false" disabled>Flightpath</button>
-            <button id="show-tasks" class="dock-view" aria-pressed="false" disabled>Tasks</button>
-            <button id="show-recipes" class="dock-view" aria-pressed="false" disabled>Recipes</button>
-            <button id="show-failure" class="dock-view" aria-pressed="false" disabled>Failure Lens</button>
-            <button id="show-changes" class="dock-view" aria-pressed="false" disabled>Change Lens</button>
-          </div>
-          <span id="run-state" class="run-state" role="status">Ready</span>
-          <span id="run-target" class="run-target"></span>
-          <span id="test-totals" class="run-target" hidden></span>
-          <button id="rerun-failures" class="button rerun-button" title="Save open files and rerun failures" hidden>Rerun failures</button>
-          <span id="problems-status" class="run-target" role="status" hidden></span>
-          <button id="problems-retry" class="button rerun-button" hidden>Retry checks</button>
-          <button id="toggle-dock" class="sidebar-action dock-toggle" aria-label="Show bottom panel" aria-controls="dock-content" aria-expanded="false" title="Show bottom panel (Ctrl+J)"><svg aria-hidden="true"><use href="#panel-layout"></use></svg></button>
         </header>
-        <div id="dock-content" class="dock-content" hidden>
-          <section id="runtime-controls" class="runtime-controls" aria-label="File runtime" hidden>
-            <p id="runtime-typescript" class="task-note" hidden>TypeScript · Bundled Node.js · Direct transform</p>
-            <div id="runtime-python" hidden>
-              <div class="terminal-toolbar">
-                <label for="python-profile">Python interpreter</label>
-                <select id="python-profile" disabled><option value="">Choose an interpreter</option></select>
-                <button id="python-refresh" class="button">Refresh interpreters</button>
-                <button id="python-browse" class="button">Choose Python executable</button>
-              </div>
-              <p id="python-status" class="task-note" role="status"></p>
-            </div>
-          </section>
-          <section id="test-evidence" class="test-evidence" aria-label="Test workstream" hidden>
-            <label for="workstream-goal">Workstream</label>
-            <input id="workstream-goal" maxlength="120" placeholder="Project tests" autocomplete="off">
-            <button id="workstream-end" class="button" hidden>End Workstream</button>
-            <span id="test-revision" class="run-target" role="status"></span>
-            <button id="test-recheck" class="button" hidden>Check inputs</button>
-          </section>
-          <div id="run-diagnostic" class="run-diagnostic" hidden>
-            <span>Source location</span>
-            <button id="jump-to-error" class="diagnostic-link">
-              <span></span><svg aria-hidden="true"><use href="#return"></use></svg>
-            </button>
-            <span id="run-error-summary" class="run-error-summary"></span>
+        <div id="explorer-content" class="explorer-content">
+          <div id="project-root" class="project-root" hidden>
+            <svg aria-hidden="true"><use href="#folder"></use></svg><span></span>
           </div>
-          <p id="output-truncated" class="output-notice" role="status" hidden>Earlier output was truncated.</p>
-          <div class="run-body">
-            <section id="test-results" class="test-results" aria-label="Test failures" hidden>
-              <p id="test-empty" class="test-empty"></p>
-              <ul id="test-failures" class="test-failures"></ul>
-            </section>
-            <section id="task-results" class="test-results" aria-label="Task results" hidden>
-              <ol id="task-steps" class="task-list" aria-label="Task steps"></ol>
-            </section>
-            <pre id="run-output" class="run-output" tabindex="0" aria-label="Program output">Run a JavaScript file to see its output here.</pre>
-          </div>
-          <section id="problems-panel" class="problems-panel" aria-label="Source problems" hidden>
-            <section aria-label="Syntax problems"><ul id="problem-list" class="problem-list"></ul></section>
-            <section class="type-problems" aria-labelledby="type-heading">
-              <h3 id="type-heading" class="problem-file">Type checking · active file</h3>
-              <p id="type-status" class="problem-note" role="status"></p>
-              <button id="type-retry" class="button" hidden>Retry type check</button>
-              <ul id="type-list" class="problem-list"></ul>
-            </section>
-          </section>
-          <section id="references-panel" class="references-panel" aria-label="Symbol references" hidden>
-            <div class="references-tools">
-              <p id="references-status" role="status"></p>
-              <button id="find-references" class="button" title="Find References (Shift+F12)" disabled>Find References</button>
-              <button id="rename-symbol" class="button" title="Rename Symbol (F2)" disabled>Rename Symbol</button>
-              <button id="references-cancel" class="button" hidden>Cancel</button>
-            </div>
-            <p id="references-scope" class="references-scope"></p>
-            <ul id="reference-results" class="problem-list" aria-label="Reference locations"></ul>
-          </section>
-          <section id="flightpath-panel" class="flightpath-panel" aria-label="Flightpath" hidden>
-            <div class="references-tools">
-              <p id="flightpath-status" role="status"></p>
-              <button id="flightpath-check" class="button" hidden>Check inputs</button>
-              <button id="flightpath-clear" class="button" hidden>Clear history</button>
-              <button id="flightpath-retention" class="button" disabled>Enable local history</button>
-            </div>
-            <ol id="flightpath-capsules" aria-label="Run Capsules, newest first"></ol>
-          </section>
-          <section id="task-panel" class="flightpath-panel" aria-label="Task Weave" hidden>
-            <div class="terminal-toolbar">
-              <label for="task-choice">Task</label>
-              <select id="task-choice" disabled><option value="">Choose a task</option></select>
-              <button id="task-refresh" class="button" disabled>Refresh tasks</button>
-              <button id="task-run" class="button" disabled>Run task</button>
-            </div>
-            <p id="task-status" class="task-note" role="status"></p>
-            <p id="task-workspace" class="task-note"></p>
-            <ol id="task-preview" class="task-list" aria-label="Task plan in execution order"></ol>
-          </section>
-          <section id="recipes-panel" class="flightpath-panel" aria-label="Recipes" hidden>
-            <div class="terminal-toolbar">
-              <label for="recipe-choice">Recipe</label>
-              <select id="recipe-choice" disabled><option value="">Choose a recipe</option></select>
-              <button id="recipe-run" class="button" disabled>Run recipe</button>
-              <button id="recipe-refresh" class="button" disabled>Refresh recipes</button>
-              <button id="recipe-create" class="button" hidden>Create recipe file</button>
-              <button id="recipe-edit" class="button" hidden>Edit recipes</button>
-              <button id="recipe-upgrade" class="button" hidden>Upgrade recipe file</button>
-              <button id="recipe-revoke" class="button" hidden>Revoke workspace trust</button>
-            </div>
-            <p id="recipe-status" class="task-note" role="status"></p>
-            <p id="recipe-trust" class="task-note"></p>
-            <ol id="recipe-preview" class="task-list" aria-label="Recipe steps in execution order"></ol>
-          </section>
-          <section id="terminal-panel" class="terminal-panel" aria-label="Workspace terminal" hidden>
-            <div class="terminal-toolbar">
-              <label for="terminal-profile">Shell</label>
-              <select id="terminal-profile" disabled>
-                <option value="powershell">PowerShell</option>
-                <option value="cmd">Command Prompt</option>
-              </select>
-              <button id="terminal-new" class="button" disabled>New terminal</button>
-              <div id="terminal-tabs" class="terminal-tabs" role="group" aria-label="Terminal sessions"></div>
-              <button id="terminal-copy" class="button" title="Copy selection (Ctrl+Shift+C)" disabled>Copy</button>
-              <button id="terminal-paste" class="button" title="Paste (Ctrl+Shift+V)" disabled>Paste</button>
-              <button id="terminal-close" class="button" disabled>Close terminal</button>
-            </div>
-            <div class="terminal-details">
-              <span id="terminal-status" role="status">Choose a shell and open a terminal.</span>
-              <span id="terminal-root" hidden></span>
-            </div>
-            <div id="terminal-surfaces" class="terminal-surfaces"></div>
-          </section>
-          <section id="failure-panel" class="flightpath-panel" aria-label="Failure Lens" hidden>
-            <div class="terminal-toolbar" role="group" aria-label="Debugger controls">
-              <button id="debug-start" class="button" title="Debug file (F6)" disabled>Debug file</button>
-              <button class="button" data-debug-action="pause" disabled>Pause</button>
-              <button class="button" data-debug-action="resume" disabled>Continue</button>
-              <button class="button" data-debug-action="over" disabled>Step over</button>
-              <button class="button" data-debug-action="into" disabled>Step into</button>
-              <button class="button" data-debug-action="out" disabled>Step out</button>
-              <button id="debug-restart" class="button" disabled>Restart debugger</button>
-              <button id="debug-stop" class="button" disabled>Stop debugging</button>
-            </div>
-            <p id="debug-status" class="task-note" role="status"></p>
-            <p id="debug-summary" class="task-note" hidden></p>
-            <div class="failure-grid">
-              <section aria-label="Stack and breakpoints">
-                <h3>Call stack</h3>
-                <ol id="debug-stack" class="debug-list" aria-label="Call stack"></ol>
-                <h3>Breakpoints</h3>
-                <ul id="debug-breakpoints" class="debug-list" aria-label="Breakpoints"></ul>
-              </section>
-              <section aria-label="Variables">
-                <h3>Variables</h3>
-                <div id="debug-variables"></div>
-              </section>
-              <section aria-label="Failure output">
-                <h3>Output</h3>
-                <p id="failure-truncated" class="task-note" hidden>Earlier output was truncated.</p>
-                <pre id="failure-output" class="run-output" tabindex="0" aria-label="Failure output"></pre>
-              </section>
-            </div>
-          </section>
-          <section id="change-panel" class="flightpath-panel" aria-label="Change Lens" hidden>
-            <div class="references-tools">
-              <p id="git-status" role="status"></p>
-              <button id="git-refresh" class="button" disabled>Refresh Git</button>
-              <button id="git-stage-action" class="button" hidden>Stage file</button>
-              <button id="git-review" class="button" disabled>Review commit</button>
-            </div>
-            <p id="git-proof" class="task-note" role="status"></p>
-            <p id="git-drafts" class="task-note" hidden></p>
-            <div class="git-grid">
-              <section aria-label="Changed files">
-                <h3>Staged changes</h3>
-                <ul id="git-staged" class="debug-list" aria-label="Staged changes"></ul>
-                <h3>Working changes</h3>
-                <ul id="git-working" class="debug-list" aria-label="Working changes"></ul>
-              </section>
-              <section aria-label="Diff review">
-                <h3 id="git-patch-title"></h3>
-                <div id="git-commit-box" class="git-form" hidden>
-                  <label for="git-commit-message">Commit message</label>
-                  <textarea id="git-commit-message" rows="2" maxlength="4096"></textarea>
-                  <button id="git-commit" class="button primary" disabled>Commit staged changes</button>
-                </div>
-                <pre id="git-patch" class="run-output" tabindex="0" aria-label="Git diff"></pre>
-              </section>
-              <section aria-label="Local branches and history">
-                <h3>Local branches</h3>
-                <div class="git-form">
-                  <label for="git-branches">Local branch</label>
-                  <select id="git-branches"></select>
-                  <button id="git-switch" class="button" disabled>Switch branch</button>
-                  <label for="git-branch-name">New branch name</label>
-                  <input id="git-branch-name" maxlength="120" autocomplete="off">
-                  <button id="git-create-branch" class="button" disabled>Create branch</button>
-                </div>
-                <h3>Commit history</h3>
-                <ol id="git-history" class="debug-list" aria-label="Commit history"></ol>
-              </section>
-            </div>
-          </section>
+          <p id="tree-empty" class="tree-empty">Open a folder to browse its files.</p>
+          <nav id="tree" aria-label="Project files"></nav>
         </div>
+        <section id="project-search" class="project-search" aria-label="Project search" hidden>
+          <div class="search-controls">
+            <input id="search-query" type="search" aria-label="Search project" maxlength="256" placeholder="Find text in project" spellcheck="false" autocomplete="off">
+            <div class="search-options">
+              <label><input id="search-case" type="checkbox"> Match case</label>
+              <button id="search-cancel" class="button" disabled>Cancel</button>
+            </div>
+            <p id="search-status" class="search-status" role="status"></p>
+            <input id="replace-text" aria-label="Replacement text" maxlength="256" placeholder="Replace with (empty deletes)" spellcheck="false" autocomplete="off">
+            <button id="preview-replace" class="button" disabled>Preview Replace</button>
+          </div>
+          <ul id="search-results" class="search-results" aria-label="Search matches"></ul>
+        </section>
+        <div class="explorer-footer"><span class="status-dot"></span> Local workspace</div>
+      </aside>
+      <section id="studio" class="studio" aria-label="Editor">
+        <div id="tabs" class="tabs" aria-label="Open files" hidden></div>
+        <div id="file-breadcrumbs" class="file-breadcrumbs" role="group" aria-label="Current file path" hidden></div>
+        <div id="editor" class="editor" hidden></div>
+        <section id="welcome" class="welcome">
+          <div class="welcome-content">
+            <div class="eyebrow"><span></span> VOKRI CODE</div>
+            <h1>Your project starts here.</h1>
+            <p id="welcome-copy">Open a project folder, or try the built-in JavaScript example to see how editing and execution fit together.</p>
+            <div class="welcome-actions">
+              <button id="welcome-open" class="button primary" disabled><svg aria-hidden="true"><use href="#folder"></use></svg> Open folder</button>
+              <button id="open-example" class="button" disabled><svg aria-hidden="true"><use href="#play"></use></svg> Open example</button>
+            </div>
+          </div>
+        </section>
       </section>
+    </div>
+    <section id="run-panel" class="run-panel" aria-label="Workbench panel" data-collapsed="true" data-pane="output">
+      <div id="dock-resizer" class="dock-resizer" role="separator" aria-label="Resize bottom panel" aria-controls="dock-content" aria-orientation="horizontal" aria-valuemin="126" tabindex="0" hidden></div>
+      <header class="run-header">
+        <div class="dock-views" role="group" aria-label="Workbench views">
+          <button id="show-output" class="dock-view" aria-pressed="true"><span id="run-heading">Run output</span></button>
+          <button id="show-problems" class="dock-view" aria-label="Problems" aria-pressed="false" title="Problems (Ctrl+Shift+M)">Problems <span id="problems-count" class="problems-count" aria-hidden="true" hidden></span></button>
+          <button id="show-references" class="dock-view" aria-pressed="false" title="References (Shift+F12 to search)">References</button>
+          <button id="show-terminal" class="dock-view" aria-pressed="false" title="Terminal (Ctrl+`)" disabled>Terminal</button>
+          <button id="show-flightpath" class="dock-view" aria-pressed="false" disabled>Flightpath</button>
+          <button id="show-tasks" class="dock-view" aria-pressed="false" disabled>Tasks</button>
+          <button id="show-recipes" class="dock-view" aria-pressed="false" disabled>Recipes</button>
+          <button id="show-failure" class="dock-view" aria-pressed="false" disabled>Failure Lens</button>
+          <button id="show-changes" class="dock-view" aria-pressed="false" disabled>Change Lens</button>
+        </div>
+        <span id="run-state" class="run-state" role="status">Ready</span>
+        <span id="run-target" class="run-target"></span>
+        <span id="test-totals" class="run-target" hidden></span>
+        <button id="rerun-failures" class="button rerun-button" title="Save open files and rerun failures" hidden>Rerun failures</button>
+        <span id="problems-status" class="run-target" role="status" hidden></span>
+        <button id="problems-retry" class="button rerun-button" hidden>Retry checks</button>
+        <button id="toggle-dock" class="sidebar-action dock-toggle" aria-label="Show bottom panel" aria-controls="dock-content" aria-expanded="false" title="Show bottom panel (Ctrl+J)"><svg aria-hidden="true"><use href="#panel-layout"></use></svg></button>
+      </header>
+      <div id="dock-content" class="dock-content" hidden>
+        <section id="runtime-controls" class="runtime-controls" aria-label="File runtime" hidden>
+          <p id="runtime-typescript" class="task-note" hidden>TypeScript · Bundled Node.js · Direct transform</p>
+          <div id="runtime-python" hidden>
+            <div class="terminal-toolbar">
+              <label for="python-profile">Python interpreter</label>
+              <select id="python-profile" disabled><option value="">Choose an interpreter</option></select>
+              <button id="python-refresh" class="button">Refresh interpreters</button>
+              <button id="python-browse" class="button">Choose Python executable</button>
+            </div>
+            <p id="python-status" class="task-note" role="status"></p>
+          </div>
+        </section>
+        <section id="test-evidence" class="test-evidence" aria-label="Test workstream" hidden>
+          <label for="workstream-goal">Workstream</label>
+          <input id="workstream-goal" maxlength="120" placeholder="Project tests" autocomplete="off">
+          <button id="workstream-end" class="button" hidden>End Workstream</button>
+          <span id="test-revision" class="run-target" role="status"></span>
+          <button id="test-recheck" class="button" hidden>Check inputs</button>
+        </section>
+        <div id="run-diagnostic" class="run-diagnostic" hidden>
+          <span>Source location</span>
+          <button id="jump-to-error" class="diagnostic-link">
+            <span></span><svg aria-hidden="true"><use href="#return"></use></svg>
+          </button>
+          <span id="run-error-summary" class="run-error-summary"></span>
+        </div>
+        <p id="output-truncated" class="output-notice" role="status" hidden>Earlier output was truncated.</p>
+        <div class="run-body">
+          <section id="test-results" class="test-results" aria-label="Test failures" hidden>
+            <p id="test-empty" class="test-empty"></p>
+            <ul id="test-failures" class="test-failures"></ul>
+          </section>
+          <section id="task-results" class="test-results" aria-label="Task results" hidden>
+            <ol id="task-steps" class="task-list" aria-label="Task steps"></ol>
+          </section>
+          <pre id="run-output" class="run-output" tabindex="0" aria-label="Program output">Run a JavaScript file to see its output here.</pre>
+        </div>
+        <section id="problems-panel" class="problems-panel" aria-label="Source problems" hidden>
+          <section aria-label="Syntax problems"><ul id="problem-list" class="problem-list"></ul></section>
+          <section class="type-problems" aria-labelledby="type-heading">
+            <h3 id="type-heading" class="problem-file">Type checking · active file</h3>
+            <p id="type-status" class="problem-note" role="status"></p>
+            <button id="type-retry" class="button" hidden>Retry type check</button>
+            <ul id="type-list" class="problem-list"></ul>
+          </section>
+        </section>
+        <section id="references-panel" class="references-panel" aria-label="Symbol references" hidden>
+          <div class="references-tools">
+            <p id="references-status" role="status"></p>
+            <button id="find-references" class="button" title="Find References (Shift+F12)" disabled>Find References</button>
+            <button id="rename-symbol" class="button" title="Rename Symbol (F2)" disabled>Rename Symbol</button>
+            <button id="references-cancel" class="button" hidden>Cancel</button>
+          </div>
+          <p id="references-scope" class="references-scope"></p>
+          <ul id="reference-results" class="problem-list" aria-label="Reference locations"></ul>
+        </section>
+        <section id="flightpath-panel" class="flightpath-panel" aria-label="Flightpath" hidden>
+          <div class="references-tools">
+            <p id="flightpath-status" role="status"></p>
+            <button id="flightpath-check" class="button" hidden>Check inputs</button>
+            <button id="flightpath-clear" class="button" hidden>Clear history</button>
+            <button id="flightpath-retention" class="button" disabled>Enable local history</button>
+          </div>
+          <ol id="flightpath-capsules" aria-label="Run Capsules, newest first"></ol>
+        </section>
+        <section id="task-panel" class="flightpath-panel" aria-label="Task Weave" hidden>
+          <div class="terminal-toolbar">
+            <label for="task-choice">Task</label>
+            <select id="task-choice" disabled><option value="">Choose a task</option></select>
+            <button id="task-refresh" class="button" disabled>Refresh tasks</button>
+            <button id="task-run" class="button" disabled>Run task</button>
+          </div>
+          <p id="task-status" class="task-note" role="status"></p>
+          <p id="task-workspace" class="task-note"></p>
+          <ol id="task-preview" class="task-list" aria-label="Task plan in execution order"></ol>
+        </section>
+        <section id="recipes-panel" class="flightpath-panel" aria-label="Recipes" hidden>
+          <div class="terminal-toolbar">
+            <label for="recipe-choice">Recipe</label>
+            <select id="recipe-choice" disabled><option value="">Choose a recipe</option></select>
+            <button id="recipe-run" class="button" disabled>Run recipe</button>
+            <button id="recipe-refresh" class="button" disabled>Refresh recipes</button>
+            <button id="recipe-create" class="button" hidden>Create recipe file</button>
+            <button id="recipe-edit" class="button" hidden>Edit recipes</button>
+            <button id="recipe-upgrade" class="button" hidden>Upgrade recipe file</button>
+            <button id="recipe-revoke" class="button" hidden>Revoke workspace trust</button>
+          </div>
+          <p id="recipe-status" class="task-note" role="status"></p>
+          <p id="recipe-trust" class="task-note"></p>
+          <ol id="recipe-preview" class="task-list" aria-label="Recipe steps in execution order"></ol>
+        </section>
+        <section id="terminal-panel" class="terminal-panel" aria-label="Workspace terminal" hidden>
+          <div class="terminal-toolbar">
+            <label for="terminal-profile">Shell</label>
+            <select id="terminal-profile" disabled>
+              <option value="powershell">PowerShell</option>
+              <option value="cmd">Command Prompt</option>
+            </select>
+            <button id="terminal-new" class="button" disabled>New terminal</button>
+            <div id="terminal-tabs" class="terminal-tabs" role="group" aria-label="Terminal sessions"></div>
+            <button id="terminal-copy" class="button" title="Copy selection (Ctrl+Shift+C)" disabled>Copy</button>
+            <button id="terminal-paste" class="button" title="Paste (Ctrl+Shift+V)" disabled>Paste</button>
+            <button id="terminal-close" class="button" disabled>Close terminal</button>
+          </div>
+          <div class="terminal-details">
+            <span id="terminal-status" role="status">Choose a shell and open a terminal.</span>
+            <span id="terminal-root" hidden></span>
+          </div>
+          <div id="terminal-surfaces" class="terminal-surfaces"></div>
+        </section>
+        <section id="failure-panel" class="flightpath-panel" aria-label="Failure Lens" hidden>
+          <div class="terminal-toolbar" role="group" aria-label="Debugger controls">
+            <button id="debug-start" class="button" title="Debug file (F6)" disabled>Debug file</button>
+            <button class="button" data-debug-action="pause" disabled>Pause</button>
+            <button class="button" data-debug-action="resume" disabled>Continue</button>
+            <button class="button" data-debug-action="over" disabled>Step over</button>
+            <button class="button" data-debug-action="into" disabled>Step into</button>
+            <button class="button" data-debug-action="out" disabled>Step out</button>
+            <button id="debug-restart" class="button" disabled>Restart debugger</button>
+            <button id="debug-stop" class="button" disabled>Stop debugging</button>
+          </div>
+          <p id="debug-status" class="task-note" role="status"></p>
+          <p id="debug-summary" class="task-note" hidden></p>
+          <div class="failure-grid">
+            <section aria-label="Stack and breakpoints">
+              <h3>Call stack</h3>
+              <ol id="debug-stack" class="debug-list" aria-label="Call stack"></ol>
+              <h3>Breakpoints</h3>
+              <ul id="debug-breakpoints" class="debug-list" aria-label="Breakpoints"></ul>
+            </section>
+            <section aria-label="Variables">
+              <h3>Variables</h3>
+              <div id="debug-variables"></div>
+            </section>
+            <section aria-label="Failure output">
+              <h3>Output</h3>
+              <p id="failure-truncated" class="task-note" hidden>Earlier output was truncated.</p>
+              <pre id="failure-output" class="run-output" tabindex="0" aria-label="Failure output"></pre>
+            </section>
+          </div>
+        </section>
+        <section id="change-panel" class="flightpath-panel" aria-label="Change Lens" hidden>
+          <div class="references-tools">
+            <p id="git-status" role="status"></p>
+            <button id="git-refresh" class="button" disabled>Refresh Git</button>
+            <button id="git-stage-action" class="button" hidden>Stage file</button>
+            <button id="git-review" class="button" disabled>Review commit</button>
+          </div>
+          <p id="git-proof" class="task-note" role="status"></p>
+          <p id="git-drafts" class="task-note" hidden></p>
+          <div class="git-grid">
+            <section aria-label="Changed files">
+              <h3>Staged changes</h3>
+              <ul id="git-staged" class="debug-list" aria-label="Staged changes"></ul>
+              <h3>Working changes</h3>
+              <ul id="git-working" class="debug-list" aria-label="Working changes"></ul>
+            </section>
+            <section aria-label="Diff review">
+              <h3 id="git-patch-title"></h3>
+              <div id="git-commit-box" class="git-form" hidden>
+                <label for="git-commit-message">Commit message</label>
+                <textarea id="git-commit-message" rows="2" maxlength="4096"></textarea>
+                <button id="git-commit" class="button primary" disabled>Commit staged changes</button>
+              </div>
+              <pre id="git-patch" class="run-output" tabindex="0" aria-label="Git diff"></pre>
+            </section>
+            <section aria-label="Local branches and history">
+              <h3>Local branches</h3>
+              <div class="git-form">
+                <label for="git-branches">Local branch</label>
+                <select id="git-branches"></select>
+                <button id="git-switch" class="button" disabled>Switch branch</button>
+                <label for="git-branch-name">New branch name</label>
+                <input id="git-branch-name" maxlength="120" autocomplete="off">
+                <button id="git-create-branch" class="button" disabled>Create branch</button>
+              </div>
+              <h3>Commit history</h3>
+              <ol id="git-history" class="debug-list" aria-label="Commit history"></ol>
+            </section>
+          </div>
+        </section>
+      </div>
     </section>
   </main>
   <footer class="statusbar">
@@ -333,8 +335,9 @@
     <button id="intelligence-dismiss-proposal" class="status-action" hidden>Dismiss Intelligence edit</button>
     <label class="theme-control">Theme
       <select id="theme-choice" aria-label="Theme" disabled>
-        <option value="dark">VOKRI Dark</option>
-        <option value="light">VOKRI Light</option>
+        <option value="dark">Iris Ink Dark</option>
+        <option value="light">Iris Ink Light</option>
+        <option value="midnight">Midnight Atelier</option>
         <option value="system">System</option>
       </select>
     </label>

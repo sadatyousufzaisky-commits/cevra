@@ -95,6 +95,20 @@ test('G1 workbench shares semantic states and file artwork across list and tabs'
   await page.getByRole('button', { name: /Run file/ }).press('Enter');
   await wb.output.getByText('G1 observed failure', { exact: false }).waitFor();
   await page.locator('#run-state[data-state="error"]').waitFor();
+  assert.deepEqual(await page.evaluate(() => {
+    const workbench = document.getElementById('workbench').getBoundingClientRect();
+    const explorer = document.getElementById('workspace-sidebar').getBoundingClientRect();
+    const dock = document.getElementById('run-panel').getBoundingClientRect();
+    return { fullWidth: dock.width === workbench.width && dock.left === workbench.left, belowExplorer: dock.top === explorer.bottom };
+  }), { fullWidth: true, belowExplorer: true });
+  assert.deepEqual(await page.evaluate(() => {
+    const styles = getComputedStyle(document.getElementById('run-file'));
+    return {
+      radius: styles.borderRadius,
+      outputRadius: getComputedStyle(document.getElementById('run-panel')).borderRadius,
+      chrome: getComputedStyle(document.querySelector('.titlebar')).backgroundColor,
+    };
+  }), { radius: '2px', outputRadius: '2px', chrome: 'rgb(19, 19, 23)' });
   await screenshot(page, 'g1-workbench-dark');
   await page.locator('#jump-to-error').press('Enter');
   await page.waitForFunction(() => document.activeElement?.matches('.cm-content'));
@@ -136,6 +150,8 @@ test('G1 prototypes exercise keyboard flows and draw distinct accessible states 
   const preview = await opened;
   preview.setDefaultTimeout(5_000);
   const direction = preview.getByLabel('Direction');
+  assert.equal(await direction.inputValue(), 'ink');
+  assert.equal(await preview.locator('.workspace').evaluate(node => getComputedStyle(node).borderRadius), '2px');
   const appearance = preview.getByLabel('Appearance');
   const source = preview.getByRole('textbox', { name: 'main.ts', exact: true });
   const run = preview.getByRole('button', { name: 'Run sample' });
@@ -186,7 +202,7 @@ test('G1 prototypes exercise keyboard flows and draw distinct accessible states 
       await screenshot(preview, `g1-prototype-${candidate}-${mode}`);
     }
   }
-  await direction.selectOption('midnight');
+  await direction.selectOption('ink');
   for (const scale of [1, 1.25, 1.5, 2]) {
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 800, deviceScaleFactor: scale, mobile: false });
     assert.equal(await preview.evaluate(() => devicePixelRatio), scale);
@@ -219,7 +235,7 @@ test('G1 prototypes exercise keyboard flows and draw distinct accessible states 
     await direction.selectOption(candidate);
     assert.equal(await preview.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   }
-  await direction.selectOption('midnight');
+  await direction.selectOption('ink');
   await preview.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' });
   const highContrastStrokes = await preview.locator('#icons svg path:first-child').evaluateAll(paths =>
     [...new Set(paths.map(shape => getComputedStyle(shape).stroke))]);
@@ -229,4 +245,34 @@ test('G1 prototypes exercise keyboard flows and draw distinct accessible states 
   assert.equal(await preview.evaluate(() => matchMedia('(forced-colors: active)').matches), true);
   await status.getByText('TypeError in bad.js, line 2', { exact: true }).waitFor();
   await screenshot(preview, 'g1-controls-forced-colors', { client: cdp, width: 760 });
+});
+
+test('Midnight Atelier follows the saved theme through restart and Intelligence', { timeout: 35_000 }, async t => {
+  let workbench = await openWorkbench(t, { 'app.js': 'const sample = 1;\n' }, undefined, { args: ['--enable-intelligence-mock'] });
+  const theme = page => page.getByRole('combobox', { name: 'Theme' });
+  const select = async (page, choice, direction) => {
+    await theme(page).selectOption(choice);
+    await page.locator(`html[data-direction=${direction}]`).waitFor({ state: 'attached' });
+    await page.locator('#message').getByText('Theme saved.', { exact: true }).waitFor();
+  };
+  await workbench.open('app.js');
+  await select(workbench.page, 'midnight', 'midnight');
+  t.diagnostic('Midnight Atelier minimum contrast ratios ' + JSON.stringify(await auditContrast(workbench.page, 'Midnight Atelier')));
+  await screenshot(workbench.page, 'g1-workbench-midnight');
+  const appArgs = ['--enable-intelligence-mock'];
+  workbench = await workbench.restart({ args: appArgs });
+  const { app, page, profile } = workbench;
+  await page.locator('html[data-direction=midnight][data-color-mode=dark]').waitFor({ state: 'attached' });
+  assert.equal(await theme(page).inputValue(), 'midnight');
+  assert.equal(JSON.parse(await fs.readFile(path.join(profile, 'preferences.json'), 'utf8')).theme, 'midnight');
+  assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase()), '#11111c');
+  const opened = app.waitForEvent('window');
+  await page.getByRole('button', { name: 'VOKRI Intelligence', exact: true }).click();
+  const intelligence = await opened;
+  await intelligence.locator('html[data-direction=midnight]').waitFor({ state: 'attached' });
+  assert.equal(await intelligence.locator('body').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(17, 17, 28)');
+  await page.bringToFront();
+  await select(page, 'dark', 'ink');
+  await intelligence.locator('html[data-direction=ink]').waitFor({ state: 'attached' });
+  assert.equal(await intelligence.locator('body').evaluate(node => getComputedStyle(node).backgroundColor), 'rgb(19, 19, 23)');
 });

@@ -131,7 +131,7 @@ test('Windows reuses the original profile and retains drafts, trust, extensions 
         const panel = await opened;
         await panel.getByRole('heading', { name: 'VOKRI Intelligence', exact: true }).waitFor();
         await panel.waitForFunction(() => document.documentElement.dataset.colorMode === 'light');
-        assert.equal(await panel.locator('body').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(250, 250, 255)');
+        assert.equal(await panel.locator('body').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(255, 255, 255)');
         await panel.getByText('Provider connections', { exact: true }).click();
         await panel.getByRole('button', { name: 'Check key', exact: true }).click();
         await panel.getByText('Windows Credential Manager verified the stored key.', { exact: true }).waitFor();
