@@ -1,6 +1,6 @@
 # G1 Original design system
 
-Midnight Atelier is the proposed VOKRI Code direction. The workbench and Intelligence windows use the VC mark’s iris and platinum colors, matte surfaces, a single iris primary action, and a narrow selection marker. The compact output dock gives source code more vertical room. These are the design system and reference workbench for the VOKRI SDK migration.
+Midnight Atelier is the approved VOKRI Code direction. The workbench and Intelligence windows use the VC mark’s iris and platinum colors, matte surfaces, a single iris primary action, and a narrow selection marker. The compact output dock gives source code more vertical room. These are the design system and reference workbench for the VOKRI SDK migration.
 
 ## Interactive proposals
 
@@ -51,6 +51,6 @@ Use a fresh sample for each participant. Record first attempt, completion withou
 - **New developer** opens a folder, identifies JavaScript and Python files, edits and saves, runs a file, follows a source error, and changes editor font size.
 - **Experienced developer** finds a symbol, switches files, runs and stops a process, checks a failing source location, reviews a proposed change, and identifies the provider and consent before a request.
 - **Windows Narrator smoke** checks the app name, Explorer buttons and current-file state, editable source, error status, Settings labels, and focus on open and close. Repeat with Windows contrast themes and a physical 200% scale to verify the native window chrome.
-- **Owner direction review** records the selected proposal and reviewed revision after comparing both appearances and the control-state evidence.
+- **Owner direction review** approved Midnight Atelier on 14 November 2026 at revision `52a1262`. The palette, interaction states, and file icon artwork in this direction guide the VOKRI SDK migration.
 
-Participant success rates, a hands-on Narrator walkthrough and owner approval remain pending. Automated checks do not supply human results.
+Participant success rates and the hands-on Windows Narrator and native display scale walkthrough remain pending.

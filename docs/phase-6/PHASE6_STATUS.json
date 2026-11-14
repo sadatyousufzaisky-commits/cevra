@@ -68,11 +68,15 @@
         "../../qa/design-system-desktop.test.cjs"
       ],
       "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43603322763",
-      "ownerSignoff": null,
+      "ownerSignoff": {
+        "date": "2026-11-14",
+        "direction": "Midnight Atelier",
+        "authorization": "Project owner approved Midnight Atelier following the G1 comparison and recommendation.",
+        "reviewedRevision": "52a1262"
+      },
       "openBlockers": [
         "Capture novice and experienced participant comprehension results.",
-        "Complete a hands-on Windows Narrator and native display scale walkthrough.",
-        "Record the owner's G1 direction approval."
+        "Complete a hands-on Windows Narrator and native display scale walkthrough."
       ],
       "verification": {
         "verifiedAt": "2026-11-14",
