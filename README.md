@@ -42,6 +42,8 @@ Choose **Plan coding task** to review a test-and-fix plan. Intelligence uses the
 
 Open **Models and local connection** to save model defaults for chat, explanations, patch proposals, and coding tasks. A local-only Ollama server can supply installed models for these tasks. Switching providers after a failed request requires selecting a model and approving its send review. [Model routing and local inference guide](docs/phase-5/g7-model-routing-and-offline.md)
 
+Open **OpenAI usage and daily estimate limit** to track estimated usage and set an optional daily cap. OpenAI still bills actual usage through your account. [Privacy and cost controls](docs/phase-5/g8-privacy-costs-and-hardening.md)
+
 ## Run TypeScript and Python
 
 **TypeScript** `.ts`, `.mts`, and `.cts` entry files run through the bundled Node.js runtime. The direct profile uses Node's TypeScript transform and source maps. Use **Problems** for type checking and **Tasks** for project-specific builds, including TSX and projects that need `tsconfig.json` compilation settings. TypeScript imports in direct runs use explicit file extensions. [Node.js TypeScript support](https://nodejs.org/docs/latest-v24.x/api/typescript.html)

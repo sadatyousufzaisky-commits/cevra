@@ -9,12 +9,17 @@ const modelId = 'gpt-5.6-terra';
 const maxWireBytes = 4 * 1024 * 1024;
 const maxFrameBytes = 256 * 1024;
 const protocolError = () => new ProviderError('PROVIDER_PROTOCOL');
+const diagnosticChannels = ['http.client.request.created', 'http.client.request.start',
+  'http.client.request.error', 'http.client.response.finish'];
 
-function directRequest(url, { method, signal, headers, body }) {
-  if (debuglog('http').enabled || debuglog('https').enabled ||
-      ['http.client.request.start', 'http.client.response.finish'].some(hasSubscribers)) {
+function assertPrivateTransport() {
+  if (debuglog('http').enabled || debuglog('https').enabled || diagnosticChannels.some(hasSubscribers)) {
     throw new ProviderError('NETWORK_BLOCKED');
   }
+}
+
+function directRequest(url, { method, signal, headers, body }) {
+  assertPrivateTransport();
   return new Promise((resolve, reject) => {
     // A dedicated TLS connection bypasses proxy environment settings and follows no redirects.
     const destination = urlToHttpOptions(new URL(url));
@@ -28,6 +33,40 @@ function directRequest(url, { method, signal, headers, body }) {
     request.once('error', reject);
     request.end(body);
   });
+}
+
+function credentialGuard(secret) {
+  // A trailing prefix stays in main until later text proves it is safe to release.
+  const prefix = new Uint16Array(secret.length);
+  for (let index = 1, matched = 0; index < secret.length; index++) {
+    while (matched && secret[index] !== secret[matched]) matched = prefix[matched - 1];
+    if (secret[index] === secret[matched]) matched++;
+    prefix[index] = matched;
+  }
+  let matched = 0;
+  return {
+    text(delta) {
+      const combined = secret.slice(0, matched) + delta;
+      for (let index = 0; index < delta.length; index++) {
+        while (matched && delta[index] !== secret[matched]) matched = prefix[matched - 1];
+        if (delta[index] === secret[matched] && ++matched === secret.length) throw new ProviderError('SENSITIVE_OUTPUT');
+      }
+      return combined.slice(0, combined.length - matched);
+    },
+    tail: () => secret.slice(0, matched),
+  };
+}
+
+function usageEvent(value, input, requestId) {
+  const { input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: total } = value;
+  const cached = value.input_tokens_details?.cached_tokens;
+  const reasoning = value.output_tokens_details?.reasoning_tokens;
+  const count = (number, max) => Number.isSafeInteger(number) && number >= 0 && number <= max;
+  if (!count(inputTokens, 1_050_000) || !count(outputTokens, input.maxOutputTokens) ||
+      (total !== undefined && total !== inputTokens + outputTokens) ||
+      (cached !== undefined && !count(cached, inputTokens)) ||
+      (reasoning !== undefined && !count(reasoning, outputTokens))) throw protocolError();
+  return { kind: 'usage', requestId, inputTokens, outputTokens };
 }
 
 // Scan bytes before decoding. Delimiters are ASCII and cannot occur inside a UTF-8 code point.
@@ -113,7 +152,7 @@ async function rateLimitCode(body) {
   } catch {}
 }
 
-function createOpenAIProvider(readKey, send = directRequest) {
+function createOpenAIProvider(readKey, send = directRequest, beforeSend) {
   return {
     catalog: {
       abiVersion: providerAbi, providerId: 'openai', label: 'OpenAI', provenance: 'OpenAI Responses API',
@@ -125,11 +164,18 @@ function createOpenAIProvider(readKey, send = directRequest) {
       const errorEvent = ([code, retryable]) => ({ kind: 'error', requestId, code, retryable });
       const key = await readKey(signal);
       let response;
+      let guard;
       try {
+        signal.throwIfAborted();
+        const secret = key.toString('ascii');
+        if (!secret || input.messages.some(message => message.content.includes(secret))) throw new ProviderError('SENSITIVE_INPUT');
+        guard = credentialGuard(secret);
+        if (send === directRequest) assertPrivateTransport();
+        if (beforeSend) await beforeSend(input, signal);
         signal.throwIfAborted();
         const sent = send(endpoint, {
           method: 'POST', redirect: 'manual', signal,
-          headers: { authorization: 'Bearer ' + key.toString('ascii'), 'content-type': 'application/json', accept: 'text/event-stream' },
+          headers: { authorization: 'Bearer ' + secret, 'content-type': 'application/json', accept: 'text/event-stream' },
           body: JSON.stringify({
             model: input.modelId, input: input.messages, max_output_tokens: input.maxOutputTokens,
             stream: true, store: false, reasoning: { effort: 'none' }, tools: [],
@@ -160,10 +206,17 @@ function createOpenAIProvider(readKey, send = directRequest) {
           if (!responseId || (event.response && event.response.id !== responseId)) throw protocolError();
           if (event.type === 'response.output_item.added' && !['message', 'reasoning'].includes(event.item?.type)) throw protocolError();
           if (event.type === 'response.output_text.delta' || event.type === 'response.refusal.delta') {
-            if (typeof event.delta !== 'string') throw protocolError();
-            if (event.delta) {
-              textSeen = true;
-              yield { kind: 'text.delta', requestId, text: event.delta };
+            if (typeof event.delta !== 'string' || !event.delta.isWellFormed() || Buffer.byteLength(event.delta) > limits.deltaBytes) throw protocolError();
+            textSeen ||= Boolean(event.delta);
+            const visible = guard.text(event.delta);
+            if (visible && Buffer.byteLength(visible) <= limits.deltaBytes) {
+              yield { kind: 'text.delta', requestId, text: visible };
+            } else if (visible) {
+              const chars = Array.from(visible);
+              // At most 1 Ki characters per event keeps a joined prefix and delta within the ABI byte limit.
+              for (let offset = 0; offset < chars.length; offset += 1024) {
+                yield { kind: 'text.delta', requestId, text: chars.slice(offset, offset + 1024).join('') };
+              }
             }
             continue;
           }
@@ -182,9 +235,9 @@ function createOpenAIProvider(readKey, send = directRequest) {
             return;
           }
           if (!textSeen && finished) throw protocolError();
-          if (result.usage != null) yield {
-            kind: 'usage', requestId, inputTokens: result.usage.input_tokens, outputTokens: result.usage.output_tokens,
-          };
+          const tail = guard.tail();
+          if (tail) yield { kind: 'text.delta', requestId, text: tail };
+          if (result.usage != null) yield usageEvent(result.usage, input, requestId);
           yield { kind: 'complete', requestId, finishReason: finished ? 'stop' : 'length' };
           return;
         }

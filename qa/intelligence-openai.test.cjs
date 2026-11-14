@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
+const { subscribe, unsubscribe } = require('node:diagnostics_channel');
 const { createProviderRegistry } = require('../src/intelligence/provider-registry.cjs');
 const { createOpenAIProvider, endpoint } = require('../src/intelligence/providers/openai.cjs');
 
@@ -81,6 +82,36 @@ test('incomplete streams distinguish output limits from provider content filteri
   }
 });
 
+test('the cloud adapter rejects exact credentials in outgoing text and fragmented provider echoes', async () => {
+  const secret = 'SYNTHETIC_G3_KEY';
+  const key = Buffer.from(secret);
+  const registry = createProviderRegistry([createOpenAIProvider(async () => key, () => assert.fail('unexpected send'))]);
+  await assert.rejects(Array.fromAsync(registry.stream({ ...request,
+    messages: [{ role: 'user', content: 'User pasted ' + secret }] })), { code: 'SENSITIVE_INPUT' });
+  assert.ok(key.every(value => value === 0));
+
+  const { events } = fixture(async () => response(stream(created, delta('Safe SYNTH'), delta('ETIC_G3'), delta('_KEY'))));
+  const output = events();
+  assert.equal((await output.next()).value.text, 'Safe ');
+  await assert.rejects(output.next(), { code: 'SENSITIVE_OUTPUT', message: 'The provider response contained the connection credential. CEVRA stopped the response.' });
+
+  const normal = fixture(async () => response(stream(created, delta('A SYNTH'), delta('etic S'), complete)));
+  assert.equal((await Array.fromAsync(normal.events())).filter(event => event.kind === 'text.delta').map(event => event.text).join(''), 'A SYNTHetic S');
+});
+
+test('OpenAI transport refuses subscribers that could observe a request carrying credentials', async () => {
+  for (const channel of ['http.client.request.created', 'http.client.request.start', 'http.client.request.error', 'http.client.response.finish']) {
+    const observe = () => assert.fail('private request reached diagnostics');
+    subscribe(channel, observe);
+    const key = Buffer.from('SYNTHETIC_G3_KEY');
+    try {
+      const registry = createProviderRegistry([createOpenAIProvider(async () => key)]);
+      await assert.rejects(Array.fromAsync(registry.stream(request)), { code: 'NETWORK_BLOCKED' });
+      assert.ok(key.every(value => value === 0));
+    } finally { unsubscribe(channel, observe); }
+  }
+});
+
 test('the adapter rejects malformed, repeated, crossed and oversized streams', async () => {
   const packets = [
     new Response('not SSE'),
@@ -88,6 +119,8 @@ test('the adapter rejects malformed, repeated, crossed and oversized streams', a
     response(stream(created, delta('x')) + stream(complete)),
     response(stream(created, { ...complete, response: { ...complete.response, id: 'resp_other' } })),
     response(stream(created, delta('x'), { ...complete, response: { ...complete.response, usage: { input_tokens: 1, output_tokens: 1025 } } })),
+    response(stream(created, delta('x'), { ...complete, response: { ...complete.response, usage: { input_tokens: 1, output_tokens: 1, total_tokens: 3 } } })),
+    response(stream(created, delta('x'), { ...complete, response: { ...complete.response, usage: { input_tokens: 1, output_tokens: 1, input_tokens_details: { cached_tokens: 2 } } } })),
     response(stream(created, { type: 'response.output_item.added', item: { type: 'function_call' } })),
     response('data: ' + 'x'.repeat(256 * 1024)),
     response(stream(created, ...Array(18).fill(delta('x'.repeat(4000))), complete)),

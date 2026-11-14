@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('intelligenceMock', {
   models: () => ipcRenderer.invoke('cevra:intelligence-mock:models'),
+  usageBudget: () => ipcRenderer.invoke('cevra:intelligence-mock:usage-budget'),
+  saveUsageLimit: cents => ipcRenderer.invoke('cevra:intelligence-mock:save-usage-limit', cents),
   modelProfile: () => ipcRenderer.invoke('cevra:intelligence-mock:model-profile'),
   saveModelProfile: value => ipcRenderer.invoke('cevra:intelligence-mock:save-model-profile', value),
   localStatus: () => ipcRenderer.invoke('cevra:intelligence-mock:local-status'),

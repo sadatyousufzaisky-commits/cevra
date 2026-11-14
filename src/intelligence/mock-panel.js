@@ -11,6 +11,7 @@ const clear = document.getElementById('clear');
 const status = document.getElementById('status');
 const output = document.getElementById('response');
 const usage = document.getElementById('usage');
+const responseCost = document.getElementById('response-cost');
 const note = document.getElementById('provider-note');
 const conversation = document.getElementById('conversation');
 const history = document.getElementById('history');
@@ -21,6 +22,10 @@ const fallback = document.getElementById('choose-fallback');
 const localForm = document.getElementById('local-model-form');
 const profileForm = document.getElementById('model-profile-form');
 const disconnect = document.getElementById('disconnect-local');
+const budgetPanel = document.getElementById('usage-budget');
+const budgetForm = document.getElementById('budget-form');
+const budgetLimit = document.getElementById('budget-limit');
+const budgetStatus = document.getElementById('budget-status');
 let profile = {};
 let manualRoute = false;
 let catalogReady = false;
@@ -36,6 +41,34 @@ const codingStop = document.getElementById('coding-stop');
 const codingActive = () => ['plan', 'baseline', 'proposal', 'generating', 'review', 'save', 'verification'].includes(agent.stage);
 const keyFor = (providerId, modelId) => providerId === 'ollama' ? 'ollama|' + modelId : modelId;
 const selected = () => models.get(model.value);
+const usd = micros => '$' + (micros / 1_000_000).toFixed(6);
+
+function showBudget(data) {
+  const unpriced = data.unpriced ? ` · ${data.unpriced} unpriced request${data.unpriced === 1 ? '' : 's'}` : '';
+  document.getElementById('budget-today').textContent = `${data.day} UTC · ${usd(data.used)} estimated or reserved${unpriced}`;
+}
+
+async function refreshBudget(loadLimit = false) {
+  const result = await api.usageBudget();
+  if (!result.ok) { budgetStatus.textContent = result.message; return; }
+  showBudget(result.value);
+  if (loadLimit) budgetLimit.value = result.value.limitCents === null ? '' : (result.value.limitCents / 100).toFixed(2);
+}
+
+budgetPanel.addEventListener('toggle', () => {
+  if (budgetPanel.open) void refreshBudget(true).catch(() => { budgetStatus.textContent = 'Usage totals are unavailable.'; });
+});
+budgetForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  budgetForm.inert = true;
+  budgetStatus.textContent = 'Saving daily limit…';
+  try {
+    const result = await api.saveUsageLimit(budgetLimit.value === '' ? null : Math.round(budgetLimit.valueAsNumber * 100));
+    if (result.ok) showBudget(result.value);
+    budgetStatus.textContent = result.ok ? 'Daily limit saved.' : result.message;
+  } catch { budgetStatus.textContent = 'The daily limit could not be saved.'; }
+  finally { budgetForm.inert = false; }
+});
 
 function busy(active) {
   model.disabled = active || !catalogReady;
@@ -143,7 +176,7 @@ async function reset(preserveAttachments = false) {
     fallback.hidden = Boolean(selected());
     history.replaceChildren();
     conversation.hidden = true;
-    output.textContent = usage.textContent = '';
+    output.textContent = usage.textContent = responseCost.textContent = '';
     status.textContent = 'Ready.';
     showProvider();
     return true;
@@ -168,11 +201,13 @@ async function run(input) {
     if (!started || typeof started !== 'string') {
       status.textContent = started?.message ?? 'Send canceled.';
       if (started?.fallback && input.mode !== 'agent') fallback.hidden = false;
+      if (started?.retry && input.mode !== 'agent') retry.hidden = false;
       return;
     }
     request.id = started;
     output.textContent = '';
     usage.textContent = '';
+    responseCost.textContent = '';
     stop.disabled = false;
     status.textContent = 'Streaming…';
     while (!request.stopped) {
@@ -181,6 +216,11 @@ async function run(input) {
       if (event.kind === 'text.delta') output.append(event.text);
       if (event.kind === 'usage') usage.textContent =
         `${usageLabel} · ${event.inputTokens} input / ${event.outputTokens} output tokens`;
+      if (cloud && event.cost) {
+        responseCost.textContent = event.cost.actual !== null ? `${usd(event.cost.actual)} estimated from reported usage.` :
+          event.cost.estimate !== null ? `Usage unavailable. ${usd(event.cost.estimate)} remains reserved.` : 'Price unavailable.';
+        if (event.cost.actual > event.cost.estimate) responseCost.textContent += ' Reported usage exceeded the reservation.';
+      }
       if (event.kind === 'complete') {
         if (real && event.retained && output.textContent) remember(input.prompt, output.textContent);
         if (real && !usage.textContent) usage.textContent = usageLabel + ' unavailable.';
@@ -202,6 +242,7 @@ async function run(input) {
         }
         retry.hidden = input.mode === 'agent' || !event.retryable;
         if (input.mode !== 'agent' && ['AUTH_INVALID', 'MODEL_UNSUPPORTED', 'LOCAL_MODE_REQUIRED', 'PROVIDER_UNAVAILABLE',
+          'BUDGET_EXCEEDED', 'BUDGET_UNAVAILABLE', 'PRICE_UNAVAILABLE',
           'PROVIDER_TIMEOUT', 'NETWORK_BLOCKED', 'RATE_LIMIT', 'QUOTA_EXHAUSTED'].includes(event.code)) fallback.hidden = false;
         break;
       }
@@ -217,6 +258,7 @@ async function run(input) {
     }
     current = undefined;
     busy(false);
+    if (cloud && budgetPanel.open) void refreshBudget().catch(() => { budgetStatus.textContent = 'Usage totals are unavailable.'; });
     if (request.stopped || document.activeElement === document.body) prompt.focus();
   }
 }
@@ -368,6 +410,7 @@ profileForm.onsubmit = async event => {
 Promise.all([api.models(), api.localStatus(), api.modelProfile()]).then(([catalogs, local, saved]) => {
   if (saved.ok) profile = saved.value;
   document.getElementById('local-port').value = local.defaultPort;
+  budgetPanel.hidden = !local.enabled;
   task.hidden = taskStatus.hidden = document.getElementById('task-model-label').hidden =
     document.getElementById('models-and-local').hidden = !local.enabled;
   renderCatalog(catalogs);

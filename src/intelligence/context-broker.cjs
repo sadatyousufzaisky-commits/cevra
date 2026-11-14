@@ -13,6 +13,7 @@ const sourceExtensions = new Set(('.js .cjs .mjs .jsx .ts .cts .mts .tsx .py .go
 const privateName = /^(?:env(?:[.-]|$)|(?:auth|credentials?|secrets?|tokens?|passwords?|api[-_]?keys?|kubeconfig|service[-_]account)(?:[._-]|$)|id_(?:rsa|ed25519)(?:\.|$))/i;
 const privateDirectory = /^(?:node_modules|venv|vendor|dist|build|__pycache__)$/i;
 const privateMaterial = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|\b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{35})\b/;
+const looksSensitive = text => privateMaterial.test(text);
 
 class ContextError extends Error {}
 const stale = () => new ContextError('The attached source changed. Remove it and attach it again.');
@@ -34,7 +35,7 @@ function checkText(text, limit) {
     throw new ContextError('Choose nonempty UTF-8 source text.');
   }
   if (Buffer.byteLength(text) > limit) throw new ContextError('The selected text exceeds the context limit.');
-  if (privateMaterial.test(text)) throw new ContextError('The selected text appears to contain a credential or private key.');
+  if (looksSensitive(text)) throw new ContextError('The selected text appears to contain a credential or private key.');
 }
 
 async function saved(project, file, includeText, expected) {
@@ -138,4 +139,4 @@ function contextMessages(items, preferenceText) {
   return messages;
 }
 
-module.exports = { createContextBroker, ContextError, contextMessages, describe, instructionPath, checkPath };
+module.exports = { createContextBroker, ContextError, contextMessages, describe, instructionPath, checkPath, looksSensitive };

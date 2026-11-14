@@ -79,7 +79,7 @@ test('Windows stores, checks, rotates and deletes API keys through the native pr
       'agentState', 'agentTest', 'attachFile', 'attachInstructions', 'checkKey', 'checkSources', 'cleanupKey', 'clear',
       'connectLocal', 'connections', 'context', 'disconnectKey', 'disconnectLocal', 'localStatus', 'modelProfile', 'models',
       'next', 'onAgentChanged', 'onContextChanged', 'openSource', 'preferences', 'prepareAgent', 'removeContext',
-      'saveModelProfile', 'savePreferences', 'start', 'stop', 'stopAgent', 'storeKey', 'switchModel',
+      'saveModelProfile', 'savePreferences', 'saveUsageLimit', 'start', 'stop', 'stopAgent', 'storeKey', 'switchModel', 'usageBudget',
     ]);
     const first = await capture('Add key', 'first', 'Key stored in Windows Credential Manager.');
     assert.equal((await entry()).current, first);

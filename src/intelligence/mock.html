@@ -41,6 +41,7 @@
       <h2 id="response-title">Response</h2>
       <pre id="response" tabindex="0" aria-label="Mock response"></pre>
       <p id="usage" class="muted"></p>
+      <p id="response-cost" class="muted"></p>
     </section>
     <p id="status" role="status">Loading model…</p>
     <section id="coding-task" hidden aria-labelledby="coding-task-title">
@@ -132,6 +133,17 @@
       <p class="muted">Windows Credential Manager stores your API keys. Check key verifies local storage. A successful live response verifies access to the selected model.</p>
       <ul id="connection-list" aria-label="Provider connections"></ul>
       <p id="connection-status" role="status"></p>
+    </details>
+    <details id="usage-budget" hidden>
+      <summary>OpenAI usage and daily estimate limit</summary>
+      <p class="muted">CEVRA tracks estimates for this profile. OpenAI bills actual usage. Unconfirmed usage keeps its reserved estimate.</p>
+      <p id="budget-today"></p>
+      <form id="budget-form">
+        <label for="budget-limit">Daily estimate limit in USD</label>
+        <input id="budget-limit" type="number" min="0" max="1000" step="0.01" placeholder="No daily limit">
+        <div class="actions"><button type="submit">Save daily limit</button></div>
+      </form>
+      <p id="budget-status" role="status"></p>
     </details>
   </main>
 </body>

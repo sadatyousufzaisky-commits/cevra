@@ -300,7 +300,7 @@ test('revocation wins before the draft commit check and an already committed dra
 });
 
 test('replayed requests, unknown methods, malformed frames and registration floods stop the offending host', async t => {
-  for (const action of ['replay', 'unknown', 'malformed', 'duplicate', 'oversize', 'registrations']) {
+  for (const action of ['replay', 'unknown', 'intelligence', 'malformed', 'duplicate', 'oversize', 'registrations']) {
     await t.test(action, async t => {
       const f = await fixture(t);
       await f.activate();
@@ -311,6 +311,7 @@ test('replayed requests, unknown methods, malformed frames and registration floo
         result = await host.request('workspace.readFile', { path: file, source: 'disk' }, 'same');
       }
       if (action === 'unknown') result = await host.request('network.request', { secret: 'CREDENTIAL_MARKER' });
+      if (action === 'intelligence') result = await host.request('intelligence.readCredential', { provider: 'openai' });
       if (action === 'malformed') result = JSON.parse(await host.raw(Buffer.from('{invalid')));
       if (action === 'duplicate') result = JSON.parse(await host.raw(Buffer.from(
         '{"protocol":1,"requestId":"example","method":"editor.readSelection","method":"commands.register","params":{}}')));

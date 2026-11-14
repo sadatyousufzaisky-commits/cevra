@@ -13,7 +13,7 @@ const relative = 'nested/value.js';
 const original = 'const answer = 1;\n';
 const proposed = 'const answer = 42;\n';
 
-async function runtimeWorkbench(t, { installThroughManager = false } = {}) {
+async function runtimeWorkbench(t, { installThroughManager = false, args = [] } = {}) {
   const module = await fs.readFile(path.join(artifacts, 'broker-fixture.wasm'));
   const manifest = executableManifest([
     { capability: 'commands.register' }, { capability: 'workspace.read', files: [relative], drafts: true },
@@ -31,7 +31,7 @@ async function runtimeWorkbench(t, { installThroughManager = false } = {}) {
       const registry = createExtensionRegistry(profile);
       await registry.install(packageFile, { reviewedDigest: digest });
       await registry.setEnabled(manifest.id, digest, true);
-    });
+    }, { args });
   await workbench.app.evaluate(({ dialog }, file) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
     globalThis.extensionReviews = [];
@@ -157,6 +157,27 @@ test('a real confined extension requires consent, navigates diagnostics and appl
     assert.equal(selections.at(-1).result, 'allowed');
     assert.ok(selections.some(event => event.result === 'denied'));
   });
+
+test('Intelligence keeps a separate renderer and scope while a real confined extension runs', { timeout: 30_000 }, async t => {
+  const workbench = await runtimeWorkbench(t, { args: ['--enable-intelligence'] });
+  const { app, page, permissions } = workbench;
+  await workbench.activate();
+  await permissions.getByRole('button', { name: 'Close', exact: true }).click();
+  const opened = app.waitForEvent('window');
+  await page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+  const panel = await opened;
+  await panel.locator('#status').getByText('Ready.', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => typeof window.intelligenceMock), 'undefined');
+  assert.equal(await panel.evaluate(() => typeof window.cevra), 'undefined');
+  await panel.getByRole('textbox', { name: 'Prompt', exact: true }).fill('G8_ISOLATED_MOCK_PROMPT');
+  await panel.getByRole('button', { name: 'Send', exact: true }).press('Enter');
+  await panel.locator('#status').getByText('Response complete.', { exact: true }).waitFor();
+  await workbench.show();
+  await workbench.command();
+  assert.equal(await panel.getByRole('list', { name: 'Attachments' }).locator('li').count(), 0);
+  assert.doesNotMatch(await fs.readFile(path.join(workbench.profile, 'extensions', 'audit.json'), 'utf8'), /G8_ISOLATED_MOCK_PROMPT|intelligence/i);
+  await assert.rejects(fs.access(path.join(workbench.profile, 'intelligence', 'usage.json')), { code: 'ENOENT' });
+});
 
 test('extension consent can be canceled and safe start and restart require fresh activation',
   { timeout: 45_000 }, async t => {

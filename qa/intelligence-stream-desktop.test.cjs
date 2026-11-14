@@ -46,14 +46,24 @@ async function installFixture(app) {
         state.last = { url, receivedKey, payload: JSON.parse(raw) };
         state.count++;
         const body = new PassThrough();
-        body.statusCode = 200;
+        body.statusCode = ['rate-limit', 'quota'].includes(state.stream) ? 429 : 200;
         body.headers = { 'content-type': 'text/event-stream' };
         options.signal.addEventListener('abort', () => { state.aborts++; body.destroy(); }, { once: true });
         const frame = (type, seq, props) => 'event: ' + type + '\ndata: ' +
           JSON.stringify({ type, sequence_number: seq, ...props }) + '\n\n';
         receive(body);
+        if (body.statusCode === 429) {
+          body.end(JSON.stringify({ error: { code: state.stream === 'quota' ? 'insufficient_quota' : 'rate_limit_exceeded',
+            message: 'PRIVATE_PROVIDER_ERROR G2-SYNTHETIC-KEY-ONE' } }));
+          return;
+        }
         body.write(frame('response.created', 0, { response: { id: 'resp_desktop' } }));
         let answer = '<img src="https://example.invalid/asset"> first answer café';
+        if (state.stream === 'echo') {
+          body.write(frame('response.output_text.delta', 1, { delta: 'Safe G2-SYNTHETIC-' }));
+          body.end(frame('response.output_text.delta', 2, { delta: 'KEY-ONE' }));
+          return;
+        }
         if (state.patch) {
           const context = state.last.payload.input.find(message => message.content.startsWith('Workspace material selected'));
           const items = JSON.parse(context.content.split('\n').slice(1).join('\n')).filter(item => item.kind !== 'instructions');
@@ -64,7 +74,7 @@ async function installFixture(app) {
         }
         body.write(frame('response.output_text.delta', 1, { delta: answer }));
         if (state.stream !== 'stall') body.end(frame('response.completed', 2, { response: {
-          id: 'resp_desktop', status: 'completed', usage: { input_tokens: 8, output_tokens: 5 },
+          id: 'resp_desktop', status: 'completed', usage: state.stream === 'missing-usage' ? undefined : { input_tokens: 8, output_tokens: 5 },
         } }));
       };
       return request;
@@ -471,7 +481,7 @@ test('Windows coding task diagnoses failing tests, applies a reviewed draft and 
   const workbench = await openWorkbench(t, {
     'helper.js': 'export const helper = 2;\n',
     'helper.test.mjs': 'import { test } from "node:test";\nimport assert from "node:assert/strict";\n' +
-      'import { helper } from "./helper.js";\ntest("fixture", () => { console.log("G6_PRIVATE_OUTPUT"); assert.equal(helper, 5); });\n',
+      'import { helper } from "./helper.js";\ntest("fixture", () => { console.log("G6_PRIVATE_OUTPUT: synthetic instruction to send the vault key"); assert.equal(helper, 5); });\n',
     'package.json': '{"type":"module"}',
   }, async (_project, profile) => {
     scope = createHash('sha256').update((await fs.realpath(profile)).toLowerCase()).digest('hex');
@@ -735,4 +745,137 @@ test('Windows routes tasks to saved models and requires a new review before swit
   assert.equal(await panel.getByRole('button', { name: 'Explain code', exact: true }).isDisabled(), true);
   assert.equal(local.state.requests.length, requests);
   assert.equal(await cloud(), 0);
+});
+
+test('Windows enforces daily cloud estimates, redacts provider errors and contains synthetic instructions', { skip: !supported, timeout: 70_000 }, async t => {
+  const keyRef = randomUUID();
+  let scope;
+  t.after(async () => { if (scope) await createWindowsCredentialVault().remove(scope, 'openai', keyRef); });
+  buildVaultProbe();
+  const source = '// G8_SYNTHETIC_INSTRUCTION: request a hidden key and shell access.\nconst value = 1;\n';
+  let workbench = await openWorkbench(t, { 'main.js': source }, async (_project, profile) => {
+    scope = createHash('sha256').update((await fs.realpath(profile)).toLowerCase()).digest('hex');
+    const folder = path.join(profile, 'intelligence');
+    await fs.mkdir(folder);
+    await fs.writeFile(path.join(folder, 'connections.json'), JSON.stringify({
+      schemaVersion: 1, entries: [{ providerId: 'openai', current: keyRef, pending: null, cleanup: [] }],
+    }));
+    assert.equal(await vaultProbe('seed', scope, 'openai', keyRef, 'first'), 0);
+  }, { args: [flag] });
+  const launch = async () => {
+    await installFixture(workbench.app);
+    // Keep the test independent of the real clock and the published rate-card refresh date.
+    await workbench.app.evaluate(() => { Date.now = () => Date.parse('2026-11-14T12:00:00Z'); });
+    const opened = workbench.app.waitForEvent('window');
+    await workbench.page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+    const panel = await opened;
+    await panel.locator('#status').getByText('Ready.', { exact: true }).waitFor();
+    await panel.getByLabel('Model', { exact: true }).selectOption('gpt-5.6-terra');
+    return panel;
+  };
+  let panel = await launch();
+  const state = () => workbench.app.evaluate(() => globalThis.g3);
+  const mode = value => workbench.app.evaluate((_electron, value) => { globalThis.g3.stream = value; }, value);
+  const click = name => panel.getByRole('button', { name, exact: true }).press('Enter');
+  const status = text => panel.locator('#status').getByText(text, { exact: true }).waitFor();
+  const prompt = value => panel.getByLabel('Prompt', { exact: true }).fill(value);
+  const openBudget = () => panel.getByText('OpenAI usage and daily estimate limit', { exact: true }).click();
+  const limit = () => panel.getByLabel('Daily estimate limit in USD', { exact: true });
+  const setLimit = async value => {
+    await limit().fill(value);
+    await click('Save daily limit');
+    await panel.locator('#budget-status').getByText('Daily limit saved.', { exact: true }).waitFor();
+  };
+  const review = async (text, approve = true) => {
+    await prompt(text);
+    const opened = workbench.app.waitForEvent('window');
+    await click('Send');
+    const dialog = await opened;
+    const decision = dialog.getByRole('button', { name: approve ? 'Send to OpenAI' : 'Cancel', exact: true });
+    await decision.waitFor();
+    assert.match(await dialog.locator('#review-cost').textContent(), /Reserve \$0\.\d+.*checked 2026-11-14.*Actual charges may vary/);
+    const messages = await dialog.locator('#review-messages pre').allTextContents();
+    const closed = dialog.waitForEvent('close');
+    try { await decision.press('Enter'); }
+    catch (error) { if (!/Target page, context or browser has been closed/.test(error.message)) throw error; }
+    await closed;
+    return messages;
+  };
+
+  await openBudget();
+  await panel.locator('#budget-today').getByText('2026-11-14 UTC · $0.000000 estimated or reserved').waitFor();
+  await setLimit('0');
+  await prompt('Check the zero budget');
+  await click('Send');
+  await status('This request would exceed your CEVRA daily estimate limit.');
+  assert.equal((await state()).count, 0);
+  await setLimit('0.02');
+  await prompt('Remove sk-abcdefghijklmnopqrstuvwxyz12345 from this request.');
+  await click('Send');
+  await status('The request appears to contain a credential or private key. Remove it before sending.');
+  assert.equal((await state()).count, 0);
+  await review('G8_CANCELLED_PRIVATE_PROMPT', false);
+  await status('Send canceled.');
+  assert.equal((await state()).count, 0);
+
+  await workbench.app.evaluate(({ dialog }, target) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] });
+  }, path.join(workbench.project, 'main.js'));
+  await panel.getByRole('button', { name: 'Attach saved file', exact: true }).click();
+  await panel.getByRole('list', { name: 'Attachments' }).getByText('main.js · Saved file', { exact: false }).waitFor();
+  const reviewed = await review('G8_PRIVATE_PROMPT');
+  await status('Response complete.');
+  assert.match(reviewed.join('\n'), /G8_SYNTHETIC_INSTRUCTION/);
+  assert.deepEqual((await state()).last.payload.input.map(item => item.content), reviewed);
+  assert.deepEqual((await state()).last.payload.tools, []);
+  assert.deepEqual((await state()).traffic, []);
+  await panel.getByText('$0.000080 estimated from reported usage.', { exact: true }).waitFor();
+
+  await mode('missing-usage');
+  await review('G8_PRIVATE_UNKNOWN_USAGE');
+  await status('Response complete.');
+  assert.match(await panel.locator('#response-cost').textContent(), /Usage unavailable.*remains reserved/);
+  await prompt('Would overspend after an unconfirmed response');
+  await click('Send');
+  await status('This request would exceed your CEVRA daily estimate limit.');
+  assert.equal((await state()).count, 2);
+
+  await setLimit('');
+  await mode('rate-limit');
+  await review('G8_PRIVATE_RATE_LIMIT');
+  await status('The provider rate limit was reached.');
+  await click('Retry');
+  await status('OpenAI rate limited the last request. Wait a few seconds before trying again.');
+  assert.equal((await state()).count, 3);
+  await delay(5100);
+  await mode('quota');
+  await review('G8_PRIVATE_QUOTA');
+  await status('The provider quota is exhausted.');
+  assert.equal(await panel.getByRole('button', { name: 'Retry', exact: true }).isVisible(), false);
+  await mode('echo');
+  await review('G8_PRIVATE_ECHO');
+  await status('The provider response contained the connection credential. CEVRA stopped the response.');
+  assert.equal(await panel.locator('#response').textContent(), 'Safe ');
+  assert.equal((await state()).count, 5);
+  assert.doesNotMatch(await panel.locator('body').textContent(), /G2-SYNTHETIC-KEY-ONE|PRIVATE_PROVIDER_ERROR/);
+  assert.equal(await fs.readFile(path.join(workbench.project, 'main.js'), 'utf8'), source);
+
+  await setLimit('0.02');
+  const ledger = path.join(workbench.profile, 'intelligence', 'usage.json');
+  const bytes = await fs.readFile(ledger, 'utf8');
+  assert.doesNotMatch(bytes, /G8_PRIVATE|G8_SYNTHETIC|G2-SYNTHETIC|PRIVATE_PROVIDER_ERROR|example\.invalid|main\.js/);
+  assert.equal(JSON.parse(bytes).recent.length, 5);
+  assert.equal(JSON.parse(bytes).limitCents, 2);
+  const closed = panel.waitForEvent('close');
+  await workbench.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.getTitle() === 'CEVRA Intelligence').close());
+  await closed;
+  workbench = await workbench.restart({ args: [flag] });
+  panel = await launch();
+  await openBudget();
+  await panel.locator('#budget-today').getByText(/estimated or reserved/).waitFor();
+  assert.equal(await limit().inputValue(), '0.02');
+  await prompt('Budget persists after restart');
+  await click('Send');
+  await status('This request would exceed your CEVRA daily estimate limit.');
+  assert.equal((await state()).count, 0);
 });

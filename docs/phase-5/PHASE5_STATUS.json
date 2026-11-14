@@ -4,7 +4,7 @@
   "name": "CEVRA Intelligence",
   "status": "in_progress",
   "isImplementationComplete": false,
-  "branch": "cevra/phase5-g7",
+  "branch": "cevra/phase5-g8",
   "baselineCommit": "4960ef251237583f9ee7a21e067f949dd2f6d4b0",
   "baselinePhase4Ledger": "../phase-4/PHASE4_STATUS.json",
   "lastVerifiedPhase4Ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42988060217",
@@ -181,7 +181,9 @@
         "knownLimitations": ["Opt-in Windows Electron preview", "Provider responses tested with fixtures. Live Ollama inference was not exercised."]
       }
     },
-    { "id": "G8", "name": "Privacy, Costs & Hardening", "status": "unverified", "evidence": [] },
+    { "id": "G8", "name": "Privacy, Costs & Hardening", "status": "implemented", "evidence": [
+      "g8-privacy-costs-and-hardening.md", "../../qa/intelligence-budget.test.cjs", "../../qa/intelligence-openai.test.cjs",
+      "../../qa/intelligence-stream-desktop.test.cjs", "../../qa/extension-runtime.test.cjs"] },
     { "id": "G9", "name": "Integration & Benchmarking", "status": "unverified", "evidence": [] }
   ]
 }

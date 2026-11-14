@@ -10,7 +10,8 @@ const { discoverOllama, defaultPort } = require('./providers/ollama.cjs');
 const { modelRoute, profile: validateProfile } = require('./model-profiles.cjs');
 const { createConnectionManager, providers, connectionErrorMessage } = require('./connection-manager.cjs');
 const { createWindowsCredentialVault } = require('./credential-vault-win.cjs');
-const { createContextBroker, ContextError, contextMessages, describe, instructionPath, checkPath } = require('./context-broker.cjs');
+const { createContextBroker, ContextError, contextMessages, describe, instructionPath, checkPath, looksSensitive } = require('./context-broker.cjs');
+const { createUsageBudget } = require('./usage-budget.cjs');
 const { preferenceMessage } = require('./response-preferences.cjs');
 const { sourceFileKey } = require('../source-files.cjs');
 const { inside } = require('../workspace.cjs');
@@ -25,6 +26,8 @@ function createIntelligenceMockWindow(profile, {
   patches, runAgentTests, recheckBaseline,
 } = {}) {
   const connections = createConnectionManager(profile, createWindowsCredentialVault());
+  const budget = live ? createUsageBudget(profile) : undefined;
+  let retryAfter = -Infinity;
   let panel;
   const adapters = live ? [mockProvider, createOpenAIProvider(async signal => {
     const owner = panel;
@@ -35,6 +38,18 @@ function createIntelligenceMockWindow(profile, {
       return key;
     } catch (error) {
       key.fill(0);
+      throw error;
+    }
+  }, undefined, async (input, signal) => {
+    const owner = panel;
+    const active = owner?.active;
+    if (active?.id !== input.requestId) throw new ProviderError('CANCELLED');
+    await budget.reserve(active.id, active.modelId, active.quote);
+    try {
+      await verifyDelivery(owner, active, signal);
+      active.sending = true;
+    } catch (error) {
+      await budget.finish(active.id, 'unsent').catch(() => {});
       throw error;
     }
   })] : [mockProvider];
@@ -80,7 +95,7 @@ function createIntelligenceMockWindow(profile, {
     }
   }
 
-  async function authorize(owner, provider, model, value, labels, signal) {
+  async function authorize(owner, provider, model, value, labels, signal, cost) {
     if (signal.aborted) return false;
     const review = new BrowserWindow({
       parent: owner.window, modal: true, show: false, title: 'Send conversation to ' + provider.label,
@@ -92,12 +107,14 @@ function createIntelligenceMockWindow(profile, {
     review.webContents.on('will-navigate', event => event.preventDefault());
     const closed = new Promise(resolve => review.once('closed', () => resolve(false)));
     const cancel = () => { if (!review.isDestroyed()) review.destroy(); };
+    const expiry = setTimeout(cancel, 5 * 60_000);
+    expiry.unref();
     review.webContents.once('render-process-gone', cancel);
     signal.addEventListener('abort', cancel, { once: true });
     try {
       await review.loadFile(path.join(__dirname, 'send-review.html'));
       if (signal.aborted || review.isDestroyed()) return false;
-      const data = JSON.stringify({ provider, model: model.label, messages: value.messages, labels, maxOutputTokens: value.maxOutputTokens });
+      const data = JSON.stringify({ provider, model: model.label, messages: value.messages, labels, maxOutputTokens: value.maxOutputTokens, cost });
       const decision = review.webContents.executeJavaScript('window.reviewConversation(' + data + ')');
       review.show();
       return await Promise.race([decision, closed]) === true && !signal.aborted;
@@ -105,6 +122,7 @@ function createIntelligenceMockWindow(profile, {
       if (!signal.aborted && !review.isDestroyed()) throw new Error('Could not open the send review.');
       return false;
     } finally {
+      clearTimeout(expiry);
       signal.removeEventListener('abort', cancel);
       cancel();
     }
@@ -117,6 +135,7 @@ function createIntelligenceMockWindow(profile, {
     if (cancelled) panel.cancelledId = request.id;
     if (cancelled) request.proposalScope?.abort();
     request.controller.abort();
+    if (cancelled && request.sending) void budget.finish(request.id, 'cancelled', request.usage).catch(() => {});
     void request.stream?.return().catch(() => {});
   }
 
@@ -258,6 +277,11 @@ function createIntelligenceMockWindow(profile, {
   handle('stop-agent', owner => owner.agent?.stop());
 
   handle('models', owner => owner.registry.list());
+  contextAction('usage-budget', () => budget.status());
+  contextAction('save-usage-limit', (owner, limitCents) => {
+    if (owner.active) throw new ContextError('Stop the current request before changing the daily limit.');
+    return budget.setLimit(limitCents);
+  });
   contextAction('model-profile', () => getModels());
   contextAction('save-model-profile', async (owner, input) => {
     let value;
@@ -329,6 +353,9 @@ function createIntelligenceMockWindow(profile, {
     const { catalog, model } = route;
     const local = catalog.providerId === 'ollama';
     const realProvider = catalog.providerId !== 'mock';
+    if (catalog.providerId === 'openai' && performance.now() < retryAfter) {
+      return { message: 'OpenAI rate limited the last request. Wait a few seconds before trying again.', retry: true, fallback: true };
+    }
     const registry = owner.registry;
     if (typeof input.prompt !== 'string' || Buffer.byteLength(input.prompt) > 8192) {
       return { message: 'Enter a valid prompt of up to 8 KiB.' };
@@ -363,24 +390,28 @@ function createIntelligenceMockWindow(profile, {
         content: 'Local test runner summary for this task. No test output is attached.\n' + step.feedback });
       if (patch) additions.push(patchInstruction(sources));
       const messages = [...history, ...additions.map(({ role, content }) => ({ role, content })), active.conversation.at(-1)];
+      if (realProvider && messages.some(item => looksSensitive(item.content))) throw new ProviderError('SENSITIVE_INPUT');
       if (messages.length > limits.messages ||
           messages.reduce((bytes, item) => bytes + Buffer.byteLength(item.content), 0) > model.maxInputBytes) {
         return { message: 'The conversation exceeds this model’s limit. Remove attachments or start a new conversation.' };
       }
       let value;
+      let inputBytes;
       try {
-        ({ value } = validateRequest({ abiVersion: providerAbi, requestId: id, providerId: catalog.providerId, modelId: model.id,
+        ({ value, inputBytes } = validateRequest({ abiVersion: providerAbi, requestId: id, providerId: catalog.providerId, modelId: model.id,
           messages, maxOutputTokens: model.maxOutputTokens }));
       } catch { return { message: 'Enter a valid prompt of up to 8 KiB.' }; }
       if (realProvider) {
         if (!local && owner.connectionBusy) return { message: 'Wait for the current connection operation.' };
         if (!local && !connections.available()) return { message: 'Windows Credential Manager is unavailable.', fallback: true };
+        const cost = local ? undefined : await budget.quote(model.id, inputBytes, messages.length, value.maxOutputTokens);
+        active.quote = cost?.quote;
         await verifySources(owner, active);
         const labels = [...history.map(() => null), ...additions.map(item => item.label), null];
         let approved;
         const destination = local ? { label: 'Ollama', endpoint: owner.local?.destination, local: true } :
           { label: 'OpenAI', endpoint };
-        try { approved = await authorize(owner, destination, model, value, labels, controller.signal); }
+        try { approved = await authorize(owner, destination, model, value, labels, controller.signal, cost); }
         catch { return { message: 'Could not open the send review.' }; }
         if (!approved || owner.active !== active || panel !== owner || controller.signal.aborted) return null;
         await verifySources(owner, active);
@@ -394,6 +425,10 @@ function createIntelligenceMockWindow(profile, {
       return id;
     } catch (error) {
       if (controller.signal.aborted) return null;
+      if (error instanceof ProviderError) {
+        const failure = safeProviderError(error);
+        return { message: failure.message, fallback: ['BUDGET_EXCEEDED', 'BUDGET_UNAVAILABLE', 'PRICE_UNAVAILABLE'].includes(failure.code) };
+      }
       return { message: error instanceof ContextError ? error.message : 'The Intelligence request could not start.' };
     } finally {
       if (!active.stream && owner.active === active) {
@@ -414,6 +449,11 @@ function createIntelligenceMockWindow(profile, {
       if (owner.active !== request) throw new ProviderError('CANCELLED');
       if (done) throw new ProviderError('PROVIDER_PROTOCOL');
       if (value.kind === 'text.delta') request.text += value.text;
+      if (value.kind === 'usage' && request.sending) request.usage = { input: value.inputTokens, output: value.outputTokens };
+      if (value.kind === 'error' && request.providerId === 'openai' && value.code === 'RATE_LIMIT') retryAfter = performance.now() + 5000;
+      const cost = request.sending && ['complete', 'error'].includes(value.kind) ?
+        await budget.finish(request.id, value.kind, request.usage) : undefined;
+      if (owner.active !== request) throw new ProviderError('CANCELLED');
       const retained = !request.sources.length && !request.isolated;
       if (value.kind === 'complete' && request.patch) {
         if (value.finishReason !== 'stop') {
@@ -444,7 +484,7 @@ function createIntelligenceMockWindow(profile, {
         if (request.providerId === 'openai') owner.verified.add(request.providerId);
         if (request.agentStep) owner.agent.proposalReady();
         stop(owner, false);
-        return { ...value, retained: false, proposalId };
+        return { ...value, retained: false, proposalId, cost };
       }
       if (value.kind === 'complete' && request.text && request.providerId !== 'mock') {
         if (retained) {
@@ -464,14 +504,15 @@ function createIntelligenceMockWindow(profile, {
       if (value.kind === 'error' && value.code === 'AUTH_INVALID') owner.verified.delete(request.providerId);
       if (value.kind === 'complete' || value.kind === 'error') stop(owner, false);
       if (value.kind === 'error' && request.agentStep) owner.agent.stop('The provider did not complete the edit proposal.');
-      if (value.kind === 'error') return { ...value, message: new ProviderError(value.code).message };
-      return value.kind === 'complete' ? { ...value, retained } : value;
+      if (value.kind === 'error') return { ...value, message: new ProviderError(value.code).message, cost };
+      return value.kind === 'complete' ? { ...value, retained, cost } : value;
     } catch (error) {
       if (owner.active === request) stop(owner, false);
       if (request.agentStep) owner.agent.stop('The proposal request ended.');
       const failure = safeProviderError(error);
+      const cost = request.sending ? await budget.finish(request.id, failure.code === 'CANCELLED' ? 'cancelled' : 'error', request.usage).catch(() => {}) : undefined;
       if (failure.code === 'AUTH_INVALID') owner.verified.delete(request.providerId);
-      return { kind: 'error', requestId: id, code: failure.code, message: failure.message,
+      return { kind: 'error', requestId: id, code: failure.code, message: failure.message, cost,
         retryable: failure.code === 'PROVIDER_UNAVAILABLE' || failure.code === 'PROVIDER_TIMEOUT' };
     } finally {
       request.pulling = false;
