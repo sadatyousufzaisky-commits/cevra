@@ -1,6 +1,6 @@
 const milestones = ['open a folder', 'edit a file', 'run JavaScript'];
 
-console.log('Hello from CEVRA.');
+console.log('Hello from VOKRI Code.');
 for (const [index, milestone] of milestones.entries()) {
   console.log(`${index + 1}. ${milestone}`);
 }

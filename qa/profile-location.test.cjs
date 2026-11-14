@@ -70,4 +70,9 @@ test('current UI keeps the old name only in allowlisted compatibility strings', 
     if (entry.name === 'profile-location.cjs') continue;
     assert.ok(!/\bCEVRA\b/i.test(text.replace(compatibility, '')), path.relative(source, filename));
   }
+  const examples = path.resolve(__dirname, '../examples');
+  for (const name of ['hello.js', 'extensions/starter-tools/extension.json']) {
+    const text = await fs.readFile(path.join(examples, name), 'utf8');
+    assert.ok(!/\bCEVRA\b/i.test(text.replace(compatibility, '')), name);
+  }
 });
