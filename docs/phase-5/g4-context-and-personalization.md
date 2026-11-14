@@ -19,3 +19,5 @@ The G4 preview supports selected ranges and explicitly picked files. Workspace-w
 ## Verification
 
 `npm test` covers the broker and the Windows desktop workflow. The broker suite verifies unsafe paths, embedded credential patterns, attachment limits, stale file identity, stale drafts, and preferences across restart. The desktop suite uses a synthetic provider response and a real Windows credential entry. It verifies that the reviewed text exactly matches the request, rejects an external edit made during approval, tests revision-checked navigation to unsaved source, and confirms the next request excludes the previous attachment and answer.
+
+On 2026-11-14, the implementation passed 145 core, 79 desktop, and 17 extension-host tests on hosted Windows Server 2025 x64 build 26100. The separate Windows credential account isolation check passed. [Windows verification](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43547553150)

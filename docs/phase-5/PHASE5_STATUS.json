@@ -104,9 +104,22 @@
     {
       "id": "G4",
       "name": "Context Broker & Personalization",
-      "status": "implemented",
+      "status": "passed",
       "evidence": ["g4-context-and-personalization.md", "../../qa/intelligence-context.test.cjs",
-        "../../qa/intelligence-stream-desktop.test.cjs"]
+        "../../qa/intelligence-stream-desktop.test.cjs"],
+      "verification": {
+        "verifiedAt": "2026-11-14",
+        "implementationCommit": "1fe02c1c3804d5a94f3a480bc86ac3d2e4db8b96",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassed": 145,
+        "desktopPassed": 79,
+        "extensionHostPassed": 17,
+        "accountIsolationCi": "passed",
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43547553150",
+        "scope": "Explicit context selection, exact outbound review, stale source rejection, source navigation and local response preferences",
+        "knownLimitations": ["Electron preview only", "Synthetic provider responses in automated verification", "Explicit attachments only"]
+      }
     },
     { "id": "G5", "name": "Editor Actions & Patch Review", "status": "unverified", "evidence": [] },
     { "id": "G6", "name": "Controlled Agentic Coding", "status": "unverified", "evidence": [] },
