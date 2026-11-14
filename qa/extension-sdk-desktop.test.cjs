@@ -28,7 +28,7 @@ test('the author starter tools ZIP installs and its snippet and palette survive 
     await editor.press('Control+Space');
     await snippet.click();
     await page.locator('#draft-status[data-state="saved"]').waitFor();
-    assert.deepEqual(await editor.locator('.cm-line').allTextContents(), ['console.log("Hello from CEVRA!");']);
+    assert.deepEqual(await editor.locator('.cm-line').allTextContents(), ['console.log("Hello from VOKRI Code!");']);
     await editor.press('Control+z');
 
     await show();

@@ -12,7 +12,7 @@
         "id": "hello-log",
         "language": "javascript",
         "prefix": "cevrahello",
-        "body": "console.log(\"Hello from CEVRA!\");",
+        "body": "console.log(\"Hello from VOKRI Code!\");",
         "description": "Log a greeting."
       }
     ],

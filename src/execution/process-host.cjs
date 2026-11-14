@@ -4,7 +4,7 @@ const { createReportDecoder } = require('./test-report.cjs');
 
 const maxOutput = 160_000;
 const windows = process.platform === 'win32';
-const windowsHost = path.resolve(__dirname, '..', '..', 'dist', 'cevra-process-host.exe');
+const windowsHost = path.resolve(__dirname, '..', '..', 'dist', 'vokri-process-host.exe');
 
 function startProcess(root, args, publish, reportPrefix, { executable = process.execPath, environment, stderrFilter } = {}) {
   const env = { ...process.env, ...environment };

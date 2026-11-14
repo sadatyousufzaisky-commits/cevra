@@ -88,9 +88,9 @@ function checkEngine(engines, currentVersion) {
   const min = version(range[1], 'Minimum engine version');
   const max = version(range[2], 'Maximum engine version');
   if (compareVersions(min, max) >= 0) reject('Engine range', 'must have a lower minimum than maximum.');
-  const current = version(currentVersion, 'CEVRA version');
+  const current = version(currentVersion, 'VOKRI Code version');
   if (compareVersions(current, min) < 0 || compareVersions(current, max) >= 0) {
-    throw new InspectionError('INCOMPATIBLE_ENGINE', 'Package requires CEVRA ' + engines.cevra + '. This build is ' + currentVersion + '.');
+    throw new InspectionError('INCOMPATIBLE_ENGINE', 'Package requires VOKRI Code ' + engines.cevra + '. This build is ' + currentVersion + '.');
   }
 }
 

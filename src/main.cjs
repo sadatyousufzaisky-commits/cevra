@@ -1,8 +1,11 @@
-const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme } = require('electron');
 const fs = require('node:fs/promises');
+const { mkdirSync } = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
+const { productName, appId, icon } = require('./identity.cjs');
+const { profileLocation } = require('./profile-location.cjs');
 const { createWorkspace, listFolder, maxFileBytes, readSource, saveSource, saveRecoveryCopy,
   resolveEntry, verifyRevision, workspacePath } = require('./workspace.cjs');
 const { sourceFileKey } = require('./source-files.cjs');
@@ -33,7 +36,12 @@ const { startDebugger } = require('./execution/debugger.cjs');
 const { createPythonProfiles } = require('./execution/python-profiles.cjs');
 const { createTerminalSessions, terminalProfile, validateSize, maxTerminalInput } = require('./execution/terminal-sessions.cjs');
 
-app.setName('CEVRA');
+app.setName(productName);
+if (process.platform === 'win32') app.setAppUserModelId(appId);
+const selectedProfile = profileLocation(app.getPath('appData'), app.commandLine.hasSwitch('user-data-dir') ?
+  path.resolve(app.commandLine.getSwitchValue('user-data-dir') || app.getPath('userData')) : undefined);
+mkdirSync(selectedProfile.directory, { recursive: true });
+app.setPath('userData', selectedProfile.directory);
 
 const page = path.join(__dirname, 'index.html');
 const pageURL = pathToFileURL(page).href;
@@ -119,7 +127,7 @@ const extensionManager = createExtensionManager({
       quarantine: ['Quarantine', 'The extension will be disabled and require review before it can be enabled again.'],
       'clear-quarantine': ['Clear Quarantine', 'The extension will stay disabled until you enable it.'],
       restore: ['Restore Previous Version', `Restore version ${entry.rollback?.version} as a disabled extension.\nPrevious SHA-256 ${entry.rollback?.sha256}`],
-      uninstall: ['Uninstall', 'This removes the installed package and its retained version from CEVRA.'],
+      uninstall: ['Uninstall', 'This removes the installed package and its retained version from VOKRI Code.'],
     };
     const [label, explanation] = prompts[action];
     const { response } = await dialog.showMessageBox(owner, {
@@ -157,8 +165,8 @@ function colorMode() {
 function windowAppearance(mode) {
   const dark = mode === 'dark';
   return {
-    backgroundColor: dark ? '#101417' : '#fcfdfb',
-    titleBarOverlay: { color: dark ? '#14191d' : '#eff4ef', symbolColor: dark ? '#e3ebea' : '#182b29', height: 51 },
+    backgroundColor: dark ? '#11111c' : '#fafaff',
+    titleBarOverlay: { color: dark ? '#171724' : '#eeeef9', symbolColor: dark ? '#f0f3fb' : '#22213a', height: 51 },
   };
 }
 
@@ -237,7 +245,7 @@ async function runAgentTests(project, { verifying, signal, recheck }) {
     const approved = await authorizeExecution(project, {
       title: verifying ? 'Verify Intelligence change' : 'Run baseline tests',
       message: verifying ? 'Run project tests to verify the approved change?' : 'Run the project tests for this Intelligence task?',
-      detail: 'CEVRA will run the project’s Node.js tests with your Windows user permissions. Tests read the files on disk.',
+      detail: 'VOKRI Code will run the project’s Node.js tests with your Windows user permissions. Tests read the files on disk.',
       confirmTrusted: true, runLabel: 'Run Tests', onceOnly: true, signal: execution,
     }, () => true);
     if (!approved) return null;
@@ -564,7 +572,7 @@ handle('authorize-run', (id, runId) => {
   if (authorizingRun || sessions.busy || intelligenceTest) throw new Error('An execution request is already active.');
   runGrant = undefined;
   return authorizeExecution(project, {
-    message: 'Allow CEVRA to run code from this workspace?',
+    message: 'Allow VOKRI Code to run code from this workspace?',
     detail: 'Code and tests run with your Windows user permissions.',
   }, () => {
     const token = randomUUID();
@@ -603,7 +611,7 @@ handle('terminal-paste', async (id, sessionId) => {
 handle('choose-folder', async discard => {
   ensureWorkspaceAvailable();
   const choice = await dialog.showOpenDialog(window, {
-    title: 'Open a CEVRA workspace',
+    title: 'Open a VOKRI Code workspace',
     properties: ['openDirectory'],
   });
   if (choice.canceled) return null;
@@ -903,7 +911,7 @@ handle('git-write', (id, action, details) => {
         assertCurrent();
         const { response } = await dialog.showMessageBox(owner, {
           type: 'question', title: 'Switch local branch', message: `Switch to ${branch}?`,
-          detail: 'CEVRA will reopen the workspace with the checked-out files.',
+          detail: 'VOKRI Code will reopen the workspace with the checked-out files.',
           buttons: ['Cancel', 'Switch Branch'], defaultId: 0, cancelId: 0, noLink: true,
         });
         if (response !== 1) return null;
@@ -945,6 +953,18 @@ ipcMain.on('cevra:ready', event => {
   if (isWorkbench(event)) rendererReady = true;
 });
 
+handle('about', async () => {
+  const profileNote = {
+    retained: 'This installation is using your existing profile. Settings, drafts, extensions, and credentials stay in place.',
+    separate: 'This installation is using its own profile. Your earlier profile is available separately and has been preserved.',
+  }[selectedProfile.state];
+  await dialog.showMessageBox(window, {
+    title: 'About ' + productName, message: productName,
+    icon: nativeImage.createFromPath(path.join(path.dirname(icon), 'vc.png')), type: 'none',
+    detail: 'Version ' + app.getVersion() + (profileNote ? '\n\n' + profileNote : ''), buttons: ['Close'],
+  });
+});
+
 handle('close-ready', async (hasDrafts, backupFailed) => {
   await preferences.getTheme();
   if (!closePending) return;
@@ -959,8 +979,8 @@ handle('close-ready', async (hasDrafts, backupFailed) => {
     cancelId: 0,
   }) === 0 : hasDrafts && dialog.showMessageBoxSync(window, {
     type: 'question',
-    message: restarting ? 'Restart CEVRA and keep your drafts?' : 'Quit CEVRA and keep your drafts?',
-    detail: 'CEVRA will reopen the drafts next time.',
+    message: restarting ? 'Restart VOKRI Code and keep your drafts?' : 'Quit VOKRI Code and keep your drafts?',
+    detail: 'VOKRI Code will reopen the drafts next time.',
     buttons: ['Keep editing', restarting ? 'Restart and keep drafts' : 'Quit and keep drafts'],
     defaultId: 0,
     cancelId: 0,
@@ -1005,7 +1025,8 @@ async function launch() {
     minHeight: 560,
     ...windowAppearance(colorMode()),
     titleBarStyle: 'hidden',
-    icon: path.join(__dirname, '..', 'cevra-icon.png'),
+    title: productName,
+    icon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       sandbox: true,
@@ -1013,6 +1034,7 @@ async function launch() {
       nodeIntegration: false,
     },
   });
+  if (process.platform === 'win32') workbench.setAppDetails({ appId, appIconPath: icon, relaunchDisplayName: productName });
   window = workbench;
   workbench.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   workbench.webContents.on('will-navigate', event => event.preventDefault());

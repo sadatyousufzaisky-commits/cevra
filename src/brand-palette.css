@@ -1,0 +1,91 @@
+:root {
+  color-scheme: dark;
+  --base: #11111c;
+  --chrome: #171724;
+  --panel: #1b1b2a;
+  --raised: #252539;
+  --selected: #342b52;
+  --line: #3a394e;
+  --text: #f0f3fb;
+  --muted: #abb1ca;
+  --accent: #b0a6ff;
+  --ink: #21183e;
+  --verified: #c6d2ff;
+  --danger: #ffa29e;
+  --warning: #ffd07d;
+  --dock: #151520;
+  --button-hover: #303046;
+  --primary-hover: #c5bdff;
+  --current-text: #e2dcff;
+  --error-surface: #261d25;
+  --error-border: #49303e;
+  --backdrop: #11111cb3;
+  --shortcut-surface: #21183e26;
+  --active-line: #222235;
+  --indent-guide: #42435e;
+  --editor-selection: #42366c;
+  --search-match: #38304e;
+  --search-current: #483d2b;
+  --syntax-keyword: #d9adfb;
+  --syntax-string: #a9bbef;
+  --syntax-number: #f1be78;
+  --syntax-type: #79d8e0;
+  --syntax-property: #f3a8ba;
+  --syntax-function: #89c6ff;
+}
+
+:root[data-color-mode="light"] {
+  color-scheme: light;
+  --base: #fafaff;
+  --chrome: #eeeef9;
+  --panel: #f4f4fc;
+  --raised: #e9e8f5;
+  --selected: #e5dffd;
+  --line: #cbc8df;
+  --text: #22213a;
+  --muted: #54546e;
+  --accent: #5740b8;
+  --ink: #fff;
+  --verified: #364b8d;
+  --danger: #922c35;
+  --warning: #815711;
+  --dock: #f0f0fa;
+  --button-hover: #ddd9ef;
+  --primary-hover: #443095;
+  --current-text: #3e2b87;
+  --error-surface: #f9e6ed;
+  --error-border: #c68f9e;
+  --backdrop: #22213a66;
+  --shortcut-surface: #ffffff2b;
+  --active-line: #eeedf9;
+  --indent-guide: #d2cfe7;
+  --editor-selection: #d8cdf9;
+  --search-match: #f7e4b2;
+  --search-current: #f2db98;
+  --syntax-keyword: #66338c;
+  --syntax-string: #364b8d;
+  --syntax-number: #854509;
+  --syntax-type: #07616c;
+  --syntax-property: #9e3755;
+  --syntax-function: #205b94;
+}
+
+@media (forced-colors: active) {
+  :root, :root[data-color-mode="light"] {
+    --base: Canvas;
+    --chrome: Canvas;
+    --panel: Canvas;
+    --raised: ButtonFace;
+    --selected: ButtonFace;
+    --line: ButtonText;
+    --text: CanvasText;
+    --muted: CanvasText;
+    --accent: Highlight;
+    --ink: HighlightText;
+    --verified: LinkText;
+    --dock: Canvas;
+    --current-text: CanvasText;
+  }
+}
+
+:root { accent-color: var(--accent); }

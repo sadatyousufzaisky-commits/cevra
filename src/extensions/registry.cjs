@@ -142,7 +142,7 @@ function requireUnpinned(entry) {
 
 function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
   if (typeof userData !== 'string' || !path.isAbsolute(userData)) {
-    fail('REGISTRY_PATH', 'Use the absolute CEVRA app-data directory.');
+    fail('REGISTRY_PATH', 'Use the absolute VOKRI Code app-data directory.');
   }
   const folder = path.join(userData, 'extensions');
   const file = path.join(folder, 'registry.json');

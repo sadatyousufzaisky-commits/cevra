@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "productName": "VOKRI Code",
+  "frameworkName": "VOKRI",
+  "intelligenceName": "VOKRI Intelligence",
+  "iconLabel": "VC",
+  "appUserModelId": "Vokri.Code",
+  "packageName": "vokri-code",
+  "assets": {
+    "primary": "../../assets/brand/vc.svg",
+    "monochrome": "../../assets/brand/vc-mono.svg",
+    "png": "../../assets/brand/vc.png",
+    "windowsIcon": "../../assets/brand/vc.ico",
+    "windowsSizes": [16, 24, 32, 48, 64, 128, 256],
+    "pngSha256": "abe14afc981308c9555dbf99866d62abe3404f6d1aed0c9e6c3eeb9852337ef0",
+    "windowsIconSha256": "21cc68147a4d527774040e00a1003f7d6d9b9e11eb8386adf1120294b3881674"
+  }
+}

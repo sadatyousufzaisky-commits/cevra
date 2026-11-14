@@ -69,7 +69,7 @@ internal static class WindowsCredentialVault
         }
         var value = new Credential {
             Type = Generic, TargetName = target, Blob = key, BlobSize = (uint)length,
-            Persist = LocalMachine, UserName = "CEVRA Intelligence"
+            Persist = LocalMachine, UserName = "VOKRI Intelligence"
         };
         return CredWriteW(ref value, 0) ? Ok : Unavailable;
     }
@@ -178,7 +178,7 @@ internal sealed class ApiKeyPrompt : Form, IWin32Window
         this.owner = owner;
         this.ownerPid = ownerPid;
         this.target = target;
-        Text = "CEVRA Intelligence - " + provider + " API key";
+        Text = "VOKRI Intelligence - " + provider + " API key";
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(456, 176);
         FormBorderStyle = FormBorderStyle.FixedDialog;

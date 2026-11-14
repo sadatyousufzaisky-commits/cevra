@@ -257,7 +257,7 @@ test('offline packages install and preview changed permissions, pins, and an exp
     await fs.writeFile(incompatible, archive({ ...manifest(), id, engines: { cevra: '>=2.0.0 <3.0.0' } }));
     await selectPackage(workbench, incompatible);
     await ui.button('Choose ZIP Package').click();
-    await ui.status.getByText(/Package requires CEVRA >=2\.0\.0/).waitFor();
+    await ui.status.getByText(/Package requires VOKRI Code >=2\.0\.0/).waitFor();
     assert.equal((await packages(workbench.page))[0].sha256, installReport.sha256);
     await selectPackage(workbench, candidate);
     await ui.button('Choose ZIP Package').click();

@@ -28,9 +28,9 @@ export const editorTheme = [EditorView.theme({
     fontSize: 'var(--editor-font-size, 14px)',
   },
   '.cm-scroller': { fontFamily: 'var(--editor-font, var(--mono))', lineHeight: '1.6' },
-  '.cm-content': { padding: '10px 0', caretColor: 'var(--extension-editor-accent, var(--mint))' },
+  '.cm-content': { padding: '10px 0', caretColor: 'var(--extension-editor-accent, var(--accent))' },
   '.cm-cursor, .cm-dropCursor': {
-    borderLeftColor: 'var(--extension-editor-accent, var(--mint))', borderLeftWidth: 'var(--editor-cursor-width, 1px)',
+    borderLeftColor: 'var(--extension-editor-accent, var(--accent))', borderLeftWidth: 'var(--editor-cursor-width, 1px)',
   },
   '.cm-gutters': {
     backgroundColor: 'var(--extension-editor-background, var(--base))',
@@ -43,13 +43,13 @@ export const editorTheme = [EditorView.theme({
   '.cm-selectionMatch': { backgroundColor: 'var(--selected)' },
   '.cm-searchMatch': { backgroundColor: 'var(--search-match)' },
   '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'var(--search-current)', outline: '1px solid var(--warning)' },
-  '&.cm-focused .cm-matchingBracket': { backgroundColor: 'var(--selected)', color: 'var(--mint)' },
+  '&.cm-focused .cm-matchingBracket': { backgroundColor: 'var(--selected)', color: 'var(--accent)' },
   '&.cm-focused .cm-nonmatchingBracket': { backgroundColor: 'var(--error-surface)', color: 'var(--danger)' },
   '.cm-panels, .cm-tooltip': { backgroundColor: 'var(--panel)', color: 'var(--text)', borderColor: 'var(--line)' },
   '.cm-panel input:not([type=checkbox]), .cm-panel button:not([name=close])': {
     backgroundColor: 'var(--raised)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: '3px',
   },
-  '.cm-panel input[type=checkbox]': { accentColor: 'var(--mint)' },
+  '.cm-panel input[type=checkbox]': { accentColor: 'var(--accent)' },
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--selected)', color: 'var(--text)' },
   '.cm-tooltip.cm-tooltip-above .cm-tooltip-arrow:before': { borderTopColor: 'var(--line)' },
   '.cm-tooltip.cm-tooltip-above .cm-tooltip-arrow:after': { borderTopColor: 'var(--panel)' },

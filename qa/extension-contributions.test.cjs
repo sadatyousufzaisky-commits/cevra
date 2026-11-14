@@ -111,7 +111,7 @@ test('a verified editor palette survives restart, falls back on disable, and is 
     const key = `${installed.join(':')}:deep-sea`;
     const theme = workbench.page.getByRole('combobox', { name: 'Theme' });
     const palette = workbench.page.locator('#theme-choice optgroup option');
-    const builtIn = 'rgb(252, 253, 251)';
+    const builtIn = 'rgb(250, 250, 255)';
     const extension = 'rgb(16, 32, 48)';
     await workbench.open('entry.js');
     await palette.waitFor({ state: 'attached' });
@@ -123,7 +123,7 @@ test('a verified editor palette survives restart, falls back on disable, and is 
     assert.equal(await workbench.editor.getByText('const', { exact: true }).evaluate(node => getComputedStyle(node).color),
       'rgb(121, 220, 186)');
     assert.equal(await workbench.page.locator('.titlebar').evaluate(node => getComputedStyle(node).backgroundColor),
-      'rgb(239, 244, 239)');
+      'rgb(238, 238, 249)');
 
     workbench = await workbench.restart();
     await workbench.selected('entry.js').waitFor();
@@ -163,7 +163,7 @@ test('a damaged registry leaves the editor usable and contributes no palette or 
       await fs.writeFile(path.join(folder, 'registry.json'), damaged);
     });
     await workbench.open('note.txt');
-    await themeSelected(workbench.page, 'dark', 'rgb(16, 20, 23)');
+    await themeSelected(workbench.page, 'dark', 'rgb(17, 17, 28)');
     assert.equal(await workbench.page.locator('#theme-choice optgroup').count(), 0);
     await replaceEditor(workbench, 'after\n');
     await workbench.editor.press('Control+s');

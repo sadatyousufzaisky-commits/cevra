@@ -27,7 +27,7 @@ if (!source || !output || extra.length) {
     const message = error instanceof InspectionError ? error.code + ' ' + error.message :
       error.code === 'EEXIST' ? 'OUTPUT_EXISTS Choose a new ZIP filename.' :
         error.code === 'ENOENT' ? 'PACKAGE_PATH Check the source files and the output folder.' :
-          'PACK_FAILED CEVRA could not create the ZIP package.';
+          'PACK_FAILED VOKRI Code could not create the ZIP package.';
     console.error(message);
     process.exitCode = 1;
   });

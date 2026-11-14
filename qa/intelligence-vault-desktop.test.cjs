@@ -35,7 +35,7 @@ test('Windows stores, checks, rotates and deletes API keys through the native pr
     });
     const openConnections = async () => {
       const opened = workbench.app.waitForEvent('window');
-      await workbench.page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+      await workbench.page.getByRole('button', { name: 'VOKRI Intelligence', exact: true }).click();
       const panel = await opened;
       await panel.getByRole('status').getByText('Ready.', { exact: true }).waitFor();
       await panel.getByText('Provider connections', { exact: true }).click();

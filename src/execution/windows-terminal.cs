@@ -145,7 +145,7 @@ internal static partial class WindowsHost
                     else throw new IOException("Unknown terminal control frame.");
                 }
             }
-            catch (Exception error) { Console.Error.WriteLine("CEVRA terminal: " + error.Message); }
+            catch (Exception error) { Console.Error.WriteLine("VOKRI Code terminal: " + error.Message); }
             finally { queue.CompleteAdding(); Signal(cancel); }
         }
     }

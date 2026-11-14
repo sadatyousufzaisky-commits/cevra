@@ -19,11 +19,11 @@ const errors = Object.freeze({
   RATE_LIMIT: 'The provider rate limit was reached.',
   NETWORK_BLOCKED: 'The provider connection was blocked.',
   LOCAL_MODE_REQUIRED: 'Ollama must report that its cloud features are disabled. Check its local-only configuration.',
-  BUDGET_EXCEEDED: 'This request would exceed your CEVRA daily estimate limit.',
-  BUDGET_UNAVAILABLE: 'CEVRA could not read or save its local usage ledger.',
+  BUDGET_EXCEEDED: 'This request would exceed your VOKRI Code daily estimate limit.',
+  BUDGET_UNAVAILABLE: 'VOKRI Code could not read or save its local usage ledger.',
   PRICE_UNAVAILABLE: 'A current estimate is unavailable or today includes unpriced usage. The daily limit blocks this request.',
   SENSITIVE_INPUT: 'The request appears to contain a credential or private key. Remove it before sending.',
-  SENSITIVE_OUTPUT: 'The provider response contained the connection credential. CEVRA stopped the response.',
+  SENSITIVE_OUTPUT: 'The provider response contained the connection credential. VOKRI Intelligence stopped the response.',
 });
 const reportedErrors = new Set([
   'PROVIDER_UNAVAILABLE', 'AUTH_INVALID', 'AUTH_EXPIRED', 'QUOTA_EXHAUSTED', 'RATE_LIMIT', 'NETWORK_BLOCKED',

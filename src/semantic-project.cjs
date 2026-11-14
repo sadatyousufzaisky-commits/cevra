@@ -311,7 +311,7 @@ function createSemanticProject(workspace) {
       const { options, directory } = projectOptions(workspace, target, host.readFile);
       request.options = options;
       const result = analyze(file, current.text, directory);
-      if (request.limited) throw new Error('This import graph exceeds CEVRA’s analysis limit.');
+      if (request.limited) throw new Error('This import graph exceeds VOKRI Code’s analysis limit.');
       return result;
     } finally {
       scripts = request.records;

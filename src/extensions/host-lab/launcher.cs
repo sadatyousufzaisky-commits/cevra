@@ -15,7 +15,7 @@ internal static class ExtensionLabLauncher
         try { return WindowsHost.RunExtensionLab(args); }
         catch (Exception error)
         {
-            Console.Error.WriteLine("CEVRA isolation lab: " + error.Message);
+            Console.Error.WriteLine("VOKRI Code isolation lab: " + error.Message);
             return 125;
         }
     }
@@ -80,8 +80,8 @@ internal static partial class WindowsHost
         IntPtr sid = IntPtr.Zero;
         try
         {
-            Marshal.ThrowExceptionForHR(CreateAppContainerProfile(profile, "CEVRA Isolation Lab",
-                "Temporary CEVRA extension test host", IntPtr.Zero, 0, out sid));
+            Marshal.ThrowExceptionForHR(CreateAppContainerProfile(profile, "VOKRI Code Isolation Lab",
+                "Temporary VOKRI Code extension host", IntPtr.Zero, 0, out sid));
             Directory.CreateDirectory(stage);
             var identity = new SecurityIdentifier(sid);
             var directoryAcl = Directory.GetAccessControl(stage);
@@ -89,7 +89,7 @@ internal static partial class WindowsHost
             Directory.SetAccessControl(stage, directoryAcl);
             CopyExtensionArtifact(Path.Combine(args[1], workerName), executable, identity);
             if (args[3] == "worker") CopyExtensionArtifact(Path.Combine(args[1], "wasmtime.dll"), runtime, identity);
-            File.WriteAllText(canary, "CEVRA LPAC access check");
+            File.WriteAllText(canary, "VOKRI Code LPAC access check");
             var canaryAcl = new FileSecurity();
             canaryAcl.SetAccessRuleProtection(true, false);
             using (var user = WindowsIdentity.GetCurrent())

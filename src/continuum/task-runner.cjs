@@ -24,7 +24,7 @@ async function findNpm(root) {
     if (file && path.basename(file).toLowerCase() === 'npm-cli.js' && !inside(root, file) &&
         (await fs.stat(file).catch(() => null))?.isFile()) return file;
   }
-  throw new Error('CEVRA could not find npm in your Node.js installation. Install Node.js with npm and restart CEVRA.');
+  throw new Error('VOKRI Code could not find npm in your Node.js installation. Install Node.js with npm and restart VOKRI Code.');
 }
 
 function taskLocation(workspace, output) {

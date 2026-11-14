@@ -2,6 +2,7 @@ const { BrowserWindow, dialog, ipcMain } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
+const { intelligenceName, appId, icon } = require('../identity.cjs');
 const { providerAbi, limits, request: validateRequest, ProviderError, exactRecord, safeProviderError } = require('./provider-contract.cjs');
 const { createProviderRegistry } = require('./provider-registry.cjs');
 const { mockProvider } = require('./providers/mock.cjs');
@@ -98,7 +99,7 @@ function createIntelligenceMockWindow(profile, {
   async function authorize(owner, provider, model, value, labels, signal, cost) {
     if (signal.aborted) return false;
     const review = new BrowserWindow({
-      parent: owner.window, modal: true, show: false, title: 'Send conversation to ' + provider.label,
+      parent: owner.window, modal: true, show: false, icon, title: 'Send conversation to ' + provider.label,
       width: 620, height: 520, minWidth: 380, minHeight: 320,
       webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, devTools: false },
     });
@@ -553,7 +554,7 @@ function createIntelligenceMockWindow(profile, {
     const { response } = await dialog.showMessageBox(owner.window, {
       type: 'warning', title: 'Disconnect provider',
       message: 'Remove the stored ' + providers[providerId] + ' API key?',
-      detail: 'This removes the key from Windows Credential Manager for this CEVRA profile.',
+      detail: 'This removes the key from Windows Credential Manager for this VOKRI Code profile.',
       buttons: ['Cancel', 'Remove Key'], defaultId: 0, cancelId: 0, noLink: true,
       signal: owner.connectionOwner.signal,
     });
@@ -626,12 +627,13 @@ function createIntelligenceMockWindow(profile, {
   function makePanel(parent, project) {
     const window = new BrowserWindow({
       parent, width: 660, height: 590, minWidth: 420, minHeight: 410, show: false,
-      title: live ? 'CEVRA Intelligence' : 'CEVRA Intelligence · Offline mock',
+      title: live ? intelligenceName : intelligenceName + ' · Offline mock', icon,
       webPreferences: {
         preload: path.join(__dirname, 'mock-preload.cjs'),
         sandbox: true, contextIsolation: true, nodeIntegration: false,
       },
     });
+    if (process.platform === 'win32') window.setAppDetails({ appId, appIconPath: icon, relaunchDisplayName: intelligenceName });
     const opened = { window, project, registry: baseRegistry, messages: [], verified: new Set(), sources: new Map(), historical: new Set(),
       connectionOwner: new AbortController(), connectionBusy: false };
     if (project) opened.context = createContextBroker(project, { readEditor, current: item => item === getWorkspace() });

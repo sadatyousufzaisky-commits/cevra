@@ -7,7 +7,7 @@ const mockProvider = {
     abiVersion: providerAbi,
     providerId: 'mock',
     label: 'Offline mock',
-    provenance: 'CEVRA deterministic fixture v1',
+    provenance: 'VOKRI deterministic fixture v1',
     models: [{
       id: 'deterministic-v1', label: 'Deterministic mock', maxInputBytes: 8192, maxOutputTokens: 128,
       streaming: true, toolProposals: false,

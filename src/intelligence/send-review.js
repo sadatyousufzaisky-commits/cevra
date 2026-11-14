@@ -3,7 +3,7 @@ window.reviewConversation = ({ provider, model, messages, labels, maxOutputToken
   document.getElementById('review-heading').textContent = 'Send conversation to ' + provider.label + '?';
   document.getElementById('destination').textContent = `${model} · ${provider.endpoint} · Up to ${maxOutputTokens} output tokens`;
   document.getElementById('review-privacy').textContent = provider.local ?
-    'CEVRA sends this request to the Ollama service on this computer after checking that it reports cloud features disabled.' :
+    'VOKRI Intelligence sends this request to the Ollama service on this computer after checking that it reports cloud features disabled.' :
     'The OpenAI API may charge your account and retain content under its API data policies.';
   if (cost) {
     const element = document.getElementById('review-cost');

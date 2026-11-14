@@ -1423,7 +1423,7 @@ test('workspace execution requires a grant and canceling leaves disk unchanged',
   const settings = page.getByRole('dialog', { name: 'Editor Settings' });
   await settings.getByText('Workspace execution is trusted.').waitFor();
   await settings.getByRole('button', { name: 'Revoke Trust' }).click();
-  await settings.getByText('CEVRA will ask before running workspace code.').waitFor();
+  await settings.getByText('VOKRI Code will ask before running workspace code.').waitFor();
   const rejected = await page.evaluate(async () => {
     const { project } = await window.cevra.initial();
     const { revision } = await window.cevra.read(project.id, 'source.cjs');
@@ -1463,11 +1463,11 @@ test('switching themes updates the window and editor and preserves drafts and un
   assert.equal(await keyword.evaluate(element => getComputedStyle(element).color), 'rgb(102, 51, 140)');
   assert.deepEqual(await page.evaluate(() => ['.titlebar', '.cm-editor', '.run-panel'].map(selector =>
     getComputedStyle(document.querySelector(selector)).backgroundColor)), [
-    'rgb(239, 244, 239)', 'rgb(252, 253, 251)', 'rgb(243, 247, 242)',
+    'rgb(238, 238, 249)', 'rgb(250, 250, 255)', 'rgb(240, 240, 250)',
   ]);
   assert.deepEqual(await app.evaluate(({ BrowserWindow, nativeTheme }) => ({
     mode: nativeTheme.themeSource, background: BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase(),
-  })), { mode: 'light', background: '#fcfdfb' });
+  })), { mode: 'light', background: '#fafaff' });
   assert.equal(await page.locator('#cursor').textContent(), cursor);
   assert.match(await editor.textContent(), /second = "draft"/);
 
@@ -1515,7 +1515,7 @@ test('System theme follows native color changes and a failed theme save rolls ba
   await app.evaluate(({ nativeTheme }, mode) => { nativeTheme.themeSource = mode; }, opposite);
   await waitForTheme(page, 'system', opposite);
   assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase()),
-    opposite === 'dark' ? '#101417' : '#fcfdfb');
+    opposite === 'dark' ? '#11111c' : '#fafaff');
   await app.evaluate(({ nativeTheme }) => { nativeTheme.themeSource = 'system'; });
   await waitForTheme(page, 'system', native.dark ? 'dark' : 'light');
 });

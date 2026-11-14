@@ -106,7 +106,7 @@ test('Windows Intelligence confirms exact live turns, cancels streams and clears
 
     async function openPanel(current) {
       const opened = current.app.waitForEvent('window');
-      await current.page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+      await current.page.getByRole('button', { name: 'VOKRI Intelligence', exact: true }).click();
       const panel = await opened;
       await panel.locator('#status').getByText('Ready.', { exact: true }).waitFor();
       await panel.getByRole('combobox', { name: 'Model', exact: true }).selectOption('gpt-5.6-terra');
@@ -188,10 +188,10 @@ test('Windows Intelligence confirms exact live turns, cancels streams and clears
     await send('Before renderer restart');
     await panel.locator('#response').getByText(reply, { exact: true }).waitFor();
     await workbench.app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows().find(window => window.getTitle() === 'CEVRA Intelligence').webContents.forcefullyCrashRenderer();
+      BrowserWindow.getAllWindows().find(window => window.getTitle() === 'VOKRI Intelligence').webContents.forcefullyCrashRenderer();
     });
     const panelClosed = () => workbench.app.evaluate(({ BrowserWindow }) =>
-      !BrowserWindow.getAllWindows().some(window => window.getTitle() === 'CEVRA Intelligence'));
+      !BrowserWindow.getAllWindows().some(window => window.getTitle() === 'VOKRI Intelligence'));
     for (let count = 0; count < 100 && !await panelClosed(); count++) await delay(30);
     assert.equal(await panelClosed(), true);
     panel = await openPanel(workbench);
@@ -493,7 +493,7 @@ test('Windows integrates native key capture, a reviewed coding repair, and AI-of
     globalThis.g3.patch = 'valid';
   }, path.join(project, 'helper.js'));
   const opened = app.waitForEvent('window');
-  await page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+  await page.getByRole('button', { name: 'VOKRI Intelligence', exact: true }).click();
   const panel = await opened;
   await panel.locator('#status').getByText('Ready.', { exact: true }).waitFor();
   assert.equal((await app.evaluate(() => globalThis.g3)).count, 0);
@@ -501,7 +501,7 @@ test('Windows integrates native key capture, a reviewed coding repair, and AI-of
   await panel.getByText('Provider connections', { exact: true }).click();
   const connection = panel.getByRole('listitem').filter({ has: panel.getByRole('heading', { name: 'OpenAI', exact: true }) });
   const owner = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
-    .find(window => window.getTitle() === 'CEVRA Intelligence').getNativeWindowHandle().readBigUInt64LE().toString(16));
+    .find(window => window.getTitle() === 'VOKRI Intelligence').getNativeWindowHandle().readBigUInt64LE().toString(16));
   await connection.getByRole('button', { name: 'Add key', exact: true }).click();
   assert.equal(await vaultProbe('prompt', owner, 'first'), 0);
   await panel.locator('#connection-status').getByText('Key stored in Windows Credential Manager.', { exact: true }).waitFor();
@@ -570,7 +570,7 @@ test('Windows integrates native key capture, a reviewed coding repair, and AI-of
   await restarted.selected('helper.js').waitFor();
   assert.match(await restarted.editor.textContent(), /G9_RECOVERY_FIXTURE/);
   assert.equal(await fs.readFile(path.join(project, 'helper.js'), 'utf8'), 'export const helper = 5;\n');
-  assert.equal(await restarted.page.getByRole('button', { name: 'Intelligence', exact: true }).count(), 0);
+  assert.equal(await restarted.page.getByRole('button', { name: 'VOKRI Intelligence', exact: true }).count(), 0);
   await restarted.editor.press('Control+s');
   await restarted.page.locator('#message').getByText('Saved helper.js', { exact: true }).waitFor();
   assert.match(await fs.readFile(path.join(project, 'helper.js'), 'utf8'), /G9_RECOVERY_FIXTURE/);
@@ -595,7 +595,7 @@ test('Windows Stop terminates a coding test tree and reopening leaves the task i
   }, path.join(project, 'main.js'));
   const launch = async current => {
     const opened = current.app.waitForEvent('window');
-    await current.page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+    await current.page.getByRole('button', { name: 'VOKRI Intelligence', exact: true }).click();
     return opened;
   };
   const panel = await launch(workbench);
@@ -659,7 +659,7 @@ test('Windows routes tasks to saved models and requires a new review before swit
   }, { args: [flag] });
   const launch = async () => {
     const opened = workbench.app.waitForEvent('window');
-    await workbench.page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+    await workbench.page.getByRole('button', { name: 'VOKRI Intelligence', exact: true }).click();
     const panel = await opened;
     await panel.locator('#status').getByText('Ready.', { exact: true }).waitFor();
     return panel;
@@ -760,7 +760,7 @@ test('Windows routes tasks to saved models and requires a new review before swit
 
   const requests = local.state.requests.length;
   const panelClosed = panel.waitForEvent('close');
-  await workbench.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.getTitle() === 'CEVRA Intelligence').close());
+  await workbench.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.getTitle() === 'VOKRI Intelligence').close());
   await panelClosed;
   workbench = await workbench.restart({ args: [flag] });
   await installFixture(workbench.app);
@@ -796,7 +796,7 @@ test('Windows enforces daily cloud estimates, redacts provider errors and contai
     // Keep the test independent of the real clock and the published rate-card refresh date.
     await workbench.app.evaluate(() => { Date.now = () => Date.parse('2026-11-14T12:00:00Z'); });
     const opened = workbench.app.waitForEvent('window');
-    await workbench.page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+    await workbench.page.getByRole('button', { name: 'VOKRI Intelligence', exact: true }).click();
     const panel = await opened;
     await panel.locator('#status').getByText('Ready.', { exact: true }).waitFor();
     await panel.getByLabel('Model', { exact: true }).selectOption('gpt-5.6-terra');
@@ -836,7 +836,7 @@ test('Windows enforces daily cloud estimates, redacts provider errors and contai
   await setLimit('0');
   await prompt('Check the zero budget');
   await click('Send');
-  await status('This request would exceed your CEVRA daily estimate limit.');
+  await status('This request would exceed your VOKRI Code daily estimate limit.');
   assert.equal((await state()).count, 0);
   await setLimit('0.02');
   await prompt('Remove sk-abcdefghijklmnopqrstuvwxyz12345 from this request.');
@@ -866,7 +866,7 @@ test('Windows enforces daily cloud estimates, redacts provider errors and contai
   assert.match(await panel.locator('#response-cost').textContent(), /Usage unavailable.*remains reserved/);
   await prompt('Would overspend after an unconfirmed response');
   await click('Send');
-  await status('This request would exceed your CEVRA daily estimate limit.');
+  await status('This request would exceed your VOKRI Code daily estimate limit.');
   assert.equal((await state()).count, 2);
 
   await setLimit('');
@@ -883,7 +883,7 @@ test('Windows enforces daily cloud estimates, redacts provider errors and contai
   assert.equal(await panel.getByRole('button', { name: 'Retry', exact: true }).isVisible(), false);
   await mode('echo');
   await review('G8_PRIVATE_ECHO');
-  await status('The provider response contained the connection credential. CEVRA stopped the response.');
+  await status('The provider response contained the connection credential. VOKRI Intelligence stopped the response.');
   assert.equal(await panel.locator('#response').textContent(), 'Safe ');
   assert.equal((await state()).count, 5);
   assert.doesNotMatch(await panel.locator('body').textContent(), /G2-SYNTHETIC-KEY-ONE|PRIVATE_PROVIDER_ERROR/);
@@ -896,7 +896,7 @@ test('Windows enforces daily cloud estimates, redacts provider errors and contai
   assert.equal(JSON.parse(bytes).recent.length, 5);
   assert.equal(JSON.parse(bytes).limitCents, 2);
   const closed = panel.waitForEvent('close');
-  await workbench.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.getTitle() === 'CEVRA Intelligence').close());
+  await workbench.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.getTitle() === 'VOKRI Intelligence').close());
   await closed;
   workbench = await workbench.restart({ args: [flag] });
   panel = await launch();
@@ -905,6 +905,6 @@ test('Windows enforces daily cloud estimates, redacts provider errors and contai
   assert.equal(await limit().inputValue(), '0.02');
   await prompt('Budget persists after restart');
   await click('Send');
-  await status('This request would exceed your CEVRA daily estimate limit.');
+  await status('This request would exceed your VOKRI Code daily estimate limit.');
   assert.equal((await state()).count, 0);
 });

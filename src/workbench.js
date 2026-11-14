@@ -1628,6 +1628,7 @@ forwardButton.onclick = () => travel('forward').catch(report);
 openButton.onclick = welcomeOpen.onclick = () => openProject(api.chooseFolder).catch(report);
 exampleButton.onclick = () => openProject(api.openExample).catch(report);
 byId('intelligence-mock-open').onclick = () => api.openIntelligenceMock().catch(report);
+byId('about-product').onclick = () => api.about().catch(report);
 byId('intelligence-attach-selection').onclick = () => {
   if (!active || changingProject) return;
   const { from, to } = active.state.selection.main;

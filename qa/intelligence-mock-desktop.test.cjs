@@ -11,7 +11,7 @@ const response = 'This is an offline mock response.';
 test('Intelligence is off by default and the workbench cannot open the preview', { timeout: 25_000 }, async t => {
   const { app, page, open, editor } = await openWorkbench(t, { 'source.js': source });
   await open('source.js');
-  assert.equal(await page.getByRole('button', { name: 'Intelligence', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'VOKRI Intelligence', exact: true }).count(), 0);
   const reason = await page.evaluate(() => window.cevra.openIntelligenceMock().then(() => '', error => error.message));
   assert.match(reason, /Intelligence mock is disabled/);
   assert.equal(app.windows().length, 1);
@@ -40,7 +40,7 @@ test('the opt-in Electron mock streams, stops, retries and clears the session on
     assert.equal(await page.evaluate(() => window.intelligenceMock), undefined);
     const launch = async () => {
       const opened = app.waitForEvent('window');
-      await page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+      await page.getByRole('button', { name: 'VOKRI Intelligence', exact: true }).click();
       const panel = await opened;
       await panel.getByRole('status').getByText('Ready.', { exact: true }).waitFor();
       return panel;

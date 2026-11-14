@@ -29,7 +29,7 @@ export function createTerminalPanel({ api, errorText }) {
     const style = getComputedStyle(document.documentElement);
     const color = name => style.getPropertyValue(name).trim();
     return {
-      background: color('--base'), foreground: color('--text'), cursor: color('--mint'),
+      background: color('--base'), foreground: color('--text'), cursor: color('--accent'),
       selectionBackground: color('--selected'), black: '#30353a', red: '#df605e', green: '#459a74',
       yellow: '#c78b26', blue: '#5796d7', magenta: '#be71c9', cyan: '#4195a5', white: '#dce2e6',
       brightBlack: '#6b7783', brightRed: '#f18b86', brightGreen: '#73c69a', brightYellow: '#e3b358',

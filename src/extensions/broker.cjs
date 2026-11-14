@@ -270,7 +270,7 @@ function createCapabilityBroker({ registry, audit, getWorkspace, isTrusted, cons
     requireValue(!safeStart && supported, 'PERMISSION_DENIED');
     requireValue(!sessions.has(id) && !starting.has(id), 'STALE_SESSION');
     if (new Set([...sessions.keys(), ...starting]).size >= maxConcurrentHosts) {
-      throw failure('QUOTA', 'CEVRA can run five executable extensions at once. Revoke one before activating another.');
+      throw failure('QUOTA', 'VOKRI Code can run five executable extensions at once. Revoke one before activating another.');
     }
     starting.add(id);
     const project = getWorkspace();

@@ -10,7 +10,7 @@ async function findGit(root) {
     const file = await fs.realpath(path.join(folder, name)).catch(() => null);
     if (file && !inside(root, file) && (await fs.stat(file).catch(() => null))?.isFile()) return file;
   }
-  throw new Error('Git was not found on PATH. Install Git and restart CEVRA.');
+  throw new Error('Git was not found on PATH. Install Git and restart VOKRI Code.');
 }
 
 function gitCommand(executable, root, configuration = []) {

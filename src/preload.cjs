@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('cevra', {
+  about: () => ipcRenderer.invoke('cevra:about'),
   initial: () => ipcRenderer.invoke('cevra:initial'),
   appearance: () => ipcRenderer.invoke('cevra:appearance'),
   setTheme: choice => ipcRenderer.invoke('cevra:set-theme', choice),

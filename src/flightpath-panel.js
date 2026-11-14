@@ -50,7 +50,7 @@ export function createFlightpathPanel({ api, errorText, checkInputs }) {
     check.disabled = Boolean(checking);
     status.textContent = message || (!snapshot ? 'Loading local history…' : snapshot.unreadable ? 'Local history could not be read.' :
       snapshot.writeFailed ? 'A Run Capsule could not be saved.' : snapshot.enabled ?
-        `Local history is on. CEVRA keeps metadata for up to ${snapshot.limit} test and task results.` :
+        `Local history is on. VOKRI Code keeps metadata for up to ${snapshot.limit} test and task results.` :
         'Local history is off. Enable it to keep metadata for future test and task results.');
     list.replaceChildren(...(snapshot?.capsules.toReversed().map(capsuleRow) ?? []));
   }

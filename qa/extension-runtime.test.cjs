@@ -164,7 +164,7 @@ test('Intelligence keeps a separate renderer and scope while a real confined ext
   await workbench.activate();
   await permissions.getByRole('button', { name: 'Close', exact: true }).click();
   const opened = app.waitForEvent('window');
-  await page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+  await page.getByRole('button', { name: 'VOKRI Intelligence', exact: true }).click();
   const panel = await opened;
   await panel.locator('#status').getByText('Ready.', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => typeof window.intelligenceMock), 'undefined');

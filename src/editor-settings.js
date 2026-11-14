@@ -59,7 +59,7 @@ export function createEditorSettings({ api, getProject, apply, errorText }) {
     trust.hidden = !id;
     if (!id) return;
     const trusted = await api.workspaceTrust(id);
-    trustStatus.textContent = trusted ? 'Workspace execution is trusted.' : 'CEVRA will ask before running workspace code.';
+    trustStatus.textContent = trusted ? 'Workspace execution is trusted.' : 'VOKRI Code will ask before running workspace code.';
     revoke.hidden = !trusted;
   }
 

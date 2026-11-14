@@ -93,7 +93,7 @@ test('the cloud adapter rejects exact credentials in outgoing text and fragmente
   const { events } = fixture(async () => response(stream(created, delta('Safe SYNTH'), delta('ETIC_G3'), delta('_KEY'))));
   const output = events();
   assert.equal((await output.next()).value.text, 'Safe ');
-  await assert.rejects(output.next(), { code: 'SENSITIVE_OUTPUT', message: 'The provider response contained the connection credential. CEVRA stopped the response.' });
+  await assert.rejects(output.next(), { code: 'SENSITIVE_OUTPUT', message: 'The provider response contained the connection credential. VOKRI Intelligence stopped the response.' });
 
   const normal = fixture(async () => response(stream(created, delta('A SYNTH'), delta('etic S'), complete)));
   assert.equal((await Array.fromAsync(normal.events())).filter(event => event.kind === 'text.delta').map(event => event.text).join(''), 'A SYNTHetic S');

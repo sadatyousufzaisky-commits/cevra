@@ -160,7 +160,7 @@ function formatSource(extension, text, options, eol = '\n', bom = false) {
     const formatted = parts.join('');
     checkSize(formatted, eol, bom);
     withSource(extension, formatted, (result, issues) => {
-      if (issues.length || !sameTree(source, result)) throw new Error('CEVRA could not apply these spacing changes safely.');
+      if (issues.length || !sameTree(source, result)) throw new Error('VOKRI Code could not apply these spacing changes safely.');
     });
     return edits;
   });

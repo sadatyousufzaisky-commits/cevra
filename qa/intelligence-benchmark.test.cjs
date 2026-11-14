@@ -57,7 +57,7 @@ async function sample(t, projectPath, appRoot, enabled) {
     args: enabled ? ['--enable-intelligence'] : [] });
   const { app, page, openMs, editor } = workbench;
   const runtime = await app.evaluate(() => ({ node: process.versions.node, electron: process.versions.electron }));
-  const intelligence = page.getByRole('button', { name: 'Intelligence', exact: true });
+  const intelligence = page.getByRole('button', { name: 'VOKRI Intelligence', exact: true });
   assert.equal(await intelligence.count(), enabled ? 1 : 0);
   await workbench.open('invoice.js');
   const editorPaintMs = await paint(workbench);
@@ -113,8 +113,13 @@ test('Windows compares Phase 4 to Phase 5 with Intelligence off and enabled', { 
   const baseline = await fs.realpath(process.env.CEVRA_PHASE5_BASELINE);
   assert.equal(git(baseline, 'rev-parse', 'HEAD'), baselineCommit);
   assert.equal(git(baseline, 'status', '--porcelain'), '');
-  const lockfile = async folder => (await fs.readFile(path.join(folder, 'package-lock.json'), 'utf8')).replaceAll('\r\n', '\n');
-  assert.ok(await lockfile(baseline) === await lockfile(root), 'The baseline and current build must use the same dependency lockfile.');
+  const lockfile = async folder => {
+    const data = JSON.parse(await fs.readFile(path.join(folder, 'package-lock.json'), 'utf8'));
+    delete data.name;
+    delete data.packages[''].name;
+    return data;
+  };
+  assert.deepEqual(await lockfile(baseline), await lockfile(root), 'The baseline and current build must use the same dependencies.');
   const count = Number(process.env.CEVRA_PHASE5_SAMPLES ?? '20');
   assert.ok(Number.isInteger(count) && count > 0 && count <= 30);
   const projectPath = await temporaryFolder(t, 'cevra-phase5-benchmark-');

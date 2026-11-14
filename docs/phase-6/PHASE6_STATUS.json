@@ -1,0 +1,281 @@
+{
+  "project": "VOKRI Code",
+  "formerPublicName": "CEVRA",
+  "phase": 6,
+  "phaseName": "Design Unification",
+  "status": "in_progress",
+  "isImplementationComplete": false,
+  "gateCount": 16,
+  "baseline": {
+    "phase5Branch": "cevra/phase5-g9",
+    "phase5Commit": "4b7a404819a3a8db0535134152636b9255fa2e34",
+    "vokriBranch": "cevra/vokri-framework",
+    "vokriCommit": "663d4314e7fd707739f47fbafdf8d93cfbe77e15",
+    "integrationCommit": null
+  },
+  "gates": [
+    {
+      "id": "G0",
+      "name": "Complete identity transition",
+      "status": "in_progress",
+      "dependsOn": [],
+      "commit": null,
+      "evidence": [
+        "brand-identity.json",
+        "g0-identity-transition.md",
+        "../../qa/profile-location.test.cjs",
+        "../../qa/identity-desktop.test.cjs"
+      ],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G1",
+      "name": "Original premium design system",
+      "status": "planned",
+      "dependsOn": [
+        "G0"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G2",
+      "name": "VOKRI native SDK completion",
+      "status": "planned",
+      "dependsOn": [
+        "G0",
+        "G1"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G3",
+      "name": "Electron-free product foundation",
+      "status": "planned",
+      "dependsOn": [
+        "G2"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G4",
+      "name": "Unified workspace and navigation shell",
+      "status": "planned",
+      "dependsOn": [
+        "G1",
+        "G3"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G5",
+      "name": "Professional native editor parity",
+      "status": "planned",
+      "dependsOn": [
+        "G3",
+        "G4"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G6",
+      "name": "Continuum tools in one native surface",
+      "status": "planned",
+      "dependsOn": [
+        "G3",
+        "G4",
+        "G5"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G7",
+      "name": "VOKRI Extension Store and manager",
+      "status": "planned",
+      "dependsOn": [
+        "G3",
+        "G4"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G8",
+      "name": "VOKRI Intelligence experience",
+      "status": "planned",
+      "dependsOn": [
+        "G3",
+        "G4",
+        "G5",
+        "G6"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G9",
+      "name": "Settings, personalization and control center",
+      "status": "planned",
+      "dependsOn": [
+        "G4",
+        "G7",
+        "G8"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G10",
+      "name": "Windows Open with, defaults and VC file icons",
+      "status": "planned",
+      "dependsOn": [
+        "G0",
+        "G3",
+        "G5",
+        "G9"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G11",
+      "name": "Premium installer, updater and uninstaller",
+      "status": "planned",
+      "dependsOn": [
+        "G0",
+        "G3",
+        "G10"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G12",
+      "name": "Onboarding, usability and accessibility",
+      "status": "planned",
+      "dependsOn": [
+        "G4",
+        "G5",
+        "G7",
+        "G8",
+        "G9",
+        "G10",
+        "G11"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G13",
+      "name": "Security, data migration and resilience audit",
+      "status": "planned",
+      "dependsOn": [
+        "G3",
+        "G5",
+        "G6",
+        "G7",
+        "G8",
+        "G9",
+        "G10",
+        "G11"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G14",
+      "name": "Performance, visual quality and compatibility",
+      "status": "planned",
+      "dependsOn": [
+        "G4",
+        "G5",
+        "G6",
+        "G7",
+        "G8",
+        "G9",
+        "G10",
+        "G11",
+        "G12",
+        "G13"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    },
+    {
+      "id": "G15",
+      "name": "Phase 6 integration and handoff",
+      "status": "planned",
+      "dependsOn": [
+        "G0",
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6",
+        "G7",
+        "G8",
+        "G9",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14"
+      ],
+      "commit": null,
+      "evidence": [],
+      "ci": null,
+      "ownerSignoff": null,
+      "openBlockers": []
+    }
+  ]
+}

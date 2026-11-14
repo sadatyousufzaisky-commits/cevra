@@ -2,7 +2,7 @@ const { spawn } = require('node:child_process');
 const { existsSync } = require('node:fs');
 const path = require('node:path');
 
-const executable = path.resolve(__dirname, '../../dist/cevra-credential-vault.exe');
+const executable = path.resolve(__dirname, '../../dist/vokri-credential-vault.exe');
 const available = () => process.platform === 'win32' && process.arch === 'x64' && existsSync(executable);
 const keyLimit = 2048;
 

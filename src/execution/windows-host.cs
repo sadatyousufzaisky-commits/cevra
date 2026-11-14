@@ -32,7 +32,7 @@ internal static partial class WindowsHost
         }
         catch (Exception error)
         {
-            Console.Error.WriteLine("CEVRA process host: " + error.Message);
+            Console.Error.WriteLine("VOKRI Code process host: " + error.Message);
             return 125;
         }
     }

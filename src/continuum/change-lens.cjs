@@ -132,8 +132,8 @@ function createChangeLens(workspace, history, evidence) {
   }
 
   function writable(repo, state) {
-    if (!repo.writable) throw new Error('Open a standard repository checkout to make Git changes in CEVRA.');
-    if (state.busy || state.rows.some(row => row.conflict)) throw new Error('Finish the active Git operation or resolve conflicts before making changes in CEVRA.');
+    if (!repo.writable) throw new Error('Open a standard repository checkout to make Git changes in VOKRI Code.');
+    if (state.busy || state.rows.some(row => row.conflict)) throw new Error('Finish the active Git operation or resolve conflicts before making changes in VOKRI Code.');
     if (state.rows.length > fileLimit) throw new Error('This repository has too many changed paths for a complete review.');
   }
 

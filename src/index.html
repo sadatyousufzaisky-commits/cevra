@@ -4,8 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'">
-  <title>CEVRA</title>
+  <title>VOKRI Code</title>
   <link rel="stylesheet" href="../dist/workbench.css">
+  <link rel="stylesheet" href="./brand-palette.css">
   <link rel="stylesheet" href="./workbench.css">
   <script src="../dist/workbench.js" defer></script>
 </head>
@@ -30,8 +31,8 @@
   </svg>
   <header class="titlebar">
     <div class="brand">
-      <img src="../cevra-icon.png" alt="" width="32" height="32">
-      <span>CEVRA</span>
+      <img src="../assets/brand/vc.svg" alt="" width="32" height="32">
+      <span>VOKRI Code</span>
     </div>
     <span class="title-divider" aria-hidden="true"></span>
     <span id="project-title" class="project-title">Workbench</span>
@@ -101,7 +102,7 @@
       <div id="editor" class="editor" hidden></div>
       <section id="welcome" class="welcome">
         <div class="welcome-content">
-          <div class="eyebrow"><span></span> CEVRA WORKBENCH</div>
+          <div class="eyebrow"><span></span> VOKRI CODE</div>
           <h1>Your project starts here.</h1>
           <p id="welcome-copy">Open a project folder, or try the built-in JavaScript example to see how editing and execution fit together.</p>
           <div class="welcome-actions">
@@ -325,14 +326,14 @@
     <button id="go-definition" class="status-action" title="Go to Definition (F12)" disabled>Go to Definition</button>
     <button id="editor-settings" class="status-action" title="Editor settings (Ctrl+,)" disabled>Settings</button>
     <button id="extension-manager-open" class="status-action" disabled>Extensions</button>
-    <button id="intelligence-mock-open" class="status-action" hidden disabled>Intelligence</button>
+    <button id="intelligence-mock-open" class="status-action" hidden disabled>VOKRI Intelligence</button>
     <button id="intelligence-attach-selection" class="status-action" hidden disabled>Attach selection to Intelligence</button>
     <button id="intelligence-review-proposal" class="status-action" hidden>Review Intelligence edit</button>
     <button id="intelligence-dismiss-proposal" class="status-action" hidden>Dismiss Intelligence edit</button>
     <label class="theme-control">Theme
       <select id="theme-choice" disabled>
-        <option value="dark">CEVRA Dark</option>
-        <option value="light">CEVRA Light</option>
+        <option value="dark">VOKRI Dark</option>
+        <option value="light">VOKRI Light</option>
         <option value="system">System</option>
       </select>
     </label>
@@ -352,7 +353,7 @@
       <label>Scope <select id="settings-scope"><option value="global">Global</option><option value="workspace">This workspace</option></select></label>
       <div class="settings-fields">
         <label>Font size <input name="fontSize" type="number" min="10" max="32" required></label>
-        <label>Font family <select name="fontFamily"><option value="default">CEVRA default</option><option value="consolas">Consolas</option><option value="courier">Courier New</option></select></label>
+        <label>Font family <select name="fontFamily"><option value="default">Default</option><option value="consolas">Consolas</option><option value="courier">Courier New</option></select></label>
         <label>Indent width <input name="indentWidth" type="number" min="1" max="8" required></label>
         <label>Indentation <select name="indentStyle"><option value="spaces">Spaces</option><option value="tabs">Tabs</option></select></label>
         <label>Cursor width <select name="cursor"><option value="thin">Thin</option><option value="wide">Wide</option></select></label>
@@ -368,6 +369,7 @@
       <p id="settings-status" role="status"></p>
       <div class="edits-actions">
         <button id="settings-reset" type="button" class="button" hidden>Clear Workspace Overrides</button>
+        <button id="about-product" type="button" class="button">About VOKRI Code</button>
         <button id="settings-close" type="button" class="button">Close</button>
         <button id="settings-save" type="submit" class="button primary">Save Settings</button>
       </div>

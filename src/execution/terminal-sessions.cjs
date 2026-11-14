@@ -6,7 +6,7 @@ const maxSessions = 4;
 const maxTerminalInput = 16 * 1024;
 const maxControlQueue = 64 * 1024;
 const maxRead = 32 * 1024;
-const windowsHost = path.resolve(__dirname, '..', '..', 'dist', 'cevra-process-host.exe');
+const windowsHost = path.resolve(__dirname, '..', '..', 'dist', 'vokri-process-host.exe');
 const profiles = {
   powershell: {
     name: 'PowerShell', file: ['WindowsPowerShell', 'v1.0', 'powershell.exe'],

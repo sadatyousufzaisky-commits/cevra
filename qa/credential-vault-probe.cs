@@ -8,7 +8,7 @@ internal static class VaultProbe
 {
     private const uint Owner = 4, SetText = 0x000c, Close = 0x0010, Click = 0x00f5;
     private const int PasswordStyle = 0x20, Style = -16;
-    private const string PromptTitle = "CEVRA Intelligence - OpenAI API key";
+    private const string PromptTitle = "VOKRI Intelligence - OpenAI API key";
     private const string First = "G2-SYNTHETIC-KEY-ONE", Second = "G2-SYNTHETIC-KEY-TWO";
     private delegate bool Visit(IntPtr window, IntPtr argument);
 
