@@ -19,11 +19,11 @@ const windows = process.platform === 'win32' && process.arch === 'x64';
 const source = 'const fixture = "saved";\n';
 const draft = 'const fixture = "recovered";\n';
 
-async function start(appData, args = []) {
+async function start(appData, args = [], appRoot = root) {
   const bootstrap = path.join(appData, 'launch.cjs');
   // Electron on Windows resolves Roaming AppData through the shell, independent of the APPDATA environment variable.
   await fs.writeFile(bootstrap, `const { app } = require('electron');\n` +
-    `app.setPath('appData', ${JSON.stringify(appData)});\nrequire(${JSON.stringify(path.join(root, 'src/main.cjs'))});\n`);
+    `app.setPath('appData', ${JSON.stringify(appData)});\nrequire(${JSON.stringify(path.join(appRoot, 'src/main.cjs'))});\n`);
   await fs.writeFile(path.join(appData, 'package.json'), JSON.stringify({ name: 'vokri-code', main: 'launch.cjs', version: '0.1.0' }));
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
@@ -143,6 +143,24 @@ test('Windows reuses the original profile and retains drafts, trust, extensions 
 
     await launch();
     await launch();
+    if (process.env.VOKRI_IDENTITY_ROLLBACK_ROOT) {
+      const baseline = path.resolve(process.env.VOKRI_IDENTITY_ROLLBACK_ROOT);
+      const { app, page } = await start(appData, ['--enable-intelligence'], baseline);
+      try {
+        assert.equal(await app.evaluate(({ app }) => app.getPath('userData')), profile);
+        await page.getByRole('textbox', { name: 'Source editor' }).getByText('recovered', { exact: false }).waitFor();
+        assert.equal(await page.locator('#theme-choice').inputValue(), 'light');
+        const opened = app.waitForEvent('window');
+        await page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+        const panel = await opened;
+        await panel.getByText('Provider connections', { exact: true }).click();
+        await panel.getByRole('button', { name: 'Check key', exact: true }).click();
+        await panel.getByText('Windows Credential Manager verified the stored key.', { exact: true }).waitFor();
+        const closed = panel.waitForEvent('close');
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.getTitle() === 'CEVRA Intelligence').close());
+        await closed;
+      } finally { await app.close(); }
+    }
     assert.equal(await fs.readFile(metadata, 'utf8'), existing);
     assert.equal(await vaultProbe('verify', scope, 'openai', key, 'first'), 0);
     assert.equal(await fs.readFile(path.join(folder, 'app.js'), 'utf8'), source);

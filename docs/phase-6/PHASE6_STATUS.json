@@ -19,16 +19,33 @@
       "name": "Complete identity transition",
       "status": "in_progress",
       "dependsOn": [],
-      "commit": null,
+      "commit": "05127ece53d29127fcff902cdc52238d8ead87ff",
       "evidence": [
         "brand-identity.json",
         "g0-identity-transition.md",
+        "evidence/vc-icon-atlas.png",
+        "evidence/workbench-dark.png",
+        "evidence/workbench-light.png",
         "../../qa/profile-location.test.cjs",
         "../../qa/identity-desktop.test.cjs"
       ],
-      "ci": null,
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43600144627",
       "ownerSignoff": null,
-      "openBlockers": []
+      "openBlockers": ["Owner review of the VC artwork and transition scope"],
+      "verification": {
+        "verifiedAt": "2026-11-14",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "nodeVersion": "24.15.0",
+        "electronVersion": "45.2.3",
+        "corePassed": 167,
+        "desktopPassed": 86,
+        "extensionHostPassed": 18,
+        "benchmarkPassedCi": 13,
+        "credentialAccountIsolationCi": "passed",
+        "localRollbackReplay": "passed",
+        "visualEvidenceScope": "Windows workbench and Settings screenshots, all ICO sizes on light and dark backgrounds, and taskbar ID and shortcut metadata checks. Installed shell visual validation is scoped to G10 and G11."
+      }
     },
     {
       "id": "G1",

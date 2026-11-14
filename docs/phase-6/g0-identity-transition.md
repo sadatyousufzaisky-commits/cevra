@@ -4,6 +4,8 @@ The app is **VOKRI Code**, the framework is **VOKRI**, the assistant is **VOKRI 
 
 The built-in light and dark themes use the VC mark’s iris and cool platinum across the editor, workbench, and Intelligence. Confirmed results use a separate platinum tone. Amber and coral preserve warning and error distinctions. Terminal ANSI colors still express the color selected by command output. Extension themes keep their authored palettes. [Theme tokens](../../src/brand-palette.css)
 
+Measured text contrast is 16.88:1 in dark and 14.99:1 in light. Primary action label contrast is 7.70:1 in dark and 7.42:1 in light. These measurements cover the specified color pairs. The broader component and accessibility audit belongs to G1. [Dark workbench](evidence/workbench-dark.png) · [Light settings](evidence/workbench-light.png) · [VC icon atlas](evidence/vc-icon-atlas.png)
+
 ## Profile continuity and rollback
 
 | Profile state | Launch behavior |
@@ -14,6 +16,8 @@ The built-in light and dark themes use the VC mark’s iris and cool platinum ac
 | Explicit `--user-data-dir` | Use the selected directory. This can reopen either existing profile. |
 
 Credential Manager targets incorporate the canonical profile directory. In-place compatibility preserves the existing key, settings, drafts, trust records, extensions, and usage ledger without a copy or a vault re-enrollment. It also lets the Phase 5 baseline reopen the legacy directory for rollback. Close the running app before switching builds. If both directories exist, launch with `--user-data-dir` pointing at the earlier directory to recover that profile. Neither directory is merged or deleted by the transition.
+
+The local rollback replay opened the same fixture in VOKRI Code twice and then reopened it with Phase 5 commit `4b7a404819a3a8db0535134152636b9255fa2e34`. The old build recovered the draft, loaded the light theme, and checked the same key in Windows Credential Manager. To repeat, set `VOKRI_IDENTITY_ROLLBACK_ROOT` to a built checkout of the pinned Phase 5 revision and run `node --test qa/identity-desktop.test.cjs` after building G0.
 
 ## Identity inventory
 
@@ -28,3 +32,9 @@ Credential Manager targets incorporate the canonical profile directory. In-place
 | Windows shell and installer | G0 provides the VC icon and application identity. Explorer language icons and file associations are verified with G10. Installer, installed shortcuts, signing, and setup verification belong to G11. |
 
 The identity scan covers current source and build entry points. Historical evidence, legacy profile selection, vault target identifiers, workspace settings, internal IPC, and extension compatibility tokens retain their existing values. [Identity tests](../../qa/identity-desktop.test.cjs)
+
+## Windows verification
+
+Windows CI passed 167 core, 86 desktop, 18 extension-host, and 13 benchmark checks. Credential Manager account isolation passed separately. Local Windows verified the profile transition and rollback. The Windows shortcut fixture verified the icon path and application ID. The native helpers reported VOKRI Code as their product in Windows file metadata. [Windows CI](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43600144627)
+
+The build and test evidence are ready for owner review. The G0 ledger retains the owner signoff checkpoint for the artwork and compatibility approach. [Phase 6 ledger](PHASE6_STATUS.json)
