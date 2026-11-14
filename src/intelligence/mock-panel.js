@@ -71,6 +71,7 @@ budgetForm.addEventListener('submit', async event => {
 });
 
 function busy(active) {
+  status.classList.toggle('feedback-busy', active);
   model.disabled = active || !catalogReady;
   task.disabled = active || codingActive();
   prompt.disabled = active || codingActive();

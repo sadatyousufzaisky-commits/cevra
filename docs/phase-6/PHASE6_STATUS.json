@@ -54,15 +54,26 @@
     {
       "id": "G1",
       "name": "Original premium design system",
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "G0"
       ],
       "commit": null,
-      "evidence": [],
+      "evidence": [
+        "g1-design-system.md",
+        "design/preview.html",
+        "evidence/g1/",
+        "../../src/design-system.css",
+        "../../src/file-icons.js",
+        "../../qa/design-system-desktop.test.cjs"
+      ],
       "ci": null,
       "ownerSignoff": null,
-      "openBlockers": []
+      "openBlockers": [
+        "Capture novice and experienced participant comprehension results.",
+        "Complete a hands-on Windows Narrator and native display scale walkthrough.",
+        "Record the owner's G1 direction approval."
+      ]
     },
     {
       "id": "G2",

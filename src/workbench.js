@@ -13,6 +13,7 @@ import { createExtensionContributions } from './extension-contributions.js';
 import { createExtensionManager } from './extension-manager.js';
 import { createChangeLensPanel } from './change-lens-panel.js';
 import { createFailureLens, refreshDebugGutter } from './failure-lens.js';
+import { createFileIcon } from './file-icons.js';
 import { createFlightpathPanel } from './flightpath-panel.js';
 import { indentGuides } from './indent-guides.js';
 import { createNavigationHistory } from './navigation-history.js';
@@ -401,7 +402,7 @@ function treeList(entries, depth) {
       button.append(indent);
       button.onclick = () => openFile(entry.path).catch(report);
     }
-    button.append(icon(entry.directory ? 'folder' : 'file'), label(entry.name));
+    button.append(entry.directory ? icon('folder') : createFileIcon(entry.name), label(entry.name));
     item.append(button);
     if (children) item.append(treeList(children, Math.min(depth + 1, 10)));
     list.append(item);
@@ -450,7 +451,7 @@ function renderTabs() {
     show.className = 'tab-open';
     show.title = tab.path;
     if (tab === active) show.setAttribute('aria-current', 'true');
-    show.append(icon('file'), label(tab.name));
+    show.append(createFileIcon(tab.name), label(tab.name));
     if (tab.dirty) {
       const marker = label('');
       marker.className = 'dirty';
@@ -831,6 +832,7 @@ function setRunState(text, state = '') {
   const badge = byId('run-state');
   badge.textContent = text;
   badge.dataset.state = state;
+  badge.classList.toggle('feedback-busy', state === 'running');
 }
 
 function renderTestPass(evidence, checking) {

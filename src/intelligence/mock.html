@@ -6,13 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>VOKRI Intelligence</title>
   <link rel="stylesheet" href="../brand-palette.css">
+  <link rel="stylesheet" href="../design-system.css">
   <link rel="stylesheet" href="mock.css">
   <script defer src="color-mode.js"></script>
   <script defer src="mock-panel.js"></script>
   <script defer src="context-panel.js"></script>
   <script defer src="connection-panel.js"></script>
 </head>
-<body>
+<body class="intelligence">
   <main>
     <h1>VOKRI Intelligence</h1>
     <p id="provider-note" class="muted">Loading providers…</p>
@@ -30,7 +31,7 @@
       <label for="prompt">Prompt</label>
       <textarea id="prompt" rows="3" maxlength="8192" required></textarea>
       <div class="actions">
-        <button id="send" type="submit" disabled>Send</button>
+        <button id="send" class="primary" type="submit" disabled>Send</button>
         <button id="propose-edit" type="submit" hidden disabled>Propose edits</button>
         <button id="plan-coding-task" type="submit" hidden disabled>Plan coding task</button>
         <button id="stop" type="button" disabled>Stop</button>

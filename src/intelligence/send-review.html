@@ -6,11 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Review provider request</title>
   <link rel="stylesheet" href="../brand-palette.css">
+  <link rel="stylesheet" href="../design-system.css">
   <link rel="stylesheet" href="mock.css">
   <script defer src="color-mode.js"></script>
   <script defer src="send-review.js"></script>
 </head>
-<body>
+<body class="intelligence">
   <main>
     <h1 id="review-heading">Review provider request</h1>
     <p id="destination"></p>
@@ -18,7 +19,7 @@
     <p id="review-cost" hidden></p>
     <div class="actions">
       <button id="cancel" type="button" disabled>Cancel</button>
-      <button id="approve" type="button" disabled>Send</button>
+      <button id="approve" class="primary" type="button" disabled>Send</button>
     </div>
     <section aria-labelledby="review-title">
       <h2 id="review-title">Text included in this request</h2>

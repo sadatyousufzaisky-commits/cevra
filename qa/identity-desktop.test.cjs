@@ -54,10 +54,10 @@ test('Windows shows VOKRI Code identity and uses a branded profile on first laun
       profile: app.getPath('userData') })), { name: 'VOKRI Code', title: 'VOKRI Code', profile: path.join(appData, 'VOKRI Code') });
     const screenshots = process.env.VOKRI_IDENTITY_SCREENSHOTS;
     if (screenshots) await page.screenshot({ path: path.join(screenshots, 'workbench-dark.png') });
-    assert.equal(await page.locator('.button.primary').first().evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(176, 166, 255)');
+    assert.equal(await page.locator('#welcome-open').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(176, 166, 255)');
     await page.locator('#theme-choice').selectOption('light');
     await page.waitForFunction(() => document.documentElement.dataset.colorMode === 'light');
-    assert.equal(await page.locator('.button.primary').first().evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(87, 64, 184)');
+    assert.equal(await page.locator('#welcome-open').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(87, 64, 184)');
     await assert.rejects(fs.access(path.join(appData, 'CEVRA')), { code: 'ENOENT' });
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     if (screenshots) await page.screenshot({ path: path.join(screenshots, 'workbench-light.png') });

@@ -1,4 +1,3 @@
-:root { font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
 body { margin: 0; color: var(--text); background: var(--base); }
 main { max-width: 52rem; padding: 1.25rem; margin-inline: auto; }
 h1, h2 { margin: 0; line-height: 1.25; }
@@ -7,15 +6,11 @@ h2 { font-size: 1rem; }
 .muted { color: var(--muted); }
 form { display: grid; gap: .4rem; }
 label { font-weight: 600; }
-select, textarea, button { font: inherit; }
 textarea { resize: vertical; min-height: 4.5rem; }
-select, textarea, input, pre { padding: .45rem .55rem; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--text); }
+select, textarea, input { min-height: var(--target-control); padding: .45rem .55rem; }
+pre { padding: .45rem .55rem; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--text); }
 .actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: .4rem 1rem; }
-button { padding: .3rem .85rem; border: 1px solid var(--line); border-radius: 4px; background: var(--raised); color: var(--text); }
-#send:not(:disabled), #approve:not(:disabled) { background: var(--accent); color: var(--ink); border-color: transparent; }
-button:disabled { opacity: .58; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; min-height: 3rem; max-height: 12rem; overflow: auto; margin-block: .45rem; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 details { padding-block: .65rem; border-top: 1px solid var(--line); }
 summary { cursor: pointer; font-weight: 600; }
 #history { padding-inline-start: 1.75rem; }

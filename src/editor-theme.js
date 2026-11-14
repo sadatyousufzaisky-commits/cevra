@@ -47,7 +47,14 @@ export const editorTheme = [EditorView.theme({
   '&.cm-focused .cm-nonmatchingBracket': { backgroundColor: 'var(--error-surface)', color: 'var(--danger)' },
   '.cm-panels, .cm-tooltip': { backgroundColor: 'var(--panel)', color: 'var(--text)', borderColor: 'var(--line)' },
   '.cm-panel input:not([type=checkbox]), .cm-panel button:not([name=close])': {
-    backgroundColor: 'var(--raised)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: '3px',
+    minHeight: 'var(--target-min)',
+    backgroundColor: 'var(--raised)', color: 'var(--text)',
+    border: '1px solid var(--control-border)', borderRadius: 'var(--radius-control)',
+  },
+  '.cm-panel button:not([name=close]):hover': { backgroundColor: 'var(--button-hover)' },
+  '.cm-panel button:not([name=close]):active': { backgroundColor: 'var(--button-pressed)' },
+  '.cm-panel :focus-visible': {
+    outline: 'var(--focus-width) solid var(--focus-ring)', outlineOffset: '-2px',
   },
   '.cm-panel input[type=checkbox]': { accentColor: 'var(--accent)' },
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--selected)', color: 'var(--text)' },

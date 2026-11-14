@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en" data-direction="midnight" data-color-mode="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>VOKRI Code design preview</title>
+  <link rel="stylesheet" href="../../../src/brand-palette.css">
+  <link rel="stylesheet" href="../../../src/design-system.css">
+  <link rel="stylesheet" href="preview.css">
+  <script src="../../../dist/design-preview.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="identity">
+      <img src="../../../assets/brand/vc.svg" width="40" height="40" alt="">
+      <h1>VOKRI Code <span>Design preview</span></h1>
+    </div>
+    <div class="options">
+      <label for="direction">Direction</label>
+      <select id="direction">
+        <option value="midnight">Midnight Atelier</option>
+        <option value="platinum">Platinum Draft</option>
+        <option value="ink">Iris Ink</option>
+      </select>
+      <label for="mode">Appearance</label>
+      <select id="mode">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+    </div>
+  </header>
+  <main>
+    <section class="workspace" aria-label="Sample workspace">
+      <header class="workspace-bar">
+        <h2>Field notes</h2>
+        <div class="actions">
+          <button type="button" class="button" id="settings">Settings</button>
+          <button type="button" class="button" id="save" disabled>Save</button>
+          <button type="button" class="button primary" id="run">Run sample</button>
+          <button type="button" class="button" id="stop" hidden>Stop</button>
+        </div>
+      </header>
+      <nav class="explorer" aria-label="Project files">
+        <h3>Explorer</h3>
+        <div id="files" class="files"></div>
+      </nav>
+      <section class="editor" aria-label="Sample editor">
+        <label class="editor-tab" id="editor-label" for="source"></label>
+        <textarea id="source" rows="8" spellcheck="false"></textarea>
+      </section>
+      <section class="output" aria-labelledby="output-heading">
+        <h3 id="output-heading">Run output</h3>
+        <p id="outcome" role="status">Ready</p>
+        <button type="button" class="button" id="jump" hidden>Go to error</button>
+      </section>
+    </section>
+    <section class="catalog" aria-labelledby="icons-heading">
+      <h2 id="icons-heading">File icons</h2>
+      <ul id="icons"></ul>
+    </section>
+  </main>
+  <dialog id="preferences" aria-labelledby="preferences-heading">
+    <h2 id="preferences-heading">Editor settings</h2>
+    <form method="dialog">
+      <label for="size">Font size</label>
+      <input type="number" id="size" min="10" max="28" value="15" required>
+      <div class="actions">
+        <button type="submit" class="button" formnovalidate value="cancel">Cancel</button>
+        <button type="submit" class="button primary" value="apply">Apply</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
