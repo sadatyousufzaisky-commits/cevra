@@ -181,9 +181,29 @@
         "knownLimitations": ["Opt-in Windows Electron preview", "Provider responses tested with fixtures. Live Ollama inference was not exercised."]
       }
     },
-    { "id": "G8", "name": "Privacy, Costs & Hardening", "status": "implemented", "evidence": [
-      "g8-privacy-costs-and-hardening.md", "../../qa/intelligence-budget.test.cjs", "../../qa/intelligence-openai.test.cjs",
-      "../../qa/intelligence-stream-desktop.test.cjs", "../../qa/extension-runtime.test.cjs"] },
+    {
+      "id": "G8",
+      "name": "Privacy, Costs & Hardening",
+      "status": "passed",
+      "evidence": ["g8-privacy-costs-and-hardening.md", "../../qa/intelligence-budget.test.cjs", "../../qa/intelligence-openai.test.cjs",
+        "../../qa/intelligence-stream-desktop.test.cjs", "../../qa/extension-runtime.test.cjs"],
+      "verification": {
+        "verifiedAt": "2026-11-14",
+        "implementationCommit": "048810807283b0d2cbd46078b68d13d057596476",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "nodeVersion": "24.15.0",
+        "electronVersion": "45.2.3",
+        "corePassed": 163,
+        "desktopPassed": 84,
+        "extensionHostPassed": 18,
+        "accountIsolationCi": "passed",
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43572439052",
+        "scope": "Durable estimate reservations and reconciliation, fixed provider errors, rate-limit and quota handling, credential screening, and extension isolation with Intelligence active",
+        "knownLimitations": ["Opt-in Windows Electron preview", "USD estimates use a dated rate card and cannot enforce provider billing",
+          "Synthetic provider verification. No paid provider request or invoice was exercised."]
+      }
+    },
     { "id": "G9", "name": "Integration & Benchmarking", "status": "unverified", "evidence": [] }
   ]
 }
