@@ -1,6 +1,6 @@
 # G1 Original design system
 
-Iris Ink is the approved VOKRI Code direction. The workbench and Intelligence windows combine near-neutral surfaces with the VC mark’s iris accent and Midnight Atelier’s violet-tinted buttons. Explorer sits to the left of the editor, and the resizable output dock spans the full workbench width. These are the design system and reference workbench for the VOKRI SDK migration.
+Iris Ink is the approved VOKRI Code direction. The workbench and Intelligence windows combine near-neutral surfaces with the VC mark’s iris accent and the 5 px button radius from Midnight Atelier. Explorer sits to the left of the editor, and the resizable output dock spans the full workbench width. These are the design system and reference workbench for the VOKRI SDK migration.
 
 The workbench’s **Theme** menu offers **Iris Ink Dark**, **Iris Ink Light**, **System**, and **Midnight Atelier**. System follows the OS with Iris Ink colors. Midnight Atelier uses its original violet-tinted dark surfaces and is saved across restarts.
 
@@ -22,7 +22,7 @@ Run `npm run build:design-preview` and open [the preview](design/preview.html) i
 | --- | --- | --- |
 | Surfaces | `base`, `chrome`, `panel`, `raised`, `dock`, `line` | Source on base, navigation on chrome, contextual UI on panel. Use `line` for structural dividers. |
 | Text and feedback | `text`, `muted`, `current-text`, `danger`, `warning`, `verified` | Keep feedback text explicit. Use visible status text for running, failed and completed runs. |
-| Primary and secondary actions | `accent`, `ink`, `control-border`, `button-fill`, `button-hover`, `button-pressed`, `primary-hover`, `primary-pressed` | Sensible default action, distinct pointer hover and press, and visible keyboard focus. Disabled actions use dedicated fill, foreground and border. |
+| Primary and secondary actions | `accent`, `ink`, `control-border`, `raised`, `button-hover`, `button-pressed`, `primary-hover`, `primary-pressed` | Sensible default action, distinct pointer hover and press, and visible keyboard focus. Disabled actions use dedicated fill, foreground and border. |
 | Explorer and tabs | `selected`, `accent`, `current-text`, `icon-*` | Use leading or top indicators for the current file, `aria-current`, stable icon geometry, and an independent tab close target. |
 | Form fields and dialogs | `control-border`, `focus-ring`, `focus-width`, `radius-control`, `radius-dialog`, `backdrop` | Keep labels connected to fields. Open modal dialogs with focus inside, and restore focus when canceled. |
 | Loading and error | `accent`, `danger`, `error-surface`, `error-border` | Show progress with a written status and a marker. Stop its rotation under reduced motion. Show an error description and a source or retry action when available. |

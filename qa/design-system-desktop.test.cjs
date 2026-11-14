@@ -33,7 +33,7 @@ async function auditContrast(page, mode) {
     ['text', 'base', 4.5], ['text', 'panel', 4.5], ['text', 'raised', 4.5],
     ['muted', 'chrome', 4.5], ['muted', 'dock', 4.5], ['current-text', 'selected', 4.5],
     ['ink', 'accent', 4.5], ['ink', 'primary-hover', 4.5], ['ink', 'primary-pressed', 4.5],
-    ['text', 'button-fill', 4.5], ['text', 'button-hover', 4.5], ['text', 'button-pressed', 4.5],
+    ['text', 'button-hover', 4.5], ['text', 'button-pressed', 4.5],
     ['danger', 'error-surface', 4.5], ['warning', 'dock', 4.5], ['verified', 'panel', 4.5],
     ['focus-ring', 'base', 3], ['focus-ring', 'chrome', 3],
     ['focus-ring', 'selected', 3], ['accent', 'chrome', 3], ['control-border', 'base', 3],
@@ -110,7 +110,7 @@ test('G1 workbench shares semantic states and file artwork across list and tabs'
       buttonFill: getComputedStyle(document.getElementById('open-folder')).backgroundColor,
       chrome: getComputedStyle(document.querySelector('.titlebar')).backgroundColor,
     };
-  }), { radius: '5px', outputRadius: '5px', buttonFill: 'rgb(37, 37, 57)', chrome: 'rgb(19, 19, 23)' });
+  }), { radius: '5px', outputRadius: '5px', buttonFill: 'rgb(32, 32, 39)', chrome: 'rgb(19, 19, 23)' });
   await screenshot(page, 'g1-workbench-dark');
   await page.locator('#jump-to-error').press('Enter');
   await page.waitForFunction(() => document.activeElement?.matches('.cm-content'));
@@ -259,7 +259,11 @@ test('Midnight Atelier follows the saved theme through restart and Intelligence'
   };
   await workbench.open('app.js');
   await select(workbench.page, 'midnight', 'midnight');
-  assert.equal(await workbench.page.locator('#open-folder').evaluate(node => getComputedStyle(node).borderRadius), '5px');
+  await workbench.page.mouse.move(4, 4);
+  assert.deepEqual(await workbench.page.locator('#open-folder').evaluate(node => {
+    const style = getComputedStyle(node);
+    return { radius: style.borderRadius, fill: style.backgroundColor };
+  }), { radius: '5px', fill: 'rgb(37, 37, 57)' });
   t.diagnostic('Midnight Atelier minimum contrast ratios ' + JSON.stringify(await auditContrast(workbench.page, 'Midnight Atelier')));
   await screenshot(workbench.page, 'g1-workbench-midnight');
   const appArgs = ['--enable-intelligence-mock'];
