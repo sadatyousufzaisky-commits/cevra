@@ -52,6 +52,7 @@ test('Windows shows VOKRI Code identity and uses a branded profile on first laun
     assert.equal(await page.locator('.brand img').evaluate(image => image.complete && image.naturalWidth > 0), true);
     assert.deepEqual(await app.evaluate(({ app, BrowserWindow }) => ({ name: app.getName(), title: BrowserWindow.getAllWindows()[0].getTitle(),
       profile: app.getPath('userData') })), { name: 'VOKRI Code', title: 'VOKRI Code', profile: path.join(appData, 'VOKRI Code') });
+    await page.mouse.move(4, 4);
     const screenshots = process.env.VOKRI_IDENTITY_SCREENSHOTS;
     if (screenshots) await page.screenshot({ path: path.join(screenshots, 'workbench-dark.png') });
     assert.equal(await page.locator('#welcome-open').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(176, 166, 255)');
