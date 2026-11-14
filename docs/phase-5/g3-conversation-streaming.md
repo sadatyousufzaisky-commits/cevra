@@ -34,3 +34,5 @@ Normal startup keeps Intelligence disabled. `--enable-intelligence-mock` still e
 ## Verify
 
 `npm test` runs the provider tests and the Windows desktop scenarios. Tests cover Unicode and fragmented SSE, malformed and oversized streams, typed errors, redirects, cancellation, and deadlines. The Windows desktop scenario uses the production vault helper with a synthetic key and replaces the HTTPS request at the test boundary. It checks the exact review payload, keyboard approval, prompt-only scope, usage, manual retry, renderer crash, workspace switching, and disconnect. An authenticated request against an actual OpenAI account remains a manual smoke test with a user-owned key.
+
+On 2026-11-14, the implementation passed 141 core, 78 desktop, and 17 extension-host tests on hosted Windows. The separate Windows account isolation check also passed. Direct TLS reached the configured OpenAI endpoint and returned HTTP 401 to an unauthenticated probe. [Windows verification](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43545313364)

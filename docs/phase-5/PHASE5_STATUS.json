@@ -81,12 +81,25 @@
     {
       "id": "G3",
       "name": "Conversation & Streaming",
-      "status": "implemented",
+      "status": "passed",
       "evidence": [
         "g3-conversation-streaming.md",
         "../../qa/intelligence-openai.test.cjs",
         "../../qa/intelligence-stream-desktop.test.cjs"
-      ]
+      ],
+      "verification": {
+        "verifiedAt": "2026-11-14",
+        "implementationCommit": "bd52f5f11b07fb5ac93bb4c40ab28abcc01f38c5",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassed": 141,
+        "desktopPassed": 78,
+        "extensionHostPassed": 17,
+        "accountIsolationCi": "passed",
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43545313364",
+        "scope": "Exact outbound conversation review, bounded OpenAI streaming, usage, stop, retry, deadlines, and workspace and renderer lifecycle",
+        "knownLimitations": ["Provider stream verified with a synthetic HTTPS fixture", "Authenticated OpenAI smoke test requires a user-owned project key", "Electron preview only"]
+      }
     },
     { "id": "G4", "name": "Context Broker & Personalization", "status": "unverified", "evidence": [] },
     { "id": "G5", "name": "Editor Actions & Patch Review", "status": "unverified", "evidence": [] },
