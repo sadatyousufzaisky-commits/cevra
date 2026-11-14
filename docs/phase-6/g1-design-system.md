@@ -48,13 +48,19 @@ Windows reliability passed on `5ff45de` with 167 core, 89 desktop, 18 extension-
 
 See the [captured images](evidence/g1/) for the workbench, alternatives, and interaction states.
 
+### Windows desktop walkthrough
+
+On Windows 11 Home build 26300, the 1366 × 768 display offered 100% and 125% native scaling. At 125%, Electron reported a monitor scale and renderer pixel ratio of 1.25. In a fresh local profile, Explorer showed the file icons, a source edit saved to disk, F5 produced the expected error, the source link returned focus to the editor, and Settings applied an 18 px font and returned focus on Escape. The output dock spanned the viewport and the toolbar cleared the native caption controls by about 10 CSS pixels. The original 100% scale was restored. Higher-scale images come from the automated 150% and 200% snapshot runs. [125% workbench](evidence/g1/native-workbench-125.png) · [125% Settings](evidence/g1/native-settings-125.png)
+
+Ten scripted Windows workflow checks passed locally on `462c1a1`. These exercised nested file saving, process start and stop, syntax and runtime error navigation, persistent settings, keyboard symbol search, provider consent, reviewed Intelligence edits, and verification and Git commit of a repair. The scripts verify task outcomes and record automated timings.
+
 ## Human acceptance
 
 Use a fresh sample for each participant. Record first attempt, completion without help, time to act, error or hesitation, and any inaccessible control. Report completed tasks divided by attempted tasks for each cohort.
 
 - **New developer** opens a folder, identifies JavaScript and Python files, edits and saves, runs a file, follows a source error, and changes editor font size.
 - **Experienced developer** finds a symbol, switches files, runs and stops a process, checks a failing source location, reviews a proposed change, and identifies the provider and consent before a request.
-- **Windows Narrator smoke** checks the app name, Explorer buttons and current-file state, editable source, error status, Settings labels, and focus on open and close. Repeat with Windows contrast themes and a physical 200% scale to verify the native window chrome.
+- **Windows Narrator smoke** was omitted from G1 at the owner’s direction.
 - **Owner direction review** selected Iris Ink on 14 November 2026 after reviewing the three designs at revision `6d038dc`. Its palette, geometry, and layout guide the VOKRI SDK migration.
 
-Participant success rates and the hands-on Windows Narrator and native display scale walkthrough remain pending.
+Participant comprehension and success rates remain pending.

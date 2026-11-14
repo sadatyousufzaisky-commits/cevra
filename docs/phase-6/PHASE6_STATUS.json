@@ -75,8 +75,7 @@
         "reviewedRevision": "6d038dc"
       },
       "openBlockers": [
-        "Capture novice and experienced participant comprehension results.",
-        "Complete a hands-on Windows Narrator and native display scale walkthrough."
+        "Capture novice and experienced participant comprehension results."
       ],
       "verification": {
         "verifiedAt": "2026-11-14",
@@ -88,7 +87,11 @@
         "minimumTextContrast": { "dark": 5.90, "light": 5.65 },
         "minimumNonTextContrast": { "dark": 5.22, "light": 4.86 },
         "displayScales": [100, 125, 150, 200],
-        "displayScaleMethod": "Chromium device-scale emulation in Electron on Windows"
+        "displayScaleMethod": "Chromium device-scale emulation in Electron on Windows",
+        "nativeDisplayScales": [100, 125],
+        "native125PercentWalkthrough": "passed",
+        "developerWorkflowChecksPassed": 10,
+        "narratorSmoke": "Omitted from G1 at the project owner's direction."
       }
     },
     {
