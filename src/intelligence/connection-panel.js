@@ -30,12 +30,12 @@
   }
 
   function render() {
-    const rows = entries.map(({ providerId, label, state }) => {
+    const rows = entries.map(({ providerId, label, state, verified }) => {
       const row = document.createElement('li');
       const name = document.createElement('h2');
       name.textContent = label;
       const detail = document.createElement('p');
-      detail.textContent = labels[state];
+      detail.textContent = state === 'configured' && verified ? 'Key configured · Model access verified this session' : labels[state];
       const actions = document.createElement('div');
       actions.className = 'actions';
       if (state === 'cleanup-required') actions.append(control('Clean up', 'cleanupKey', providerId));
@@ -83,4 +83,5 @@
   }
 
   panel.addEventListener('toggle', () => { if (panel.open) void run(); });
+  document.addEventListener('intelligence-connection-changed', () => { if (panel.open) void run(); });
 })();

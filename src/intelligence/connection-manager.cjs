@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { writeAtomic } = require('../atomic-file.cjs');
 const { readCheckedFile } = require('../extensions/inspect-package.cjs');
-const { exactRecord } = require('./provider-contract.cjs');
+const { exactRecord, ProviderError } = require('./provider-contract.cjs');
 
 const providers = Object.freeze({ openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Gemini' });
 const referencePattern = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -159,6 +159,19 @@ function createConnectionManager(profile, vault) {
         if (status === 'ok') return 'available';
         if (status === 'missing') return 'missing';
         throw failure('VAULT_UNAVAILABLE');
+      });
+    },
+    readOpenAIKey(signal) {
+      return providerOperation('openai', async (store, entry) => {
+        signal.throwIfAborted();
+        if (interrupted(entry) || !entry?.current) throw new ProviderError('AUTH_INVALID');
+        const key = await vault.read(store.scope, 'openai', entry.current, signal);
+        if (signal.aborted) {
+          if (Buffer.isBuffer(key)) key.fill(0);
+          signal.throwIfAborted();
+        }
+        if (!Buffer.isBuffer(key)) throw new ProviderError(key === 'missing' ? 'AUTH_INVALID' : 'PROVIDER_UNAVAILABLE');
+        return key;
       });
     },
     disconnect(providerId) {

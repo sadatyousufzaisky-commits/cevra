@@ -16,6 +16,8 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; min-height: 3rem; max-heig
 :focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
 details { padding-block: .65rem; border-top: 1px solid GrayText; }
 summary { cursor: pointer; font-weight: 600; }
+#history { padding-inline-start: 1.75rem; }
+#history pre { min-height: 0; }
 #connection-list { padding: 0; list-style: none; }
 #connection-list li { padding: .65rem 0; border-bottom: 1px solid GrayText; }
 #connection-list p { margin: .25rem 0; }

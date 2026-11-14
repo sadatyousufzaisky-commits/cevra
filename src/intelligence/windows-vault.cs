@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
@@ -73,7 +74,7 @@ internal static class WindowsCredentialVault
         return CredWriteW(ref value, 0) ? Ok : Unavailable;
     }
 
-    internal static int Inspect(string target)
+    internal static int Read(string target, Stream destination = null)
     {
         IntPtr pointer;
         if (!CredReadW(target, Generic, 0, out pointer))
@@ -89,6 +90,17 @@ internal static class WindowsCredentialVault
                 {
                     byte item = Marshal.ReadByte(value.Blob, i);
                     if (item < 0x21 || item > 0x7e) return Invalid;
+                }
+                if (destination != null)
+                {
+                    var bytes = new byte[value.BlobSize];
+                    try
+                    {
+                        Marshal.Copy(value.Blob, bytes, 0, bytes.Length);
+                        destination.Write(bytes, 0, bytes.Length);
+                        destination.Flush();
+                    }
+                    finally { Array.Clear(bytes, 0, bytes.Length); }
                 }
                 return Ok;
             }
@@ -108,6 +120,11 @@ internal static class WindowsCredentialVault
 
 internal static class CredentialVaultProgram
 {
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetStdHandle(int handle);
+    [DllImport("kernel32.dll")]
+    private static extern uint GetFileType(IntPtr handle);
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -116,7 +133,10 @@ internal static class CredentialVaultProgram
             if (args.Length < 4 || args.Length > 6) return WindowsCredentialVault.Invalid;
             string target = WindowsCredentialVault.Target(args[1], args[2], args[3]);
             if (target == null) return WindowsCredentialVault.Invalid;
-            if (args.Length == 4 && args[0] == "inspect") return WindowsCredentialVault.Inspect(target);
+            if (args.Length == 4 && args[0] == "inspect") return WindowsCredentialVault.Read(target);
+            if (args.Length == 4 && args[0] == "read" && args[2] == "openai")
+                return GetFileType(GetStdHandle(-11)) == 3 ?
+                    WindowsCredentialVault.Read(target, Console.OpenStandardOutput()) : WindowsCredentialVault.Invalid;
             if (args.Length == 4 && args[0] == "delete") return WindowsCredentialVault.Delete(target);
             long handle;
             uint ownerPid;

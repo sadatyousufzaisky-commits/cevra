@@ -4,7 +4,7 @@
   "name": "CEVRA Intelligence",
   "status": "in_progress",
   "isImplementationComplete": false,
-  "branch": "cevra/phase5-g0",
+  "branch": "cevra/phase5-g3",
   "baselineCommit": "4960ef251237583f9ee7a21e067f949dd2f6d4b0",
   "baselinePhase4Ledger": "../phase-4/PHASE4_STATUS.json",
   "lastVerifiedPhase4Ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42988060217",
@@ -78,7 +78,16 @@
         "knownLimitations": ["Windows x64 preview", "One key slot per provider", "Local key checks only until live provider integration"]
       }
     },
-    { "id": "G3", "name": "Conversation & Streaming", "status": "unverified", "evidence": [] },
+    {
+      "id": "G3",
+      "name": "Conversation & Streaming",
+      "status": "implemented",
+      "evidence": [
+        "g3-conversation-streaming.md",
+        "../../qa/intelligence-openai.test.cjs",
+        "../../qa/intelligence-stream-desktop.test.cjs"
+      ]
+    },
     { "id": "G4", "name": "Context Broker & Personalization", "status": "unverified", "evidence": [] },
     { "id": "G5", "name": "Editor Actions & Patch Review", "status": "unverified", "evidence": [] },
     { "id": "G6", "name": "Controlled Agentic Coding", "status": "unverified", "evidence": [] },

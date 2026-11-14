@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('intelligenceMock', {
   start: request => ipcRenderer.invoke('cevra:intelligence-mock:start', request),
   next: id => ipcRenderer.invoke('cevra:intelligence-mock:next', id),
   stop: id => ipcRenderer.invoke('cevra:intelligence-mock:stop', id),
+  clear: () => ipcRenderer.invoke('cevra:intelligence-mock:clear'),
   connections: () => ipcRenderer.invoke('cevra:intelligence-mock:connections'),
   storeKey: provider => ipcRenderer.invoke('cevra:intelligence-mock:store-key', provider),
   checkKey: provider => ipcRenderer.invoke('cevra:intelligence-mock:check-key', provider),

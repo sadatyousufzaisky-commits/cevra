@@ -25,7 +25,8 @@ export interface ProviderRequest {
 }
 
 export type ReportedErrorCode = 'PROVIDER_UNAVAILABLE' | 'AUTH_INVALID' | 'AUTH_EXPIRED' |
-  'QUOTA_EXHAUSTED' | 'RATE_LIMIT' | 'NETWORK_BLOCKED';
+  'QUOTA_EXHAUSTED' | 'RATE_LIMIT' | 'NETWORK_BLOCKED' | 'MODEL_UNSUPPORTED' |
+  'CONTENT_FILTERED' | 'PROVIDER_TIMEOUT' | 'REQUEST_REJECTED';
 
 export type ProviderEvent = Readonly<{ requestId: string } & (
   | { kind: 'text.delta'; text: string }

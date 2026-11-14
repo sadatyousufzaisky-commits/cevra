@@ -1,23 +1,26 @@
 const providerAbi = '0.1';
 const limits = Object.freeze({
   models: 32, messages: 16, inputBytes: 64 * 1024, outputTokens: 8192,
-  events: 256, deltaBytes: 4096, outputBytes: 64 * 1024, deadlineMs: 15_000,
+  events: 4096, deltaBytes: 4096, outputBytes: 64 * 1024, deadlineMs: 45_000,
 });
 const errors = Object.freeze({
   INVALID_REQUEST: 'The Intelligence request is invalid.',
   PROVIDER_UNAVAILABLE: 'The selected provider is unavailable.',
+  REQUEST_REJECTED: 'The provider rejected the request.',
   MODEL_UNSUPPORTED: 'The selected model is unavailable from this provider.',
   PROVIDER_PROTOCOL: 'The provider returned an invalid or oversized stream.',
   PROVIDER_TIMEOUT: 'The provider request timed out.',
   CANCELLED: 'Request stopped.',
   AUTH_INVALID: 'The provider rejected the connection.',
   AUTH_EXPIRED: 'The provider connection expired.',
+  CONTENT_FILTERED: 'The provider ended the response because of its content policy.',
   QUOTA_EXHAUSTED: 'The provider quota is exhausted.',
   RATE_LIMIT: 'The provider rate limit was reached.',
   NETWORK_BLOCKED: 'The provider connection was blocked.',
 });
 const reportedErrors = new Set([
   'PROVIDER_UNAVAILABLE', 'AUTH_INVALID', 'AUTH_EXPIRED', 'QUOTA_EXHAUSTED', 'RATE_LIMIT', 'NETWORK_BLOCKED',
+  'MODEL_UNSUPPORTED', 'CONTENT_FILTERED', 'PROVIDER_TIMEOUT', 'REQUEST_REJECTED',
 ]);
 const roles = new Set(['system', 'user', 'assistant']);
 const identifier = /^[a-z][a-z0-9-]{0,63}$/;

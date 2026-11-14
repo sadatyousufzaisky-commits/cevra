@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CEVRA Intelligence · Offline mock</title>
+  <title>CEVRA Intelligence</title>
   <link rel="stylesheet" href="mock.css">
   <script defer src="mock-panel.js"></script>
   <script defer src="connection-panel.js"></script>
@@ -12,7 +12,7 @@
 <body>
   <main>
     <h1>Intelligence</h1>
-    <p class="muted">Offline mock. Responses and usage are simulated.</p>
+    <p id="provider-note" class="muted">Loading providers…</p>
     <form id="prompt-form">
       <label for="model">Model</label>
       <select id="model" disabled></select>
@@ -22,6 +22,7 @@
         <button id="send" type="submit" disabled>Send</button>
         <button id="stop" type="button" disabled>Stop</button>
         <button id="retry" type="button" hidden>Retry</button>
+        <button id="clear" type="button" disabled>New conversation</button>
       </div>
     </form>
     <section aria-labelledby="response-title">
@@ -30,9 +31,13 @@
       <p id="usage" class="muted"></p>
     </section>
     <p id="status" role="status">Loading model…</p>
+    <section id="conversation" hidden aria-labelledby="conversation-title">
+      <h2 id="conversation-title">Completed turns included with the next prompt</h2>
+      <ol id="history"></ol>
+    </section>
     <details id="connections">
       <summary>Provider connections</summary>
-      <p class="muted">Windows Credential Manager stores your API keys. Check key verifies local storage.</p>
+      <p class="muted">Windows Credential Manager stores your API keys. Check key verifies local storage. A successful live response verifies access to the selected model.</p>
       <ul id="connection-list" aria-label="Provider connections"></ul>
       <p id="connection-status" role="status"></p>
     </details>

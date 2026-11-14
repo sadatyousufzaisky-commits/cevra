@@ -23,7 +23,7 @@ The first-party registry accepts trusted adapters with a capability catalog and 
 | Input limits | Up to 16 messages and 64 KiB of UTF-8 message content. Model limits can be lower. The mock allows 8 KiB of input and up to 128 requested output tokens. |
 | Text and usage | Zero or more `text.delta` events, then optional `usage` with integer input and output token totals. Output usage must be within the requested token limit. A missing usage event leaves usage unknown. |
 | Terminal event | `complete` with `finishReason` of `stop` or `length`, or a typed `error` with an allowlisted code and retry flag. The first terminal event ends the stream. Every event carries the active request ID. |
-| Stream limits | At most 256 events including the terminal event, 4 KiB of UTF-8 per delta, 64 KiB total output, and a deadline of up to 15 seconds. Invalid, misordered, excessive, and unterminated streams fail with a fixed error. |
+| Stream limits | G1 originally capped streams at 256 events and 15 seconds. G3 raises those bounds to 4,096 events and 45 seconds. The 4 KiB UTF-8 delta limit and 64 KiB total output limit still apply. Invalid, misordered, excessive, and unterminated streams fail with a fixed error. |
 
 Validation occurs before adapter invocation. The registry serializes pulls, closes the upstream iterator on termination, and propagates abort. It settles a stalled pull when cancellation or its deadline fires, even if an adapter fails to cooperate. Production transports will also need to release their underlying sockets on abort. Adapter exceptions and invalid frames surface fixed codes and messages. Retries use a new request ID and an explicit user action. [Runtime validation](../../src/intelligence/provider-contract.cjs)
 

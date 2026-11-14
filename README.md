@@ -23,6 +23,17 @@ The workbench uses Electron for the desktop shell and CodeMirror for the editor.
 
 On Windows, CEVRA starts programs and tests inside a Job Object and waits for the process tree to stop before releasing its execution session. This covers detached children after a script exits and cleanup after the app's main process dies. Finish or cancel the active run before switching workspaces. [Windows Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)
 
+## Try CEVRA Intelligence
+
+On Windows x64, build CEVRA and launch the opt-in Intelligence preview.
+
+```powershell
+npm run build
+npx electron . --enable-intelligence
+```
+
+Open **Intelligence** in the status bar. The deterministic mock runs offline. To try OpenAI, add your own API project key in **Provider connections**, select **GPT-5.6 Terra**, and review the exact conversation before sending. OpenAI API charges may apply. [Conversation and streaming guide](docs/phase-5/g3-conversation-streaming.md)
+
 ## Run TypeScript and Python
 
 **TypeScript** `.ts`, `.mts`, and `.cts` entry files run through the bundled Node.js runtime. The direct profile uses Node's TypeScript transform and source maps. Use **Problems** for type checking and **Tasks** for project-specific builds, including TSX and projects that need `tsconfig.json` compilation settings. TypeScript imports in direct runs use explicit file extensions. [Node.js TypeScript support](https://nodejs.org/docs/latest-v24.x/api/typescript.html)

@@ -15,8 +15,9 @@ function pull(iterator, signal) {
 async function* streamEvents(adapter, input, external, deadlineMs) {
   if (external?.aborted) throw new ProviderError('CANCELLED');
   const stop = new AbortController();
-  const signal = external ? AbortSignal.any([external, stop.signal]) : stop.signal;
-  const timer = setTimeout(() => stop.abort('deadline'), deadlineMs);
+  const deadline = new AbortController();
+  const signal = AbortSignal.any([stop.signal, deadline.signal, ...(external ? [external] : [])]);
+  const timer = setTimeout(() => deadline.abort(), deadlineMs);
   let iterator;
   let terminal;
   let usage = false;
@@ -31,7 +32,7 @@ async function* streamEvents(adapter, input, external, deadlineMs) {
     for (let count = 0; count < limits.events; count++) {
       let item;
       try { item = await pull(iterator, signal); }
-      catch { throw new ProviderError('PROVIDER_UNAVAILABLE'); }
+      catch (error) { throw safeProviderError(error); }
       signal.throwIfAborted();
       if (!item || typeof item !== 'object' || (item.done !== undefined && item.done !== false)) {
         throw new ProviderError('PROVIDER_PROTOCOL');
@@ -52,7 +53,7 @@ async function* streamEvents(adapter, input, external, deadlineMs) {
     if (!terminal) throw new ProviderError('PROVIDER_PROTOCOL');
   } catch (error) {
     if (external?.aborted) throw new ProviderError('CANCELLED');
-    if (stop.signal.aborted) throw new ProviderError('PROVIDER_TIMEOUT');
+    if (deadline.signal.aborted) throw new ProviderError('PROVIDER_TIMEOUT');
     throw safeProviderError(error, 'PROVIDER_PROTOCOL');
   } finally {
     clearTimeout(timer);
