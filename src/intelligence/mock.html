@@ -22,6 +22,7 @@
       <div class="actions">
         <button id="send" type="submit" disabled>Send</button>
         <button id="propose-edit" type="submit" hidden disabled>Propose edits</button>
+        <button id="plan-coding-task" type="submit" hidden disabled>Plan coding task</button>
         <button id="stop" type="button" disabled>Stop</button>
         <button id="retry" type="button" hidden>Retry</button>
         <button id="clear" type="button" disabled>New conversation</button>
@@ -33,6 +34,20 @@
       <p id="usage" class="muted"></p>
     </section>
     <p id="status" role="status">Loading model…</p>
+    <section id="coding-task" hidden aria-labelledby="coding-task-title">
+      <h2 id="coding-task-title">Coding task</h2>
+      <p id="coding-goal"></p>
+      <ol id="coding-plan"></ol>
+      <p id="coding-targets"></p>
+      <p id="coding-steps" class="muted"></p>
+      <p id="coding-baseline"></p>
+      <p id="coding-verification"></p>
+      <p id="coding-status" role="status"></p>
+      <div class="actions">
+        <button id="coding-next" type="button" hidden></button>
+        <button id="coding-stop" type="button" hidden>Stop coding task</button>
+      </div>
+    </section>
     <section id="intelligence-context" hidden aria-labelledby="context-title">
       <h2 id="context-title">Workspace context</h2>
       <p id="context-help" class="muted">Use Attach selection to Intelligence in the editor, or choose saved files here.</p>

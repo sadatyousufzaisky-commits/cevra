@@ -157,7 +157,7 @@ function createPatchBroker({ current, readEditor, changed }) {
       value.review ??= randomUUID();
       return { files: value.files.map(file => file.preview), authority: { intelligenceProposalId: id, review: value.review } };
     },
-    async commit(project, id, review, changes, writeDrafts) {
+    async commit(project, id, review, changes, writeDrafts, applied) {
       const value = requireProposal(id, project);
       if (!value.review || value.review !== review) throw new Error('Open the Intelligence diff before applying.');
       if (value.committing || changes.length !== value.files.length ||
@@ -170,6 +170,7 @@ function createPatchBroker({ current, readEditor, changed }) {
       value.committing = true;
       try {
         await writeDrafts(() => verified(value));
+        applied?.();
       } finally {
         if (proposal === value) retire();
       }

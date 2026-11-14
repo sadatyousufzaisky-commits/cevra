@@ -13,11 +13,14 @@ const { preferenceMessage } = require('./response-preferences.cjs');
 const { sourceFileKey } = require('../source-files.cjs');
 const { inside } = require('../workspace.cjs');
 const { patchInstruction } = require('./patch-broker.cjs');
+const { createAgentWorkflow } = require('./agent-workflow.cjs');
 
 const page = path.join(__dirname, 'mock.html');
 const pageURL = pathToFileURL(page).href;
 
-function createIntelligenceMockWindow(profile, { live = false, getWorkspace, readEditor, openSource, getPreferences, setPreferences, patches } = {}) {
+function createIntelligenceMockWindow(profile, {
+  live = false, getWorkspace, readEditor, openSource, getPreferences, setPreferences, patches, runAgentTests, recheckBaseline,
+} = {}) {
   const connections = createConnectionManager(profile, createWindowsCredentialVault());
   let panel;
   const registry = createProviderRegistry(live ? [mockProvider, createOpenAIProvider(async signal => {
@@ -27,6 +30,7 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
     try {
       if (!active || owner.active !== active || panel !== owner) throw new ProviderError('CANCELLED');
       await verifySources(owner, active, signal);
+      await active.recheck?.();
       signal.throwIfAborted();
       return key;
     } catch (error) {
@@ -106,6 +110,7 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
   }
 
   function retire(panel) {
+    panel.agent?.stop();
     panel.connectionOwner.abort();
     patches?.retire();
     stop(panel);
@@ -114,7 +119,10 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
   function invalidateConnection(owner, providerId) {
     if (owner.active?.providerId === providerId) stop(owner);
     owner.verified.delete(providerId);
-    if (providerId === 'openai') patches?.retire();
+    if (providerId === 'openai') {
+      owner.agent?.stop('The OpenAI connection changed.');
+      patches?.retire();
+    }
   }
 
   function close() {
@@ -217,9 +225,27 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
     await refreshSources(owner);
     return contextState(owner);
   });
+  handle('agent-state', owner => owner.agent?.state() ?? { stage: 'unavailable' });
+  contextAction('prepare-agent', (owner, input) => {
+    const context = requireContext(owner);
+    if (!catalogs.find(catalog => catalog.providerId === 'openai')?.models.some(model => model.id === input?.modelId)) {
+      throw new ContextError('Choose an OpenAI model for this coding task.');
+    }
+    try { owner.agent.prepare(input, context.items()); }
+    catch (error) { throw new ContextError(error.message); }
+  });
+  contextAction('agent-test', async owner => {
+    if (owner.active || !owner.agent) throw new ContextError('This coding step is no longer available.');
+    try {
+      if (owner.agent.state().stage === 'save') await owner.agent.verify();
+      else await owner.agent.baseline();
+    } catch (error) { throw new ContextError(error.message); }
+  });
+  handle('stop-agent', owner => owner.agent?.stop());
 
   handle('models', () => catalogs);
   handle('clear', owner => {
+    owner.agent?.stop();
     stop(owner);
     patches?.retire();
     owner.messages = [];
@@ -231,6 +257,7 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
   });
   handle('switch-model', owner => {
     if (owner.active) return false;
+    owner.agent?.stop('The model changed.');
     patches?.retire();
     owner.messages = [];
     owner.modelId = undefined;
@@ -242,7 +269,11 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
   handle('start', async (owner, input) => {
     if (owner.active || owner.attachingSelection) return { message: 'Wait for the current Intelligence operation.' };
     if (!exactRecord(input, ['modelId', 'prompt']) &&
-        !(exactRecord(input, ['modelId', 'prompt', 'mode']) && input.mode === 'patch')) throw new ProviderError('INVALID_REQUEST');
+        !(exactRecord(input, ['modelId', 'prompt', 'mode']) && ['patch', 'agent'].includes(input.mode))) {
+      throw new ProviderError('INVALID_REQUEST');
+    }
+    const agentStep = input.mode === 'agent';
+    if (owner.agent?.active && !agentStep) return { message: 'Finish or stop the coding task before sending a different request.' };
     owner.cancelledId = undefined;
     const catalog = catalogs.find(item => item.models.some(model => model.id === input.modelId));
     const model = catalog?.models.find(item => item.id === input.modelId);
@@ -250,21 +281,31 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
     if (typeof input.prompt !== 'string' || Buffer.byteLength(input.prompt) > 8192) {
       return { message: 'Enter a valid prompt of up to 8 KiB.' };
     }
-    const patch = input.mode === 'patch';
+    const patch = input.mode === 'patch' || agentStep;
     const history = !patch && live && owner.modelId === model.id ? owner.messages : [];
     const id = randomUUID();
     const controller = new AbortController();
-    const sources = catalog.providerId === 'openai' ? owner.context?.items() ?? [] : [];
+    let step;
+    if (agentStep) {
+      if (!owner.agent) return { message: 'Open a workspace to start a coding task.' };
+      try { step = await owner.agent.beginProposal(model.id); }
+      catch (error) { return { message: error.message }; }
+      if (panel !== owner || step.signal.aborted) return null;
+    }
+    const sources = step?.sources ?? (catalog.providerId === 'openai' ? owner.context?.items() ?? [] : []);
     if (patch && !sources.some(item => item.kind !== 'instructions')) {
       return { message: 'Select OpenAI and attach an editor selection or saved file to propose edits.' };
     }
     if (catalog.providerId !== 'openai' && owner.context?.items().length) return { message: 'Select OpenAI to send attachments.' };
     const active = { id, providerId: catalog.providerId, controller, pulling: false, sources, changed: new Set(),
-      modelId: model.id, patch, text: '', conversation: [...history, { role: 'user', content: input.prompt }],
+      modelId: model.id, patch, agentStep, recheck: step?.recheck, text: '',
+      conversation: [...history, { role: 'user', content: step?.goal ?? input.prompt }],
       proposalScope: patch ? new AbortController() : undefined };
     owner.active = active;
     try {
       const additions = catalog.providerId === 'openai' ? contextMessages(sources, preferenceMessage(await getPreferences())) : [];
+      if (step) additions.push({ role: 'user', label: 'Observed baseline test counts',
+        content: 'Local test runner summary for this task. No test output is attached.\n' + step.feedback });
       if (patch) additions.push(patchInstruction(sources));
       const messages = [...history, ...additions.map(({ role, content }) => ({ role, content })), active.conversation.at(-1)];
       if (messages.length > limits.messages ||
@@ -297,7 +338,10 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
       if (controller.signal.aborted) return null;
       return { message: error instanceof ContextError ? error.message : 'The Intelligence request could not start.' };
     } finally {
-      if (!active.stream && owner.active === active) stop(owner);
+      if (!active.stream && owner.active === active) {
+        stop(owner);
+        if (agentStep) owner.agent.stop('The proposal request did not start.');
+      }
     }
   });
   handle('next', async (owner, id) => {
@@ -316,6 +360,7 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
       if (value.kind === 'complete' && request.patch) {
         if (value.finishReason !== 'stop') {
           stop(owner, false);
+          if (request.agentStep) owner.agent.stop('The edit proposal was incomplete.');
           return { kind: 'proposal-invalid', requestId: id,
             message: 'The proposed edit was cut off. Narrow the requested change and retry.' };
         }
@@ -327,6 +372,7 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
         } catch (error) {
           if (owner.active !== request) throw new ProviderError('CANCELLED');
           stop(owner, false);
+          if (request.agentStep) owner.agent.stop('The edit proposal was rejected.');
           return { kind: 'proposal-invalid', requestId: id,
             message: 'The proposed edit was invalid or its source changed. Check the attachments and try again.' };
         }
@@ -337,6 +383,7 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
         for (const item of request.sources) owner.context.remove(item.id);
         sendContext(owner);
         owner.verified.add(request.providerId);
+        if (request.agentStep) owner.agent.proposalReady();
         stop(owner, false);
         return { ...value, retained: false, proposalId };
       }
@@ -356,10 +403,12 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
       }
       if (value.kind === 'error' && value.code === 'AUTH_INVALID') owner.verified.delete(request.providerId);
       if (value.kind === 'complete' || value.kind === 'error') stop(owner, false);
+      if (value.kind === 'error' && request.agentStep) owner.agent.stop('The provider did not complete the edit proposal.');
       if (value.kind === 'error') return { ...value, message: new ProviderError(value.code).message };
       return value.kind === 'complete' ? { ...value, retained } : value;
     } catch (error) {
       if (owner.active === request) stop(owner, false);
+      if (request.agentStep) owner.agent.stop('The proposal request ended.');
       const failure = safeProviderError(error);
       if (failure.code === 'AUTH_INVALID') owner.verified.delete(request.providerId);
       return { kind: 'error', requestId: id, code: failure.code, message: failure.message,
@@ -371,6 +420,7 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
   handle('stop', (owner, id) => {
     if (owner.active?.id === id) {
       if (owner.active.patch) patches.retire();
+      if (owner.active.agentStep) owner.agent.stop();
       stop(owner);
     }
   });
@@ -464,6 +514,11 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
       }
       if (updated) sendContext(owner);
     },
+    patchApplied(project, changes) {
+      if (panel?.project === project) panel.agent?.applied(changes);
+    },
+    proposalRetired() { panel?.agent?.proposalRetired(); },
+    stopAgent() { panel?.agent?.stop(); },
     close,
   };
 
@@ -479,6 +534,18 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
     const opened = { window, project, messages: [], verified: new Set(), sources: new Map(), historical: new Set(),
       connectionOwner: new AbortController(), connectionBusy: false };
     if (project) opened.context = createContextBroker(project, { readEditor, current: item => item === getWorkspace() });
+    if (project && live) opened.agent = createAgentWorkflow(project, {
+      current: getWorkspace, runTests: runAgentTests, recheckBaseline,
+      publish: state => {
+        if (panel === opened && opened.loaded && !window.isDestroyed()) {
+          window.webContents.send('cevra:intelligence-mock:agent-changed', state);
+        }
+      },
+      retired: () => {
+        if (opened.active?.agentStep) stop(opened);
+        patches.retire();
+      },
+    });
     panel = opened;
     window.on('page-title-updated', event => event.preventDefault());
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

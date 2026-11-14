@@ -21,4 +21,9 @@ contextBridge.exposeInMainWorld('intelligenceMock', {
   openSource: id => ipcRenderer.invoke('cevra:intelligence-mock:open-source', id),
   checkSources: () => ipcRenderer.invoke('cevra:intelligence-mock:check-sources'),
   onContextChanged: callback => ipcRenderer.on('cevra:intelligence-mock:context-changed', (_event, state) => callback(state)),
+  agentState: () => ipcRenderer.invoke('cevra:intelligence-mock:agent-state'),
+  prepareAgent: input => ipcRenderer.invoke('cevra:intelligence-mock:prepare-agent', input),
+  agentTest: () => ipcRenderer.invoke('cevra:intelligence-mock:agent-test'),
+  stopAgent: () => ipcRenderer.invoke('cevra:intelligence-mock:stop-agent'),
+  onAgentChanged: callback => ipcRenderer.on('cevra:intelligence-mock:agent-changed', (_event, state) => callback(state)),
 });

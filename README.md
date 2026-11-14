@@ -38,6 +38,8 @@ Select code in the editor and choose **Attach selection to Intelligence** to inc
 
 Choose **Propose edits** to request a change to attached code. Use **Review Intelligence edit** to inspect the diff. **Apply as Drafts** creates undoable edits. Use the editor’s normal **Save** command to update the original files. [Patch review guide](docs/phase-5/g5-editor-actions-and-patch-review.md)
 
+Choose **Plan coding task** to review a test-and-fix plan. Intelligence uses the supervised Node.js runner to establish a baseline, offers one reviewed patch if tests fail, and can verify the exact saved changes. Each test run requires separate approval. [Coding task guide](docs/phase-5/g6-controlled-agentic-coding.md)
+
 ## Run TypeScript and Python
 
 **TypeScript** `.ts`, `.mts`, and `.cts` entry files run through the bundled Node.js runtime. The direct profile uses Node's TypeScript transform and source maps. Use **Problems** for type checking and **Tasks** for project-specific builds, including TSX and projects that need `tsconfig.json` compilation settings. TypeScript imports in direct runs use explicit file extensions. [Node.js TypeScript support](https://nodejs.org/docs/latest-v24.x/api/typescript.html)

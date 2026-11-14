@@ -9,7 +9,7 @@
     "build:extension-host": "node scripts/build-extension-host.cjs",
     "start": "npm run build && electron .",
     "test": "npm run test:core && npm run test:desktop",
-    "test:core": "npm run build:host && node --test --test-concurrency=1 qa/core.test.cjs qa/extensions.test.cjs qa/extension-packaging.test.cjs qa/extension-registry.test.cjs qa/extension-broker.test.cjs qa/extension-sdk.test.cjs qa/intelligence-provider.test.cjs qa/intelligence-openai.test.cjs qa/intelligence-connections.test.cjs qa/intelligence-context.test.cjs qa/intelligence-patch.test.cjs",
+    "test:core": "npm run build:host && node --test --test-concurrency=1 qa/core.test.cjs qa/extensions.test.cjs qa/extension-packaging.test.cjs qa/extension-registry.test.cjs qa/extension-broker.test.cjs qa/extension-sdk.test.cjs qa/intelligence-provider.test.cjs qa/intelligence-openai.test.cjs qa/intelligence-connections.test.cjs qa/intelligence-context.test.cjs qa/intelligence-patch.test.cjs qa/intelligence-agent.test.cjs",
     "test:desktop": "npm run build && node --test --test-concurrency=1 qa/continuum.test.cjs qa/extension-contributions.test.cjs qa/extension-manager.test.cjs qa/extension-sdk-desktop.test.cjs qa/intelligence-mock-desktop.test.cjs qa/intelligence-stream-desktop.test.cjs qa/intelligence-vault-desktop.test.cjs qa/workbench.test.cjs",
     "benchmark": "npm run build && node qa/benchmark.cjs",
     "benchmark:continuum": "npm run build && node --test qa/continuum.test.cjs",

@@ -4,6 +4,7 @@ const model = document.getElementById('model');
 const prompt = document.getElementById('prompt');
 const send = document.getElementById('send');
 const propose = document.getElementById('propose-edit');
+const planCoding = document.getElementById('plan-coding-task');
 const stop = document.getElementById('stop');
 const retry = document.getElementById('retry');
 const clear = document.getElementById('clear');
@@ -17,10 +18,18 @@ const models = new Map();
 let current;
 let last;
 let clearing = false;
+let agent = { stage: 'unavailable' };
+const coding = document.getElementById('coding-task');
+const codingStatus = document.getElementById('coding-status');
+const codingNext = document.getElementById('coding-next');
+const codingStop = document.getElementById('coding-stop');
+const codingActive = () => ['plan', 'baseline', 'proposal', 'generating', 'review', 'save', 'verification'].includes(agent.stage);
 
 function busy(active) {
-  model.disabled = prompt.disabled = send.disabled = active;
-  propose.disabled = active || models.get(model.value) !== 'openai';
+  model.disabled = active;
+  prompt.disabled = active || codingActive();
+  send.disabled = active || codingActive();
+  planCoding.disabled = propose.disabled = active || codingActive() || models.get(model.value) !== 'openai';
   stop.disabled = !active || !current?.id;
   clear.disabled = active;
 }
@@ -32,6 +41,7 @@ function showProvider() {
     'Offline mock. Responses and usage are simulated.';
   output.setAttribute('aria-label', live ? 'Model response' : 'Mock response');
   propose.hidden = !live;
+  planCoding.hidden = !live || agent.stage === 'unavailable';
 }
 
 function remember(promptText, responseText) {
@@ -103,7 +113,7 @@ async function run(input) {
       }
       if (event.kind === 'proposal-invalid') {
         status.textContent = event.message;
-        retry.hidden = false;
+        retry.hidden = input.mode === 'agent';
         break;
       }
       if (event.kind === 'error') {
@@ -112,18 +122,18 @@ async function run(input) {
           status.textContent = 'OpenAI connection unavailable. Check or replace the key in Provider connections.';
           document.dispatchEvent(new Event('intelligence-connection-changed'));
         }
-        retry.hidden = !event.retryable;
+        retry.hidden = input.mode === 'agent' || !event.retryable;
         break;
       }
     }
   } catch {
     status.textContent = request.id ? 'The request could not continue.' : 'Enter a valid prompt of up to 8 KiB.';
-    retry.hidden = !request.id;
+    retry.hidden = input.mode === 'agent' || !request.id;
     if (request.id) await api.stop(request.id).catch(() => {});
   } finally {
     if (request.stopped) {
       status.textContent = live ? 'Request stopped. OpenAI may charge for usage already processed.' : 'Request stopped.';
-      retry.hidden = false;
+      retry.hidden = input.mode === 'agent';
     }
     current = undefined;
     busy(false);
@@ -133,6 +143,14 @@ async function run(input) {
 
 form.addEventListener('submit', event => {
   event.preventDefault();
+  if (event.submitter === planCoding) {
+    if (!prompt.value.trim()) return;
+    void api.prepareAgent({ modelId: model.value, goal: prompt.value }).then(result => {
+      if (!result.ok) status.textContent = result.message;
+      else codingNext.focus();
+    }).catch(() => { status.textContent = 'The coding plan could not be prepared.'; });
+    return;
+  }
   if (prompt.value.trim()) void run({ modelId: model.value, prompt: prompt.value,
     ...(event.submitter?.id === 'propose-edit' ? { mode: 'patch' } : {}) });
 });
@@ -153,6 +171,48 @@ clear.addEventListener('click', async () => {
   if (await reset()) { prompt.value = ''; prompt.focus(); }
 });
 model.addEventListener('change', () => { void reset(true); });
+function testSummary(label, result) {
+  if (!result) return '';
+  return `${label} · ${result.passed} passed, ${result.failed} failed · ${result.observed ? 'Observed revision' : 'Revision unverified'}`;
+}
+
+function renderAgent(state) {
+  agent = state;
+  coding.hidden = !state.goal;
+  document.getElementById('coding-goal').textContent = state.goal ?? '';
+  document.getElementById('coding-plan').replaceChildren(...(state.goal ? state.plan.map(step => {
+    const item = document.createElement('li');
+    item.textContent = step;
+    return item;
+  }) : []));
+  document.getElementById('coding-targets').textContent = state.targets?.length ?
+    'Plan attachments · ' + state.targets.map(item => item.path + (item.kind === 'selection' ? ':' + item.line : '')).join(', ') : '';
+  document.getElementById('coding-steps').textContent = state.goal ? `${state.steps} of ${state.maxSteps} steps started` : '';
+  document.getElementById('coding-baseline').textContent = testSummary('Baseline', state.baseline);
+  document.getElementById('coding-verification').textContent = testSummary('Verification', state.verification);
+  codingStatus.textContent = state.message ?? '';
+  codingStop.hidden = !codingActive();
+  codingNext.textContent = { plan: 'Run baseline tests', proposal: 'Review proposal request', save: 'Verify saved changes' }[state.stage] ?? '';
+  codingNext.hidden = !codingNext.textContent;
+  planCoding.hidden = models.get(model.value) !== 'openai' || state.stage === 'unavailable';
+  busy(Boolean(current) || clearing);
+}
+
+codingNext.onclick = async () => {
+  if (agent.stage === 'proposal') {
+    await run({ modelId: model.value, prompt: agent.goal, mode: 'agent' });
+    return;
+  }
+  codingNext.disabled = true;
+  try {
+    const result = await api.agentTest();
+    if (!result.ok) codingStatus.textContent = result.message;
+  } catch { codingStatus.textContent = 'The test step could not start.'; }
+  finally { codingNext.disabled = false; }
+};
+codingStop.onclick = () => { void api.stopAgent(); };
+api.onAgentChanged(renderAgent);
+api.agentState().then(renderAgent).catch(() => {});
 api.models().then(catalogs => {
   for (const catalog of catalogs) {
     for (const item of catalog.models) {

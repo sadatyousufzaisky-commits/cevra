@@ -111,6 +111,7 @@ let selectedTheme = themeChoice.value;
 let colorMode = 'dark';
 let stagingEdits;
 let intelligenceProposal;
+let intelligenceTestActive = false;
 let closingWorkbench = false;
 let savingAll;
 let editorSettings;
@@ -224,9 +225,9 @@ function syncCommands() {
   renameButton.disabled = !active?.language || changingProject || Boolean(run || saving || discarding);
   settingsButton.disabled = Boolean(changingProject || run || saving || discarding);
   symbolButton.disabled = !project || changingProject;
-  runButton.disabled = !runtime || Boolean(changingProject || changingGit || run || discarding || savingAll);
+  runButton.disabled = !runtime || Boolean(changingProject || changingGit || run || discarding || savingAll || intelligenceTestActive);
   runButton.hidden = Boolean(run);
-  testButton.disabled = !project || Boolean(changingProject || changingGit || run || discarding || savingAll);
+  testButton.disabled = !project || Boolean(changingProject || changingGit || run || discarding || savingAll || intelligenceTestActive);
   retryButton.hidden = !retryAvailable || byId('run-panel').dataset.mode !== 'tests';
   retryButton.disabled = testButton.disabled;
   stopButton.hidden = !run;
@@ -1526,6 +1527,10 @@ api.onIntelligenceProposalChanged(proposal => {
   byId('intelligence-review-proposal').hidden = byId('intelligence-dismiss-proposal').hidden = !intelligenceProposal;
   refreshIntelligenceSuggestion();
   if (intelligenceProposal) notify('Intelligence proposed edits in ' + proposal.fileCount + (proposal.fileCount === 1 ? ' file.' : ' files.'));
+});
+api.onIntelligenceTestActive(active => {
+  intelligenceTestActive = active === true;
+  syncCommands();
 });
 byId('intelligence-review-proposal').onclick = () => {
   const proposal = intelligenceProposal;

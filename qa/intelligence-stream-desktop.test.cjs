@@ -24,7 +24,13 @@ async function installFixture(app) {
       if (/^https?:/.test(url)) { state.traffic.push(url); done({ cancel: true }); }
       else done({});
     });
-    dialog.showMessageBox = async () => ({ response: 1 });
+    dialog.showMessageBox = async (_owner, options) => {
+      if (['Run baseline tests', 'Verify Intelligence change'].includes(options.title)) {
+        (state.testApprovals ??= []).push({ title: options.title, buttons: options.buttons, defaultId: options.defaultId });
+        return { response: state.denyTests ? 0 : 1 };
+      }
+      return { response: 1 };
+    };
     const schedule = globalThis.setTimeout;
     globalThis.setTimeout = (callback, ms, ...args) =>
       schedule(callback, ms === 45_000 ? 1500 : ms, ...args);
@@ -453,4 +459,150 @@ test('Windows Intelligence limits proposals to reviewed targets and applies undo
   assert.match(await restarted.editor.textContent(), /proposal café/);
   await restarted.open('helper.js');
   assert.match(await restarted.editor.textContent(), /helper = 5/);
+});
+
+test('Windows coding task diagnoses failing tests, applies a reviewed draft and verifies saved code', { skip: !supported, timeout: 85_000 }, async t => {
+  buildVaultProbe();
+  const keyRef = randomUUID();
+  const vault = createWindowsCredentialVault();
+  let scope;
+  t.after(async () => { if (scope) assert.equal(await vault.remove(scope, 'openai', keyRef), 'ok'); });
+  const workbench = await openWorkbench(t, {
+    'helper.js': 'export const helper = 2;\n',
+    'helper.test.mjs': 'import { test } from "node:test";\nimport assert from "node:assert/strict";\n' +
+      'import { helper } from "./helper.js";\ntest("fixture", () => { console.log("G6_PRIVATE_OUTPUT"); assert.equal(helper, 5); });\n',
+    'package.json': '{"type":"module"}',
+  }, async (_project, profile) => {
+    scope = createHash('sha256').update((await fs.realpath(profile)).toLowerCase()).digest('hex');
+    const folder = path.join(profile, 'intelligence');
+    await fs.mkdir(folder);
+    await fs.writeFile(path.join(folder, 'connections.json'), JSON.stringify({
+      schemaVersion: 1, entries: [{ providerId: 'openai', current: keyRef, pending: null, cleanup: [] }],
+    }));
+    assert.equal(await vaultProbe('seed', scope, 'openai', keyRef, 'first'), 0);
+  }, { args: [flag] });
+  const { app, page, editor, project } = workbench;
+  await installFixture(app);
+  await app.evaluate(({ dialog }, target) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] });
+    globalThis.g3.patch = 'valid';
+  }, path.join(project, 'helper.js'));
+  const opened = app.waitForEvent('window');
+  await page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+  const panel = await opened;
+  await panel.getByLabel('Model', { exact: true }).selectOption('gpt-5.6-terra');
+  await panel.getByRole('button', { name: 'Attach saved file', exact: true }).click();
+  await panel.getByRole('list', { name: 'Attachments' }).getByText('helper.js · Saved file', { exact: false }).waitFor();
+  const coding = panel.getByRole('region', { name: 'Coding task', exact: true });
+  const codingStatus = text => coding.locator('#coding-status').getByText(text, { exact: true }).waitFor();
+  const goal = 'Fix the helper so the project test passes.';
+  await panel.getByLabel('Prompt', { exact: true }).fill(goal);
+  await panel.getByRole('button', { name: 'Plan coding task', exact: true }).press('Enter');
+  await coding.getByText(goal, { exact: true }).waitFor();
+  assert.equal(await coding.locator('#coding-plan li').count(), 4);
+  const traffic = () => app.evaluate(() => globalThis.g3);
+  assert.equal((await traffic()).count, 0);
+  await coding.getByRole('button', { name: 'Run baseline tests', exact: true }).press('Enter');
+  await coding.getByText('Baseline · 0 passed, 1 failed · Observed revision', { exact: true }).waitFor();
+  assert.equal((await traffic()).count, 0);
+
+  const approval = app.waitForEvent('window');
+  await coding.getByRole('button', { name: 'Review proposal request', exact: true }).press('Enter');
+  const review = await approval;
+  await review.getByText('Observed baseline test counts', { exact: true }).waitFor();
+  const outbound = await review.locator('#review-messages').textContent();
+  assert.match(outbound, /"failed":1/);
+  assert.doesNotMatch(outbound, /G6_PRIVATE_OUTPUT/);
+  const closed = review.waitForEvent('close');
+  try { await review.getByRole('button', { name: 'Send to OpenAI', exact: true }).press('Enter'); }
+  catch (error) { if (!/Target page, context or browser has been closed/.test(error.message)) throw error; }
+  await closed;
+  await codingStatus('Review the proposed edits in the workbench.');
+  assert.equal((await traffic()).count, 1);
+  await page.getByRole('button', { name: 'Review Intelligence edit', exact: true }).press('Enter');
+  const diff = page.getByRole('dialog', { name: 'Review Intelligence Edit', exact: true });
+  await diff.locator('ins').getByText('export const helper = 5;', { exact: false }).waitFor();
+  await diff.getByRole('button', { name: 'Apply as Drafts', exact: true }).press('Enter');
+  await diff.waitFor({ state: 'hidden' });
+  assert.match(await editor.textContent(), /helper = 5/);
+  assert.equal(await fs.readFile(path.join(project, 'helper.js'), 'utf8'), 'export const helper = 2;\n');
+  await coding.getByRole('button', { name: 'Verify saved changes', exact: true }).press('Enter');
+  await codingStatus('Save the exact approved edits before verifying.');
+  assert.equal((await traffic()).testApprovals.length, 1);
+  await editor.press('Control+s');
+  await page.locator('#message').getByText('Saved helper.js', { exact: true }).waitFor();
+  await coding.getByRole('button', { name: 'Verify saved changes', exact: true }).press('Enter');
+  await codingStatus('The approved change passed the project tests.');
+  await coding.getByText('Verification · 1 passed, 0 failed · Observed revision', { exact: true }).waitFor();
+  assert.deepEqual((await traffic()).testApprovals, [
+    { title: 'Run baseline tests', buttons: ['Cancel', 'Run Tests'], defaultId: 0 },
+    { title: 'Verify Intelligence change', buttons: ['Cancel', 'Run Tests'], defaultId: 0 },
+  ]);
+  assert.equal((await traffic()).count, 1);
+});
+
+test('Windows Stop terminates a coding test tree and reopening leaves the task idle', { skip: !supported, timeout: 65_000 }, async t => {
+  const workbench = await openWorkbench(t, {
+    'main.js': 'const fixture = true;\n',
+    'long.test.cjs': 'const { test } = require("node:test");\nconst { spawn } = require("node:child_process");\n' +
+      'const fs = require("node:fs");\n' +
+      'test("long fixture", async () => {\n' +
+      '  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore" });\n' +
+      '  fs.writeFileSync("agent-fixture-pid", String(child.pid));\n' +
+      '  await new Promise(resolve => setTimeout(resolve, 30000));\n' +
+      '});\n',
+  }, undefined, { args: [flag] });
+  const { app, page, project } = workbench;
+  await installFixture(app);
+  await app.evaluate(({ dialog }, target) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] });
+    globalThis.g3.denyTests = true;
+  }, path.join(project, 'main.js'));
+  const launch = async current => {
+    const opened = current.app.waitForEvent('window');
+    await current.page.getByRole('button', { name: 'Intelligence', exact: true }).click();
+    return opened;
+  };
+  const panel = await launch(workbench);
+  await panel.getByLabel('Model', { exact: true }).selectOption('gpt-5.6-terra');
+  await panel.getByRole('button', { name: 'Attach saved file', exact: true }).click();
+  await panel.getByRole('list', { name: 'Attachments' }).getByText('main.js · Saved file', { exact: false }).waitFor();
+  const plan = async () => {
+    await panel.getByLabel('Prompt', { exact: true }).fill('Diagnose the fixture.');
+    await panel.getByRole('button', { name: 'Plan coding task', exact: true }).press('Enter');
+    await panel.getByRole('button', { name: 'Run baseline tests', exact: true }).press('Enter');
+  };
+  const stopped = text => panel.locator('#coding-status').getByText(text, { exact: true }).waitFor();
+  const pidFile = path.join(project, 'agent-fixture-pid');
+  await plan();
+  await stopped('Test execution was canceled.');
+  await assert.rejects(fs.stat(pidFile), { code: 'ENOENT' });
+  await app.evaluate(() => { globalThis.g3.denyTests = false; });
+  await plan();
+  let pid;
+  for (let attempt = 0; attempt < 100 && !pid; attempt++) {
+    pid = await fs.readFile(pidFile, 'utf8').then(Number, error => {
+      if (error.code !== 'ENOENT') throw error;
+    });
+    if (!pid) await delay(50);
+  }
+  assert.ok(pid, 'The test process should launch its synthetic child.');
+  const exists = () => {
+    try { process.kill(pid, 0); return true; }
+    catch (error) { if (error.code !== 'ESRCH') throw error; return false; }
+  };
+  assert.equal(exists(), true);
+  await panel.getByRole('button', { name: 'Stop coding task', exact: true }).press('Enter');
+  await stopped('Coding task stopped.');
+  for (let attempt = 0; attempt < 100 && exists(); attempt++) await delay(50);
+  assert.equal(exists(), false);
+  assert.equal(await panel.getByRole('button', { name: 'Review proposal request', exact: true }).count(), 0);
+  assert.equal(await app.evaluate(() => globalThis.g3.count), 0);
+
+  const restarted = await workbench.restart({ crash: true, args: [flag] });
+  const fresh = await launch(restarted);
+  await fresh.locator('#status').getByText('Ready.', { exact: true }).waitFor();
+  assert.equal(await fresh.getByRole('region', { name: 'Coding task', exact: true }).count(), 0);
+  assert.equal(await fresh.getByRole('list', { name: 'Attachments' }).locator('li').count(), 0);
+  assert.equal(await page.isClosed(), true);
 });

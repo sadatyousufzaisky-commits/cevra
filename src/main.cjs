@@ -50,7 +50,8 @@ const intelligenceMock = liveIntelligence || app.commandLine.hasSwitch('enable-i
   require('./intelligence/mock-window.cjs').createIntelligenceMockWindow(app.getPath('userData'), {
     live: liveIntelligence, getWorkspace: intelligenceWorkspace, readEditor: readContextEditor, openSource: openIntelligenceSource,
     getPreferences: () => preferences.getIntelligence(), setPreferences: values => preferences.setIntelligence(values),
-    patches: intelligencePatches,
+    patches: intelligencePatches, runAgentTests, recheckBaseline: (project, id) =>
+      intelligenceWorkspace() === project ? workstream.recheck(id) : undefined,
   }) : undefined;
 const extensions = createExtensionRegistry(app.getPath('userData'));
 const flightpathStore = createFlightpathStore(path.join(app.getPath('userData'), 'flightpath'));
@@ -70,6 +71,8 @@ let changingWorkspace = false;
 let runGrant;
 let trustEpoch = 0;
 let authorizingRun = false;
+let intelligenceTest;
+let intelligenceRunSequence = 0;
 let activeSearch;
 let rendererReady = false;
 let closePending = false;
@@ -136,6 +139,11 @@ app.once('will-quit', extensions.onChange((id, change) => {
   notifyExtensionRuntime();
 }));
 const sessions = createExecutionSessions(event => {
+  if (intelligenceTest?.id === event.runId && intelligenceTest.token === event.sessionId &&
+      intelligenceTest.project.id === event.workspaceId) {
+    if (event.type === 'exit') intelligenceTest.finished.resolve(event);
+    return;
+  }
   if (workspace?.id === event.workspaceId && rendererReady && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
     window.webContents.send('cevra:run-event', event);
   }
@@ -198,9 +206,61 @@ function readPatchEditor(project, file, signal) {
 }
 
 function showIntelligenceProposal(proposal) {
+  if (!proposal) intelligenceMock?.proposalRetired();
   if (rendererReady && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
     window.webContents.send('cevra:intelligence-proposal-changed', proposal);
     if (proposal) window.flashFrame(true);
+  }
+}
+
+function showAgentTest(active) {
+  if (rendererReady && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
+    window.webContents.send('cevra:intelligence-test-active', active);
+  }
+}
+
+async function runAgentTests(project, { verifying, signal, recheck }) {
+  if (intelligenceWorkspace() !== project || sessions.busy || intelligenceTest || authorizingRun || runGrant) {
+    throw new Error('Wait for the current workspace action.');
+  }
+  signal.throwIfAborted();
+  const attempt = { id: ++intelligenceRunSequence, token: randomUUID(), project, finished: Promise.withResolvers() };
+  intelligenceTest = attempt;
+  const stop = () => sessions.stop(project.id, attempt.id, attempt.token);
+  signal.addEventListener('abort', stop, { once: true });
+  const timeout = AbortSignal.timeout(3 * 60_000);
+  timeout.addEventListener('abort', stop, { once: true });
+  const execution = AbortSignal.any([signal, timeout]);
+  showAgentTest(true);
+  try {
+    const approved = await authorizeExecution(project, {
+      title: verifying ? 'Verify Intelligence change' : 'Run baseline tests',
+      message: verifying ? 'Run project tests to verify the approved change?' : 'Run the project tests for this Intelligence task?',
+      detail: 'CEVRA will run the project’s Node.js tests with your Windows user permissions. Tests read the files on disk.',
+      confirmTrusted: true, runLabel: 'Run Tests', onceOnly: true, signal: execution,
+    }, () => true);
+    if (!approved) return null;
+    execution.throwIfAborted();
+    if (sessions.busy || intelligenceWorkspace() !== project || gitWrite) throw new Error('The workspace is busy.');
+    const { entries, unreadable } = await readDrafts();
+    if (unreadable || entries.some(draft => draft.root === project.root)) {
+      throw new Error('Save or discard workspace drafts before running the test step.');
+    }
+    await recheck?.();
+    execution.throwIfAborted();
+    if (sessions.busy || intelligenceWorkspace() !== project || gitWrite) throw new Error('The workspace is busy.');
+    const runner = workstream;
+    await sessions.start(project.id, attempt.id, attempt.token, (publish, isStopping) =>
+      runner.start(false, verifying ? 'Intelligence verification' : 'Intelligence baseline', publish,
+        () => execution.aborted || isStopping()));
+    return await attempt.finished.promise;
+  } finally {
+    signal.removeEventListener('abort', stop);
+    timeout.removeEventListener('abort', stop);
+    if (intelligenceTest === attempt) {
+      intelligenceTest = undefined;
+      showAgentTest(false);
+    }
   }
 }
 
@@ -273,7 +333,7 @@ async function readDrafts() {
 
 function ensureWorkspaceAvailable(recovering = false) {
   if (changingWorkspace) throw new Error('A workspace is already opening.');
-  if (sessions.busy && (!recovering || rendererReady)) throw new Error('Stop the current run before opening another project.');
+  if (sessions.busy && !intelligenceTest && (!recovering || rendererReady)) throw new Error('Stop the current run before opening another project.');
   if (gitWrite && !recovering) throw new Error('Wait for the Git action to finish.');
 }
 
@@ -299,6 +359,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
     const { entries, unreadable } = await readDrafts();
     const recovered = entries.filter(draft => draft.root === next.root);
     intelligenceMock?.close();
+    if (intelligenceTest) await sessions.cancel();
     await terminals.closeAll();
     await extensionBroker.suspend().catch(() => {});
     activeSearch?.controller.abort();
@@ -451,10 +512,13 @@ handle('revoke-trust', async id => {
 
 async function authorizeExecution(project, prompt, start) {
   if (authorizingRun) throw new Error('An execution request is already active.');
-  if (changingWorkspace || closePending || allowClose || gitWrite) throw new Error('The workspace is changing.');
+  if (changingWorkspace || closePending || allowClose || gitWrite || (intelligenceTest && !prompt.onceOnly)) {
+    throw new Error('The workspace is changing or running Intelligence tests.');
+  }
   const owner = window.webContents;
   const epoch = trustEpoch;
   function checkConsent() {
+    prompt.signal?.throwIfAborted();
     currentWorkspace(project.id);
     if (changingWorkspace || closePending || allowClose || gitWrite || window?.webContents !== owner ||
         !rendererReady || trustEpoch !== epoch) throw new Error('The execution request expired.');
@@ -471,12 +535,14 @@ async function authorizeExecution(project, prompt, start) {
         title: prompt.title ?? 'Workspace execution',
         message: prompt.message,
         detail: project.root + '\n\n' + prompt.detail,
-        buttons: trusted ? ['Cancel', 'Run Recipe'] : ['Cancel', 'Run Once', 'Trust Workspace'],
+        buttons: prompt.onceOnly ? ['Cancel', prompt.runLabel] :
+          trusted ? ['Cancel', prompt.runLabel ?? 'Run Recipe'] : ['Cancel', 'Run Once', 'Trust Workspace'],
         defaultId: 0,
         cancelId: 0,
         noLink: true,
+        signal: prompt.signal,
       });
-      trust = !trusted && response === 2;
+      trust = !prompt.onceOnly && !trusted && response === 2;
       if (response !== 1 && !trust) return null;
       checkConsent();
       await prompt.recheck?.();
@@ -494,7 +560,7 @@ async function authorizeExecution(project, prompt, start) {
 handle('authorize-run', (id, runId) => {
   const project = currentWorkspace(id);
   if (!Number.isSafeInteger(runId) || runId < 1) throw new Error('Invalid execution request.');
-  if (authorizingRun || sessions.busy) throw new Error('An execution request is already active.');
+  if (authorizingRun || sessions.busy || intelligenceTest) throw new Error('An execution request is already active.');
   runGrant = undefined;
   return authorizeExecution(project, {
     message: 'Allow CEVRA to run code from this workspace?',
@@ -633,7 +699,8 @@ handle('stage-edits', async (id, changes, authority) => {
   currentWorkspace(id);
   if (intelligencePatches && exactKeys(authority, ['intelligenceProposalId', 'review'])) {
     await intelligencePatches.commit(project, authority.intelligenceProposalId, authority.review, changes,
-      beforeCommit => drafts.setMany(project.root, changes, { beforeCommit }));
+      beforeCommit => drafts.setMany(project.root, changes, { beforeCommit }),
+      () => intelligenceMock?.patchApplied(project, changes));
   } else if (authority !== undefined) {
     if (!exactKeys(authority, ['extensionId', 'proposalId'])) throw new Error('Invalid extension proposal.');
     await extensionBroker.commitProposal(authority.extensionId, authority.proposalId, changes,
@@ -987,6 +1054,7 @@ async function launch() {
     event.preventDefault();
     if (!closePending) {
       closePending = true;
+      intelligenceMock?.stopAgent();
       workbench.webContents.send('cevra:before-close');
     }
   });

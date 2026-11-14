@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('cevra', {
     await ipcRenderer.invoke('cevra:intelligence-patch-snapshot', request.requestId, snapshot).catch(() => {});
   }),
   onIntelligenceProposalChanged: callback => ipcRenderer.on('cevra:intelligence-proposal-changed', (_event, proposal) => callback(proposal)),
+  onIntelligenceTestActive: callback => ipcRenderer.on('cevra:intelligence-test-active', (_event, active) => callback(active)),
   intelligenceProposal: (id, proposalId) => ipcRenderer.invoke('cevra:intelligence-proposal', id, proposalId),
   dismissIntelligenceProposal: (id, proposalId) => ipcRenderer.invoke('cevra:dismiss-intelligence-proposal', id, proposalId),
   onIntelligenceSourceLocation: callback => ipcRenderer.on('cevra:intelligence-source-location', async (_event, request) => {
