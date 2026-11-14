@@ -44,7 +44,9 @@ The contrast test reads the rendered palette and checks practical text and UI pa
 | Platinum Draft | 5.90:1 / 3.81:1 | 5.33:1 / 4.58:1 |
 | Iris Ink | 5.90:1 / 5.22:1 | 5.65:1 / 4.86:1 |
 
-[Windows reliability](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43603322763) passed on `0dce679` with 167 core, 88 desktop, 18 extension-host and 13 Intelligence benchmark tests. Windows credential account separation also passed. See the [captured images](evidence/g1/) for the workbench, alternatives, and interaction states.
+Windows reliability passed on `5ff45de` with 167 core, 89 desktop, 18 extension-host and 13 Intelligence benchmark tests. Windows credential account separation also passed. A Windows process inventory command timed out in the initial extension-host run and succeeded on the rerun. [Passing Windows run](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43606774688/attempts/2)
+
+See the [captured images](evidence/g1/) for the workbench, alternatives, and interaction states.
 
 ## Human acceptance
 
