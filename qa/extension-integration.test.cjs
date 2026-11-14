@@ -97,7 +97,7 @@ test('Phase 4 Windows lifecycle isolates five concurrent hosts across denial, fa
     assert.equal(hosts.filter(item => item.worker).length, 5);
     assert.equal(hosts.filter(item => !item.worker).length, 5);
     await click(overflow, 'Review Permissions');
-    await status(/CEVRA can run five executable extensions/);
+    await status(/VOKRI Code can run five executable extensions/);
     assert.equal((await desktopHosts(workbench.app)).length, 10);
     t.diagnostic('PHASE4_G9_ACTIVATION ' + JSON.stringify({ count: 5, activationMs }));
 
