@@ -124,9 +124,22 @@
     {
       "id": "G5",
       "name": "Editor Actions & Patch Review",
-      "status": "implemented",
+      "status": "passed",
       "evidence": ["g5-editor-actions-and-patch-review.md", "../../qa/intelligence-patch.test.cjs",
-        "../../qa/intelligence-stream-desktop.test.cjs"]
+        "../../qa/intelligence-stream-desktop.test.cjs"],
+      "verification": {
+        "verifiedAt": "2026-11-14",
+        "implementationCommit": "a2caf3d847c0e657e5fdf8b31d94ddac421e6769",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassed": 149,
+        "desktopPassed": 80,
+        "extensionHostPassed": 17,
+        "accountIsolationCi": "passed",
+        "windowsCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43549718544",
+        "scope": "Bounded provider edit proposals, inline selection hints, exact diff approval, stale-scope rejection, journal recovery and per-file Undo",
+        "knownLimitations": ["Electron preview only", "Synthetic provider responses in automated verification", "Existing files and one replacement per file"]
+      }
     },
     { "id": "G6", "name": "Controlled Agentic Coding", "status": "unverified", "evidence": [] },
     { "id": "G7", "name": "Model Routing, Profiles & Offline", "status": "unverified", "evidence": [] },

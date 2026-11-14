@@ -15,3 +15,5 @@ Proposals expire after ten minutes. A new approved request, a changed target buf
 ## Verification
 
 `npm test` exercises the proposal broker and the Windows desktop workflow. The fixtures cover invalid source IDs, duplicate targets, exact approval, a disk change at the journal boundary, and revocation. The desktop test uses a synthetic provider response and the real Windows credential vault. It verifies the inline hint, keyboard diff review, cancel and apply, Undo, stale multi-file rejection, and recovery after a forced restart. This gate is available in the Electron workbench.
+
+On 2026-11-14, the implementation passed 149 core, 80 desktop, and 17 extension-host tests on hosted Windows Server 2025 x64 build 26100. The credential account isolation check also passed. [Windows verification](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43549718544)
