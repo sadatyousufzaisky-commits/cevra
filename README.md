@@ -34,6 +34,8 @@ npx electron . --enable-intelligence
 
 Open **Intelligence** in the status bar. The deterministic mock runs offline. To try OpenAI, add your own API project key in **Provider connections**, select **GPT-5.6 Terra**, and review the exact conversation before sending. OpenAI API charges may apply. [Conversation and streaming guide](docs/phase-5/g3-conversation-streaming.md)
 
+Select code in the editor and choose **Attach selection to Intelligence** to include that range, including unsaved edits. You can also attach saved files and explicitly include `.cevra/ai-instructions.md`. Open **Response preferences** to set language, length, code style, and testing preferences. [Context and personalization guide](docs/phase-5/g4-context-and-personalization.md)
+
 ## Run TypeScript and Python
 
 **TypeScript** `.ts`, `.mts`, and `.cts` entry files run through the bundled Node.js runtime. The direct profile uses Node's TypeScript transform and source maps. Use **Problems** for type checking and **Tasks** for project-specific builds, including TSX and projects that need `tsconfig.json` compilation settings. TypeScript imports in direct runs use explicit file extensions. [Node.js TypeScript support](https://nodejs.org/docs/latest-v24.x/api/typescript.html)

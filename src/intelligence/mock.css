@@ -18,6 +18,11 @@ details { padding-block: .65rem; border-top: 1px solid GrayText; }
 summary { cursor: pointer; font-weight: 600; }
 #history { padding-inline-start: 1.75rem; }
 #history pre { min-height: 0; }
+#intelligence-context, #response-sources { border-top: 1px solid GrayText; padding-block: .65rem; }
+#context-attachments, #context-sources { padding-inline-start: 1.75rem; }
+#context-attachments li, #context-sources li { margin-block: .35rem; overflow-wrap: anywhere; }
+#context-attachments button { margin-inline-start: .55rem; }
+#response-preferences form { margin-block-start: .7rem; }
 #connection-list { padding: 0; list-style: none; }
 #connection-list li { padding: .65rem 0; border-bottom: 1px solid GrayText; }
 #connection-list p { margin: .25rem 0; }

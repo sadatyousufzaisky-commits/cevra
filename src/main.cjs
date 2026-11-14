@@ -43,7 +43,10 @@ const preferences = createPreferences(app.getPath('userData'));
 const safeStart = app.commandLine.hasSwitch('disable-extensions');
 const liveIntelligence = app.commandLine.hasSwitch('enable-intelligence');
 const intelligenceMock = liveIntelligence || app.commandLine.hasSwitch('enable-intelligence-mock') ?
-  require('./intelligence/mock-window.cjs').createIntelligenceMockWindow(app.getPath('userData'), { live: liveIntelligence }) : undefined;
+  require('./intelligence/mock-window.cjs').createIntelligenceMockWindow(app.getPath('userData'), {
+    live: liveIntelligence, getWorkspace: intelligenceWorkspace, readEditor: readContextEditor, openSource: openIntelligenceSource,
+    getPreferences: () => preferences.getIntelligence(), setPreferences: values => preferences.setIntelligence(values),
+  }) : undefined;
 const extensions = createExtensionRegistry(app.getPath('userData'));
 const flightpathStore = createFlightpathStore(path.join(app.getPath('userData'), 'flightpath'));
 const syntax = createSyntaxService();
@@ -173,7 +176,26 @@ function currentWorkspace(id) {
   return workspace;
 }
 
+function intelligenceWorkspace() {
+  return changingWorkspace || closePending || allowClose || !rendererReady ? undefined : workspace;
+}
+
 function readExtensionEditor(project, file, signal, allowedFiles) {
+  return requestEditor(project, 'extension-editor-snapshot', { path: file, allowedFiles }, signal);
+}
+
+function readContextEditor(project, file, signal) {
+  return requestEditor(project, 'intelligence-editor-snapshot', { path: file }, signal);
+}
+
+async function openIntelligenceSource(project, source, signal) {
+  if (intelligenceWorkspace() !== project) throw new Error('This workspace has closed.');
+  const opened = await requestEditor(project, 'intelligence-source-location', { source }, signal);
+  if (!opened || intelligenceWorkspace() !== project) throw new Error('This source is no longer current.');
+  if (window && !window.isDestroyed()) window.focus();
+}
+
+function requestEditor(project, channel, payload, signal) {
   if (!rendererReady || !window || window.isDestroyed() || signal?.aborted || editorSnapshots.size >= 8) {
     return Promise.reject(new Error('The editor is unavailable.'));
   }
@@ -190,15 +212,15 @@ function readExtensionEditor(project, file, signal, allowedFiles) {
     const aborted = () => finish(new Error('The editor request expired.'));
     const timer = setTimeout(aborted, 3000);
     signal?.addEventListener('abort', aborted, { once: true });
-    editorSnapshots.set(requestId, { project, file, allowedFiles, owner, finish });
-    try { owner.send('cevra:extension-editor-snapshot', { requestId, workspaceId: project.id, path: file, allowedFiles }); }
+    editorSnapshots.set(requestId, { project, channel, file: payload.path, allowedFiles: payload.allowedFiles, owner, finish });
+    try { owner.send('cevra:' + channel, { requestId, workspaceId: project.id, ...payload }); }
     catch (error) { finish(error); }
   });
 }
 
-handle('extension-editor-snapshot', (requestId, snapshot) => {
+function finishEditorSnapshot(channel, requestId, snapshot) {
   const request = editorSnapshots.get(requestId);
-  if (!request || request.owner !== window?.webContents || request.project !== workspace) return;
+  if (!request || request.channel !== channel || request.owner !== window?.webContents || request.project !== workspace) return;
   if (snapshot === null) return request.finish(undefined, null);
   if (!exactKeys(snapshot, ['path', 'text', 'baseRevision', 'documentId', 'version', 'selection']) ||
       !canonicalFile(snapshot.path) || (request.file && sourceFileKey(snapshot.path) !== sourceFileKey(request.file)) ||
@@ -210,6 +232,15 @@ handle('extension-editor-snapshot', (requestId, snapshot) => {
     return request.finish(new Error('Invalid editor snapshot.'));
   }
   request.finish(undefined, snapshot);
+}
+
+for (const channel of ['extension-editor-snapshot', 'intelligence-editor-snapshot']) {
+  handle(channel, (requestId, snapshot) => finishEditorSnapshot(channel, requestId, snapshot));
+}
+handle('intelligence-source-location', (requestId, opened) => {
+  const request = editorSnapshots.get(requestId);
+  if (request?.channel === 'intelligence-source-location' && request.owner === window?.webContents &&
+      request.project === intelligenceWorkspace()) request.finish(undefined, opened === true);
 });
 
 async function readDrafts() {
@@ -272,7 +303,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
 
 handle('initial', async () => {
   const { entries, unreadable } = await readDrafts();
-  const features = intelligenceMock ? { intelligenceMock: true } : {};
+  const features = intelligenceMock ? { intelligenceMock: true, intelligenceContext: liveIntelligence } : {};
   const roots = new Set([workspace?.root, ...entries.map(draft => draft.root)]);
   let unavailable = false;
   for (const root of roots) {
@@ -286,12 +317,12 @@ handle('initial', async () => {
   return { ...features, unavailable, unreadable };
 });
 
-handle('open-intelligence-mock', () => {
+handle('open-intelligence-mock', input => {
   if (!intelligenceMock) throw new Error('The Intelligence mock is disabled.');
   if (!rendererReady || changingWorkspace || closePending || allowClose || !window || window.isDestroyed()) {
     throw new Error('Wait for the workbench to become available.');
   }
-  return intelligenceMock.open(window);
+  return intelligenceMock.open(window, input);
 });
 
 handle('appearance', () => ({ theme: nativeTheme.themeSource, mode: colorMode() }));
@@ -376,7 +407,12 @@ handle('revoke-extension', (id, extensionId) => { currentWorkspace(id); return e
 handle('extension-command', (id, extensionId, commandId) => { currentWorkspace(id); return extensionBroker.invoke(extensionId, commandId); });
 handle('extension-proposal', (id, extensionId, proposalId) => { currentWorkspace(id); return extensionBroker.proposal(extensionId, proposalId); });
 ipcMain.on('cevra:extension-document-changed', (event, id, file) => {
-  if (isWorkbench(event) && workspace?.id === id && typeof file === 'string') extensionBroker.documentChanged(id, file.replaceAll('\\', '/'));
+  if (!isWorkbench(event) || workspace?.id !== id || typeof file !== 'string') return;
+  extensionBroker.documentChanged(id, file.replaceAll('\\', '/'));
+  intelligenceMock?.documentChanged(workspace, file);
+});
+ipcMain.on('cevra:intelligence-document-closed', (event, id, file) => {
+  if (isWorkbench(event) && workspace?.id === id && typeof file === 'string') intelligenceMock?.documentChanged(workspace, file);
 });
 handle('editor-settings', id => preferences.getEditor(id ? currentWorkspace(id) : undefined));
 handle('set-editor-settings', (id, scope, values) =>

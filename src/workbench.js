@@ -196,6 +196,7 @@ function syncCommands() {
   const runtime = runtimeKind(active?.path);
   byId('extension-manager-open').disabled = changingProject;
   byId('intelligence-mock-open').disabled = changingProject;
+  byId('intelligence-attach-selection').disabled = changingProject || !active || active.state.selection.main.empty;
   dock.dataset.runtime = runtime ?? '';
   runtimePanel.sync(project, runtime, Boolean(run || changingProject));
   dockButtons.terminal.disabled = !project?.terminalLimit || changingProject;
@@ -232,6 +233,7 @@ function syncCommands() {
 }
 
 function syncCursor() {
+  byId('intelligence-attach-selection').disabled = changingProject || !active || active.state.selection.main.empty;
   if (!active) {
     byId('language').textContent = '';
     byId('line-ending').textContent = '';
@@ -569,6 +571,7 @@ async function removeTab(tab) {
     }
   }
   documents.delete(tab.path);
+  api.intelligenceDocumentClosed(tab.projectId, tab.path);
   semantic.changed();
   problemsPanel.remove(tab);
   if (tab.language) {
@@ -699,6 +702,7 @@ async function saveFile(tab) {
   try {
     const { before, revision } = await tab.saving;
     tab.revision = revision;
+    api.extensionDocumentChanged(tab.projectId, tab.path);
     tab.savedDoc = before.doc;
     tab.savedEol = before.field(lineEnding);
     tab.dirty = isDirty(tab, tab.state);
@@ -1288,6 +1292,7 @@ async function jumpToLocation({ path, line, column, offset, length = 0 }, expect
   view.focus();
   if (tab.dirty && !expected) notify('The source location refers to the saved version of this file.');
   syncCommands();
+  return true;
 }
 
 async function travel(direction) {
@@ -1478,14 +1483,31 @@ async function stageEdits({ workspace, changes, authority }, verify) {
   notify('Created recoverable drafts in ' + changes.length + (changes.length === 1 ? ' file.' : ' files.'));
 }
 
-api.onExtensionEditorSnapshot(({ workspaceId, path, allowedFiles }) => {
+function editorSnapshot({ workspaceId, path, allowedFiles }, normalized = false) {
   if (project?.id !== workspaceId || changingProject) return null;
   const tab = path ? findDocument(path) : active;
   if (!tab || tab.recoveryConflict || tab.saving || tab.discarding || tab.formatting) return null;
   if (allowedFiles && !allowedFiles.some(file => documentKey(file) === documentKey(tab.path))) return null;
   const selection = tab.state.selection.main;
-  return { path: tab.path.replaceAll('\\', '/'), text: serialize(tab), baseRevision: tab.revision,
+  return { path: tab.path.replaceAll('\\', '/'), text: normalized ? tab.state.doc.toString() : serialize(tab), baseRevision: tab.revision,
     documentId: tab.id, version: tab.version, selection: { from: selection.from, to: selection.to } };
+}
+api.onExtensionEditorSnapshot(editorSnapshot);
+api.onIntelligenceEditorSnapshot(request => editorSnapshot(request, true));
+api.onIntelligenceSourceLocation(async ({ workspaceId, source }) => {
+  const opened = project;
+  const isCurrent = () => !changingProject && project === opened && project?.id === workspaceId;
+  if (!isCurrent()) return false;
+  const selected = source.kind === 'selection' ? findDocument(source.path) : undefined;
+  if (source.kind === 'selection' && !selected) return false;
+  return jumpToLocation({ path: source.path, line: source.line, column: 1,
+    offset: source.from, length: source.to === undefined ? 0 : source.to - source.from }, {
+    isCurrent, revision: source.revision, documentId: source.documentId, version: source.version,
+    allowDraft: source.kind === 'selection',
+    validate: () => !selected || (findDocument(source.path) === selected && selected.id === source.documentId &&
+      selected.version === source.version && selected.revision === source.revision && !selected.saving && !selected.discarding),
+    staleMessage: 'This Intelligence source has changed.',
+  });
 });
 
 let renderedExtensionDiagnostics;
@@ -1560,6 +1582,12 @@ forwardButton.onclick = () => travel('forward').catch(report);
 openButton.onclick = welcomeOpen.onclick = () => openProject(api.chooseFolder).catch(report);
 exampleButton.onclick = () => openProject(api.openExample).catch(report);
 byId('intelligence-mock-open').onclick = () => api.openIntelligenceMock().catch(report);
+byId('intelligence-attach-selection').onclick = () => {
+  if (!active || changingProject) return;
+  const { from, to } = active.state.selection.main;
+  if (to > from) void api.openIntelligenceMock({ path: active.path.replaceAll('\\', '/'),
+    documentId: active.id, version: active.version, from, to }).catch(report);
+};
 saveButton.onclick = () => saveFile(active).catch(report);
 formatButton.onclick = formatDocument;
 inspectButton.onclick = () => {
@@ -1618,6 +1646,7 @@ async function initialize() {
     await extensionContributions.refresh();
     const initial = await api.initial();
     byId('intelligence-mock-open').hidden = initial.intelligenceMock !== true;
+    byId('intelligence-attach-selection').hidden = initial.intelligenceContext !== true;
     if (initial.project) await adoptProject(initial.project);
     else applyEditorSettings((await api.editorSettings()).effective);
     if (initial.unavailable) notify('A draft workspace is unavailable. Reopen it when it is accessible.', true);

@@ -4,7 +4,18 @@ contextBridge.exposeInMainWorld('cevra', {
   initial: () => ipcRenderer.invoke('cevra:initial'),
   appearance: () => ipcRenderer.invoke('cevra:appearance'),
   setTheme: choice => ipcRenderer.invoke('cevra:set-theme', choice),
-  openIntelligenceMock: () => ipcRenderer.invoke('cevra:open-intelligence-mock'),
+  openIntelligenceMock: selection => ipcRenderer.invoke('cevra:open-intelligence-mock', selection),
+  intelligenceDocumentClosed: (id, path) => ipcRenderer.send('cevra:intelligence-document-closed', id, path),
+  onIntelligenceEditorSnapshot: callback => ipcRenderer.on('cevra:intelligence-editor-snapshot', async (_event, request) => {
+    let snapshot = null;
+    try { snapshot = await callback(request); } catch {}
+    await ipcRenderer.invoke('cevra:intelligence-editor-snapshot', request.requestId, snapshot).catch(() => {});
+  }),
+  onIntelligenceSourceLocation: callback => ipcRenderer.on('cevra:intelligence-source-location', async (_event, request) => {
+    let opened = false;
+    try { opened = await callback(request); } catch {}
+    await ipcRenderer.invoke('cevra:intelligence-source-location', request.requestId, opened).catch(() => {});
+  }),
   extensionContributions: () => ipcRenderer.invoke('cevra:extension-contributions'),
   setExtensionPalette: key => ipcRenderer.invoke('cevra:set-extension-palette', key),
   onExtensionContributionsChanged: callback => ipcRenderer.on('cevra:extension-contributions-changed', (_event, id) => callback(id)),

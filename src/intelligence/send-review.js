@@ -1,12 +1,12 @@
-window.reviewConversation = ({ model, endpoint, messages, maxOutputTokens }) => {
+window.reviewConversation = ({ model, endpoint, messages, labels, maxOutputTokens }) => {
   delete window.reviewConversation;
   document.getElementById('destination').textContent = `${model} · ${endpoint} · Up to ${maxOutputTokens} output tokens`;
   const list = document.getElementById('review-messages');
-  for (const message of messages) {
+  for (const [index, message] of messages.entries()) {
     const item = document.createElement('li');
     const role = document.createElement('strong');
     const content = document.createElement('pre');
-    role.textContent = message.role === 'user' ? 'You' : 'Assistant';
+    role.textContent = labels?.[index] ?? (message.role === 'user' ? 'You' : 'Assistant');
     content.textContent = message.content;
     content.tabIndex = 0;
     item.append(role, content);

@@ -45,12 +45,13 @@ function remember(promptText, responseText) {
   conversation.hidden = false;
 }
 
-async function reset() {
+async function reset(preserveAttachments = false) {
   if (current || clearing) return;
   clearing = true;
   busy(true);
   try {
-    await api.clear();
+    if (preserveAttachments) await api.switchModel();
+    else await api.clear();
     last = undefined;
     retry.hidden = true;
     history.replaceChildren();
@@ -90,7 +91,7 @@ async function run(input) {
       if (event.kind === 'usage') usage.textContent =
         `${live ? 'OpenAI usage' : 'Simulated usage'} · ${event.inputTokens} input / ${event.outputTokens} output tokens`;
       if (event.kind === 'complete') {
-        if (live && output.textContent) remember(input.prompt, output.textContent);
+        if (live && event.retained && output.textContent) remember(input.prompt, output.textContent);
         if (live && !usage.textContent) usage.textContent = 'OpenAI usage unavailable.';
         status.textContent = event.finishReason === 'length' ? 'Response reached the output limit.' : 'Response complete.';
         if (live) document.dispatchEvent(new Event('intelligence-connection-changed'));
@@ -141,7 +142,7 @@ retry.addEventListener('click', () => {
 clear.addEventListener('click', async () => {
   if (await reset()) { prompt.value = ''; prompt.focus(); }
 });
-model.addEventListener('change', () => { void reset(); });
+model.addEventListener('change', () => { void reset(true); });
 api.models().then(catalogs => {
   for (const catalog of catalogs) {
     for (const item of catalog.models) {

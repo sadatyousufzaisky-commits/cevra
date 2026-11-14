@@ -4,7 +4,7 @@
   "name": "CEVRA Intelligence",
   "status": "in_progress",
   "isImplementationComplete": false,
-  "branch": "cevra/phase5-g3",
+  "branch": "cevra/phase5-g4",
   "baselineCommit": "4960ef251237583f9ee7a21e067f949dd2f6d4b0",
   "baselinePhase4Ledger": "../phase-4/PHASE4_STATUS.json",
   "lastVerifiedPhase4Ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42988060217",
@@ -101,7 +101,13 @@
         "knownLimitations": ["Provider stream verified with a synthetic HTTPS fixture", "Authenticated OpenAI smoke test requires a user-owned project key", "Electron preview only"]
       }
     },
-    { "id": "G4", "name": "Context Broker & Personalization", "status": "unverified", "evidence": [] },
+    {
+      "id": "G4",
+      "name": "Context Broker & Personalization",
+      "status": "implemented",
+      "evidence": ["g4-context-and-personalization.md", "../../qa/intelligence-context.test.cjs",
+        "../../qa/intelligence-stream-desktop.test.cjs"]
+    },
     { "id": "G5", "name": "Editor Actions & Patch Review", "status": "unverified", "evidence": [] },
     { "id": "G6", "name": "Controlled Agentic Coding", "status": "unverified", "evidence": [] },
     { "id": "G7", "name": "Model Routing, Profiles & Offline", "status": "unverified", "evidence": [] },

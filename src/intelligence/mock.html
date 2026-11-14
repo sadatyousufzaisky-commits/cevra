@@ -7,6 +7,7 @@
   <title>CEVRA Intelligence</title>
   <link rel="stylesheet" href="mock.css">
   <script defer src="mock-panel.js"></script>
+  <script defer src="context-panel.js"></script>
   <script defer src="connection-panel.js"></script>
 </head>
 <body>
@@ -31,6 +32,50 @@
       <p id="usage" class="muted"></p>
     </section>
     <p id="status" role="status">Loading model…</p>
+    <section id="intelligence-context" hidden aria-labelledby="context-title">
+      <h2 id="context-title">Workspace context</h2>
+      <p id="context-help" class="muted">Use Attach selection to Intelligence in the editor, or choose saved files here.</p>
+      <div class="actions">
+        <button type="button" id="attach-file">Attach saved file</button>
+        <button type="button" id="attach-instructions">Attach project instructions</button>
+      </div>
+      <ul id="context-attachments" aria-label="Attachments"></ul>
+      <p id="context-status" role="status"></p>
+    </section>
+    <section id="response-sources" hidden aria-labelledby="sources-title">
+      <h2 id="sources-title">Sources used in this response</h2>
+      <ul id="context-sources"></ul>
+      <div class="actions"><button type="button" id="check-sources">Check source revisions</button></div>
+    </section>
+    <details id="response-preferences" hidden>
+      <summary>Response preferences</summary>
+      <form id="preference-form" inert>
+        <label for="response-language">Language</label>
+        <select id="response-language" name="language">
+          <option value="default">Provider default</option><option value="en">English</option>
+          <option value="en-GB">British English</option><option value="en-US">US English</option>
+          <option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option>
+          <option value="fa">Persian</option><option value="ps">Pashto</option><option value="ur">Urdu</option>
+          <option value="ar">Arabic</option><option value="hi">Hindi</option>
+        </select>
+        <label for="response-length">Length</label>
+        <select id="response-length" name="length">
+          <option value="default">Provider default</option><option value="concise">Concise</option><option value="detailed">Detailed</option>
+        </select>
+        <label for="response-style">Code style</label>
+        <select id="response-style" name="style">
+          <option value="default">Provider default</option><option value="project">Follow project conventions</option>
+          <option value="readable">Prefer explicit code</option><option value="minimal">Prefer minimal changes</option>
+        </select>
+        <label for="response-testing">Testing</label>
+        <select id="response-testing" name="testing">
+          <option value="default">Provider default</option><option value="suggest">Suggest relevant tests</option>
+          <option value="regression">Suggest regression and edge-case tests</option>
+        </select>
+        <div class="actions"><button type="submit" id="save-response-preferences">Save preferences</button></div>
+        <p id="preference-status" role="status"></p>
+      </form>
+    </details>
     <section id="conversation" hidden aria-labelledby="conversation-title">
       <h2 id="conversation-title">Completed turns included with the next prompt</h2>
       <ol id="history"></ol>

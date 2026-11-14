@@ -14,6 +14,7 @@ const errors = Object.freeze({
   AUTH_INVALID: 'The provider rejected the connection.',
   AUTH_EXPIRED: 'The provider connection expired.',
   CONTENT_FILTERED: 'The provider ended the response because of its content policy.',
+  CONTEXT_CHANGED: 'The attached source changed. Remove it and attach it again.',
   QUOTA_EXHAUSTED: 'The provider quota is exhausted.',
   RATE_LIMIT: 'The provider rate limit was reached.',
   NETWORK_BLOCKED: 'The provider connection was blocked.',

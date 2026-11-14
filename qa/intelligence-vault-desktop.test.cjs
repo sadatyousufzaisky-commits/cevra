@@ -76,7 +76,9 @@ test('Windows stores, checks, rotates and deletes API keys through the native pr
     assert.equal(await workbench.page.evaluate(() => typeof window.intelligenceMock), 'undefined');
     assert.equal(await ui.panel.evaluate(() => typeof window.cevra), 'undefined');
     assert.deepEqual(await ui.panel.evaluate(() => Object.keys(window.intelligenceMock).sort()), [
-      'checkKey', 'cleanupKey', 'clear', 'connections', 'disconnectKey', 'models', 'next', 'start', 'stop', 'storeKey',
+      'attachFile', 'attachInstructions', 'checkKey', 'checkSources', 'cleanupKey', 'clear', 'connections', 'context',
+      'disconnectKey', 'models', 'next', 'onContextChanged', 'openSource', 'preferences', 'removeContext', 'savePreferences',
+      'start', 'stop', 'storeKey', 'switchModel',
     ]);
     const first = await capture('Add key', 'first', 'Key stored in Windows Credential Manager.');
     assert.equal((await entry()).current, first);

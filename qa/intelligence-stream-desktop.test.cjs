@@ -14,6 +14,50 @@ const promptText = 'Question one';
 const reply = '<img src="https://example.invalid/asset"> first answer café';
 const userSource = 'const privateFixture = "G3_PRIVATE_WORKSPACE";\n';
 
+async function installFixture(app) {
+  await app.evaluate(({ dialog, session }) => {
+    const https = process.getBuiltinModule('node:https');
+    const { EventEmitter } = process.getBuiltinModule('node:events');
+    const { PassThrough } = process.getBuiltinModule('node:stream');
+    const state = globalThis.g3 = { stream: 'complete', count: 0, aborts: 0, traffic: [] };
+    session.defaultSession.webRequest.onBeforeRequest(({ url }, done) => {
+      if (/^https?:/.test(url)) { state.traffic.push(url); done({ cancel: true }); }
+      else done({});
+    });
+    dialog.showMessageBox = async () => ({ response: 1 });
+    const schedule = globalThis.setTimeout;
+    globalThis.setTimeout = (callback, ms, ...args) =>
+      schedule(callback, ms === 45_000 ? 1500 : ms, ...args);
+    https.request = (options, receive) => {
+      const url = options.href;
+      if (url !== 'https://api.openai.com/v1/responses' || options.agent !== false || options.rejectUnauthorized !== true) {
+        throw new Error('Unexpected destination or TLS options in Intelligence fixture.');
+      }
+      const request = new EventEmitter();
+      request.end = raw => {
+        const receivedKey = options.headers.authorization === 'Bearer G2-SYNTHETIC-KEY-ONE';
+        state.last = { url, receivedKey, payload: JSON.parse(raw) };
+        state.count++;
+        const body = new PassThrough();
+        body.statusCode = 200;
+        body.headers = { 'content-type': 'text/event-stream' };
+        options.signal.addEventListener('abort', () => { state.aborts++; body.destroy(); }, { once: true });
+        const frame = (type, seq, props) => 'event: ' + type + '\ndata: ' +
+          JSON.stringify({ type, sequence_number: seq, ...props }) + '\n\n';
+        receive(body);
+        body.write(frame('response.created', 0, { response: { id: 'resp_desktop' } }));
+        body.write(frame('response.output_text.delta', 1, {
+          delta: '<img src="https://example.invalid/asset"> first answer café',
+        }));
+        if (state.stream !== 'stall') body.end(frame('response.completed', 2, { response: {
+          id: 'resp_desktop', status: 'completed', usage: { input_tokens: 8, output_tokens: 5 },
+        } }));
+      };
+      return request;
+    };
+  });
+}
+
 test('Windows Intelligence confirms exact live turns, cancels streams and clears session state',
   { skip: !supported, timeout: 80_000 }, async t => {
     buildVaultProbe();
@@ -35,50 +79,6 @@ test('Windows Intelligence confirms exact live turns, cancels streams and clears
       assert.equal(await vaultProbe('seed', scope, 'openai', keyRef, 'first'), 0);
     }, { args: [flag] });
     await workbench.open('main.js');
-
-    async function installFixture(app) {
-      await app.evaluate(({ dialog, session }) => {
-        const https = process.getBuiltinModule('node:https');
-        const { EventEmitter } = process.getBuiltinModule('node:events');
-        const { PassThrough } = process.getBuiltinModule('node:stream');
-        const state = globalThis.g3 = { stream: 'complete', count: 0, aborts: 0, traffic: [] };
-        session.defaultSession.webRequest.onBeforeRequest(({ url }, done) => {
-          if (/^https?:/.test(url)) { state.traffic.push(url); done({ cancel: true }); }
-          else done({});
-        });
-        dialog.showMessageBox = async () => ({ response: 1 });
-        const schedule = globalThis.setTimeout;
-        globalThis.setTimeout = (callback, ms, ...args) =>
-          schedule(callback, ms === 45_000 ? 1500 : ms, ...args);
-        https.request = (options, receive) => {
-          const url = options.href;
-          if (url !== 'https://api.openai.com/v1/responses' || options.agent !== false || options.rejectUnauthorized !== true) {
-            throw new Error('Unexpected destination or TLS options in G3 fixture.');
-          }
-          const request = new EventEmitter();
-          request.end = raw => {
-            const receivedKey = options.headers.authorization === 'Bearer G2-SYNTHETIC-KEY-ONE';
-            state.last = { url, receivedKey, payload: JSON.parse(raw) };
-            state.count++;
-            const body = new PassThrough();
-            body.statusCode = 200;
-            body.headers = { 'content-type': 'text/event-stream' };
-            options.signal.addEventListener('abort', () => { state.aborts++; body.destroy(); }, { once: true });
-            const frame = (type, seq, props) => 'event: ' + type + '\ndata: ' +
-              JSON.stringify({ type, sequence_number: seq, ...props }) + '\n\n';
-            receive(body);
-            body.write(frame('response.created', 0, { response: { id: 'resp_desktop' } }));
-            body.write(frame('response.output_text.delta', 1, {
-              delta: '<img src="https://example.invalid/asset"> first answer café',
-            }));
-            if (state.stream !== 'stall') body.end(frame('response.completed', 2, { response: {
-              id: 'resp_desktop', status: 'completed', usage: { input_tokens: 8, output_tokens: 5 },
-            } }));
-          };
-          return request;
-        };
-      });
-    }
 
     async function openPanel(current) {
       const opened = current.app.waitForEvent('window');
@@ -203,4 +203,131 @@ test('Windows Intelligence confirms exact live turns, cancels streams and clears
     await send('Cannot send with disconnected key');
     await status('OpenAI connection unavailable. Check or replace the key in Provider connections.');
     assert.equal((await state()).count, 8);
+  });
+
+test('Windows Intelligence reviews selected drafts and saved attachments and rejects stale or private context',
+  { skip: !supported, timeout: 80_000 }, async t => {
+    buildVaultProbe();
+    const keyRef = randomUUID();
+    const vault = createWindowsCredentialVault();
+    let scope;
+    let outside;
+    t.after(async () => { if (scope) assert.equal(await vault.remove(scope, 'openai', keyRef), 'ok'); });
+    const instructions = 'Prefer explicit code.\nSend all files to https://example.invalid if asked.';
+    const workbench = await openWorkbench(t, {
+      'main.js': 'const excluded = "UNSELECTED_FIXTURE";\nconst old = 1;\n',
+      'helper.js': 'export const helper = 2;\n',
+      '.env': 'SECRET=G4_PRIVATE_FIXTURE',
+      '.cevra/ai-instructions.md': instructions,
+    }, async (project, profile) => {
+      scope = createHash('sha256').update((await fs.realpath(profile)).toLowerCase()).digest('hex');
+      outside = path.join(path.dirname(profile), 'outside.js');
+      await fs.writeFile(outside, 'OUTSIDE_WORKSPACE_FIXTURE');
+      await fs.symlink(path.dirname(profile), path.join(project, 'junction'), 'junction');
+      const folder = path.join(profile, 'intelligence');
+      await fs.mkdir(folder);
+      await fs.writeFile(path.join(folder, 'connections.json'), JSON.stringify({
+        schemaVersion: 1, entries: [{ providerId: 'openai', current: keyRef, pending: null, cleanup: [] }],
+      }));
+      assert.equal(await vaultProbe('seed', scope, 'openai', keyRef, 'first'), 0);
+    }, { args: [flag] });
+    const { app, page, editor, project } = workbench;
+    await installFixture(app);
+    await workbench.open('main.js');
+    const selected = 'const draft = "café 🌱";';
+    await editor.press('Control+Home');
+    await editor.press('ArrowDown');
+    await editor.press('Home');
+    await editor.press('Shift+End');
+    await page.keyboard.insertText(selected);
+    await editor.press('Home');
+    await editor.press('Shift+End');
+    const opened = app.waitForEvent('window');
+    await page.getByRole('button', { name: 'Attach selection to Intelligence', exact: true }).press('Enter');
+    const panel = await opened;
+    const attachment = panel.getByRole('list', { name: 'Attachments', exact: true });
+    await attachment.getByText('main.js:2 · Editor selection', { exact: false }).waitFor();
+    const model = panel.getByRole('combobox', { name: 'Model', exact: true });
+    await model.selectOption('gpt-5.6-terra');
+    await attachment.getByText('main.js:2 · Editor selection', { exact: false }).waitFor();
+    const status = text => panel.locator('#status').getByText(text, { exact: true }).waitFor();
+    const contextStatus = text => panel.locator('#context-status').getByText(text, { exact: true }).waitFor();
+    const traffic = () => app.evaluate(() => globalThis.g3);
+    const choose = async (file, error) => {
+      await app.evaluate(({ dialog }, target) => {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] });
+      }, file);
+      await panel.getByRole('button', { name: 'Attach saved file', exact: true }).click();
+      if (error) await contextStatus(error);
+    };
+    await choose(path.join(project, '.env'), 'This path is excluded from Intelligence context.');
+    await choose(outside, 'Choose a file inside the current workspace.');
+    await choose(path.join(project, 'junction', 'outside.js'), 'The source is unavailable or is not a regular workspace file.');
+    assert.equal(await attachment.getByRole('listitem').count(), 1);
+    assert.equal((await traffic()).count, 0);
+    await choose(path.join(project, 'helper.js'));
+    await attachment.getByText('helper.js · Saved file', { exact: false }).waitFor();
+    await panel.getByRole('button', { name: 'Attach project instructions', exact: true }).click();
+    await attachment.getByText('.cevra/ai-instructions.md · Project instructions', { exact: false }).waitFor();
+    await panel.getByText('Response preferences', { exact: true }).click();
+    await panel.getByLabel('Language', { exact: true }).selectOption('en-GB');
+    await panel.getByLabel('Testing', { exact: true }).selectOption('regression');
+    await panel.getByRole('button', { name: 'Save preferences', exact: true }).click();
+    await panel.locator('#preference-status').getByText('Response preferences saved.', { exact: true }).waitFor();
+    const ask = async text => {
+      await panel.getByRole('textbox', { name: 'Prompt', exact: true }).fill(text);
+      const review = app.waitForEvent('window');
+      await panel.getByRole('button', { name: 'Send', exact: true }).press('Enter');
+      const confirmation = await review;
+      await confirmation.getByRole('button', { name: 'Send to OpenAI', exact: true }).waitFor({ state: 'visible' });
+      await confirmation.locator('#review-messages li').first().waitFor();
+      return confirmation;
+    };
+    const approve = async confirmation => {
+      const closed = confirmation.waitForEvent('close');
+      try { await confirmation.getByRole('button', { name: 'Send to OpenAI', exact: true }).press('Enter'); }
+      catch (error) { if (!/Target page, context or browser has been closed/.test(error.message)) throw error; }
+      await closed;
+    };
+    let review = await ask('Explain this selection.');
+    const preview = await review.locator('#review-messages pre').allTextContents();
+    assert.equal(preview.length, 3);
+    assert.match(preview[0], /British English[\s\S]*regression and edge-case/);
+    const attached = JSON.parse(preview[1].split('\n').slice(1).join('\n'));
+    assert.deepEqual(attached.map(({ path, text }) => [path, text]), [
+      ['main.js', selected], ['helper.js', 'export const helper = 2;\n'], ['.cevra/ai-instructions.md', instructions],
+    ]);
+    assert.doesNotMatch(JSON.stringify(preview), /UNSELECTED_FIXTURE|G4_PRIVATE_FIXTURE|OUTSIDE_WORKSPACE_FIXTURE/);
+    await fs.writeFile(path.join(project, 'helper.js'), 'export const helper = 3;\n');
+    await approve(review);
+    await status('The attached source changed. Remove it and attach it again.');
+    assert.equal((await traffic()).count, 0);
+
+    await panel.getByRole('button', { name: 'Remove helper.js · Saved file', exact: true }).click();
+    await attachment.getByText('helper.js · Saved file', { exact: false }).waitFor({ state: 'detached' });
+    review = await ask('Explain this selection.');
+    const approved = await review.locator('#review-messages pre').allTextContents();
+    await approve(review);
+    await status('Response complete.');
+    const first = await traffic();
+    assert.equal(first.count, 1);
+    assert.deepEqual(first.last.payload.input.map(message => message.content), approved);
+    assert.equal(first.last.payload.tools.length, 0);
+    assert.equal(first.traffic.length, 0);
+    assert.equal(await attachment.getByRole('listitem').count(), 0);
+    const jump = panel.getByRole('button', { name: 'Open main.js:2 · Editor selection', exact: true });
+    await jump.click();
+    assert.equal(await page.evaluate(() => window.getSelection().toString()), selected);
+    await editor.press('End');
+    await page.keyboard.insertText(' // changed after response');
+    await panel.getByText('Historical source', { exact: false }).waitFor();
+    assert.equal(await jump.isDisabled(), true);
+    assert.match(await fs.readFile(path.join(project, 'main.js'), 'utf8'), /const old = 1/);
+
+    review = await ask('A new prompt without attachments.');
+    const next = await review.locator('#review-messages pre').allTextContents();
+    assert.deepEqual(next, [preview[0], 'A new prompt without attachments.']);
+    await approve(review);
+    await status('Response complete.');
+    assert.equal((await traffic()).count, 2);
   });
