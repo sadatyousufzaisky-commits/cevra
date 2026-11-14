@@ -3,6 +3,7 @@ const form = document.getElementById('prompt-form');
 const model = document.getElementById('model');
 const prompt = document.getElementById('prompt');
 const send = document.getElementById('send');
+const propose = document.getElementById('propose-edit');
 const stop = document.getElementById('stop');
 const retry = document.getElementById('retry');
 const clear = document.getElementById('clear');
@@ -19,6 +20,7 @@ let clearing = false;
 
 function busy(active) {
   model.disabled = prompt.disabled = send.disabled = active;
+  propose.disabled = active || models.get(model.value) !== 'openai';
   stop.disabled = !active || !current?.id;
   clear.disabled = active;
 }
@@ -29,6 +31,7 @@ function showProvider() {
     'OpenAI API. Sending includes your prompt and the completed turns below. API charges may apply.' :
     'Offline mock. Responses and usage are simulated.';
   output.setAttribute('aria-label', live ? 'Model response' : 'Mock response');
+  propose.hidden = !live;
 }
 
 function remember(promptText, responseText) {
@@ -93,8 +96,14 @@ async function run(input) {
       if (event.kind === 'complete') {
         if (live && event.retained && output.textContent) remember(input.prompt, output.textContent);
         if (live && !usage.textContent) usage.textContent = 'OpenAI usage unavailable.';
-        status.textContent = event.finishReason === 'length' ? 'Response reached the output limit.' : 'Response complete.';
+        status.textContent = event.proposalId ? 'Edit proposal ready. Review it in the workbench.' :
+          event.finishReason === 'length' ? 'Response reached the output limit.' : 'Response complete.';
         if (live) document.dispatchEvent(new Event('intelligence-connection-changed'));
+        break;
+      }
+      if (event.kind === 'proposal-invalid') {
+        status.textContent = event.message;
+        retry.hidden = false;
         break;
       }
       if (event.kind === 'error') {
@@ -124,7 +133,8 @@ async function run(input) {
 
 form.addEventListener('submit', event => {
   event.preventDefault();
-  if (prompt.value.trim()) void run({ modelId: model.value, prompt: prompt.value });
+  if (prompt.value.trim()) void run({ modelId: model.value, prompt: prompt.value,
+    ...(event.submitter?.id === 'propose-edit' ? { mode: 'patch' } : {}) });
 });
 stop.addEventListener('click', () => {
   if (!current?.id || current.stopped) return;

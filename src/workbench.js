@@ -35,6 +35,7 @@ import { sourceLanguage } from './source-language.cjs';
 import { runtimeKind } from './runtime-kind.cjs';
 import { normalizeSource } from './source-text.cjs';
 import { changeLineEnding, detectLineEnding, lineEnding, lineEndingHistory } from './line-endings.js';
+import { intelligenceSuggestion, showIntelligenceSuggestion } from './intelligence/inline-suggestion.js';
 
 const api = window.cevra;
 const flightpathPanel = createFlightpathPanel({ api, errorText, checkInputs: () => testEvidence.recheck() });
@@ -109,6 +110,8 @@ let outputText = '';
 let selectedTheme = themeChoice.value;
 let colorMode = 'dark';
 let stagingEdits;
+let intelligenceProposal;
+let closingWorkbench = false;
 let savingAll;
 let editorSettings;
 
@@ -197,6 +200,7 @@ function syncCommands() {
   byId('extension-manager-open').disabled = changingProject;
   byId('intelligence-mock-open').disabled = changingProject;
   byId('intelligence-attach-selection').disabled = changingProject || !active || active.state.selection.main.empty;
+  byId('intelligence-review-proposal').disabled = Boolean(changingProject || saving || discarding || run || stagingEdits);
   dock.dataset.runtime = runtime ?? '';
   runtimePanel.sync(project, runtime, Boolean(run || changingProject));
   dockButtons.terminal.disabled = !project?.terminalLimit || changingProject;
@@ -341,6 +345,7 @@ function editorState(tab, text, ending) {
       basicSetup,
       lineEnding.init(() => ending),
       lineEndingHistory,
+      intelligenceSuggestion,
       editorTheme,
       editorColorMode.of(colorModeExtension(colorMode === 'dark')),
       editorOptions.of(optionExtensions(editorSettings)),
@@ -490,6 +495,7 @@ function showFile(tab) {
   selectTreeFile();
   syncCommands();
   syncCursor();
+  refreshIntelligenceSuggestion();
 }
 
 function documentKey(path) {
@@ -1449,7 +1455,14 @@ const editPreview = createEditPreview({
     return { workspace, changes, skipped, authority };
   },
   stage(prepared, verify) {
-    stagingEdits = stageEdits(prepared, verify).finally(() => { stagingEdits = undefined; });
+    const body = document.body;
+    const lock = Boolean(prepared.authority?.intelligenceProposalId);
+    if (lock) body.inert = true;
+    stagingEdits = stageEdits(prepared, verify).finally(() => {
+      stagingEdits = undefined;
+      if (lock && !closingWorkbench) body.inert = false;
+      syncCommands();
+    });
     return stagingEdits;
   },
 });
@@ -1494,6 +1507,34 @@ function editorSnapshot({ workspaceId, path, allowedFiles }, normalized = false)
 }
 api.onExtensionEditorSnapshot(editorSnapshot);
 api.onIntelligenceEditorSnapshot(request => editorSnapshot(request, true));
+api.onIntelligencePatchSnapshot(request => {
+  const snapshot = editorSnapshot(request);
+  const tab = project?.id === request.workspaceId ? findDocument(request.path) : undefined;
+  return snapshot ? { ...snapshot, lineEnding: tab.state.field(lineEnding) } :
+    tab ? { blocked: true } : null;
+});
+
+function refreshIntelligenceSuggestion() {
+  if (!active) return;
+  const inline = intelligenceProposal?.inline;
+  showIntelligenceSuggestion(view, inline && active.id === inline.documentId && active.version === inline.version &&
+    inline.at <= active.state.doc.length ? inline : null);
+}
+
+api.onIntelligenceProposalChanged(proposal => {
+  intelligenceProposal = proposal?.workspaceId === project?.id ? proposal : null;
+  byId('intelligence-review-proposal').hidden = byId('intelligence-dismiss-proposal').hidden = !intelligenceProposal;
+  refreshIntelligenceSuggestion();
+  if (intelligenceProposal) notify('Intelligence proposed edits in ' + proposal.fileCount + (proposal.fileCount === 1 ? ' file.' : ' files.'));
+});
+byId('intelligence-review-proposal').onclick = () => {
+  const proposal = intelligenceProposal;
+  if (proposal) editPreview.intelligence(() => api.intelligenceProposal(proposal.workspaceId, proposal.id));
+};
+byId('intelligence-dismiss-proposal').onclick = () => {
+  const proposal = intelligenceProposal;
+  if (proposal) void api.dismissIntelligenceProposal(proposal.workspaceId, proposal.id).catch(report);
+};
 api.onIntelligenceSourceLocation(async ({ workspaceId, source }) => {
   const opened = project;
   const isCurrent = () => !changingProject && project === opened && project?.id === workspaceId;
@@ -1618,6 +1659,7 @@ diagnosticButton.onclick = () => {
 };
 
 api.beforeClose(async () => {
+  closingWorkbench = true;
   document.body.inert = true;
   try {
     await stagingEdits?.catch(() => {});
@@ -1627,12 +1669,14 @@ api.beforeClose(async () => {
     await Promise.all(open.map(tab => tab.draftError ? queueDraft(tab) : tab.draftTask));
     await api.closeReady(open.some(tab => tab.dirty), open.some(tab => tab.draftError));
   } catch (error) {
+    closingWorkbench = false;
     document.body.inert = false;
     report(error);
   }
 });
 
 api.onCloseCanceled(() => {
+  closingWorkbench = false;
   document.body.inert = false;
   if (active) view.focus();
 });

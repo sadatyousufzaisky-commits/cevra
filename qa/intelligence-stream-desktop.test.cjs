@@ -46,9 +46,16 @@ async function installFixture(app) {
           JSON.stringify({ type, sequence_number: seq, ...props }) + '\n\n';
         receive(body);
         body.write(frame('response.created', 0, { response: { id: 'resp_desktop' } }));
-        body.write(frame('response.output_text.delta', 1, {
-          delta: '<img src="https://example.invalid/asset"> first answer café',
-        }));
+        let answer = '<img src="https://example.invalid/asset"> first answer café';
+        if (state.patch) {
+          const context = state.last.payload.input.find(message => message.content.startsWith('Workspace material selected'));
+          const items = JSON.parse(context.content.split('\n').slice(1).join('\n')).filter(item => item.kind !== 'instructions');
+          answer = JSON.stringify({ schemaVersion: 1, edits: state.patch === 'outside' ?
+            [{ source: '../outside.js', replacement: 'must not apply' }] :
+            items.map(item => ({ source: item.source, replacement: item.kind === 'selection' ?
+              'const edited = "proposal café";' : 'export const helper = 5;\n' })) });
+        }
+        body.write(frame('response.output_text.delta', 1, { delta: answer }));
         if (state.stream !== 'stall') body.end(frame('response.completed', 2, { response: {
           id: 'resp_desktop', status: 'completed', usage: { input_tokens: 8, output_tokens: 5 },
         } }));
@@ -331,3 +338,119 @@ test('Windows Intelligence reviews selected drafts and saved attachments and rej
     await status('Response complete.');
     assert.equal((await traffic()).count, 2);
   });
+
+test('Windows Intelligence limits proposals to reviewed targets and applies undoable drafts', { skip: !supported, timeout: 85_000 }, async t => {
+  buildVaultProbe();
+  const keyRef = randomUUID();
+  const vault = createWindowsCredentialVault();
+  let scope;
+  t.after(async () => { if (scope) assert.equal(await vault.remove(scope, 'openai', keyRef), 'ok'); });
+  const mainSource = '\uFEFFconst untouched = "KEEP";\r\nconst value = 1;\r\n';
+  const helperSource = 'export const helper = 2;\n';
+  const workbench = await openWorkbench(t, { 'main.js': mainSource, 'helper.js': helperSource }, async (_project, profile) => {
+    scope = createHash('sha256').update((await fs.realpath(profile)).toLowerCase()).digest('hex');
+    const folder = path.join(profile, 'intelligence');
+    await fs.mkdir(folder);
+    await fs.writeFile(path.join(folder, 'connections.json'), JSON.stringify({
+      schemaVersion: 1, entries: [{ providerId: 'openai', current: keyRef, pending: null, cleanup: [] }],
+    }));
+    assert.equal(await vaultProbe('seed', scope, 'openai', keyRef, 'first'), 0);
+  }, { args: [flag] });
+  const { app, page, editor, project } = workbench;
+  const fixture = value => app.evaluate((_electron, value) => { globalThis.g3.patch = value; }, value);
+  await installFixture(app);
+  await workbench.open('main.js');
+  const attachment = page.getByRole('button', { name: 'Attach selection to Intelligence', exact: true });
+  const selectLine = async () => {
+    await editor.press('Control+Home');
+    await editor.press('ArrowDown');
+    await editor.press('Home');
+    await editor.press('Shift+End');
+  };
+  await selectLine();
+  const opened = app.waitForEvent('window');
+  await attachment.press('Enter');
+  const panel = await opened;
+  await panel.getByRole('combobox', { name: 'Model', exact: true }).selectOption('gpt-5.6-terra');
+  const panelStatus = text => panel.locator('#status').getByText(text, { exact: true }).waitFor();
+  const propose = async () => {
+    await panel.getByRole('textbox', { name: 'Prompt', exact: true }).fill('Improve the selected code.');
+    const opened = app.waitForEvent('window');
+    await panel.getByRole('button', { name: 'Propose edits', exact: true }).press('Enter');
+    const review = await opened;
+    await review.getByText('Edit proposal format', { exact: true }).waitFor();
+    const closed = review.waitForEvent('close');
+    try { await review.getByRole('button', { name: 'Send to OpenAI', exact: true }).press('Enter'); }
+    catch (error) { if (!/Target page, context or browser has been closed/.test(error.message)) throw error; }
+    await closed;
+  };
+  const reviewButton = page.getByRole('button', { name: 'Review Intelligence edit', exact: true });
+  const inline = page.locator('.intelligence-inline-suggestion');
+  const diff = page.getByRole('dialog', { name: 'Review Intelligence Edit', exact: true });
+  const apply = diff.getByRole('button', { name: 'Apply as Drafts', exact: true });
+  const showDiff = async () => {
+    await reviewButton.press('Enter');
+    await diff.locator('[data-edit="After"] ins').first().waitFor();
+  };
+
+  await fixture('outside');
+  await propose();
+  await panelStatus('The proposed edit was invalid or its source changed. Check the attachments and try again.');
+  assert.equal(await reviewButton.count(), 0);
+  assert.equal(await fs.readFile(path.join(project, 'main.js'), 'utf8'), mainSource);
+
+  await fixture('valid');
+  await propose();
+  await panelStatus('Edit proposal ready. Review it in the workbench.');
+  await inline.getByText('Suggestion const edited = "proposal café";', { exact: false }).waitFor();
+  await showDiff();
+  assert.equal(await diff.locator('del').textContent(), 'const value = 1;');
+  assert.equal(await diff.locator('ins').textContent(), 'const edited = "proposal café";');
+  await diff.getByRole('button', { name: 'Cancel', exact: true }).press('Enter');
+  assert.equal(await fs.readFile(path.join(project, 'main.js'), 'utf8'), mainSource);
+  await showDiff();
+  await apply.press('Enter');
+  await diff.waitFor({ state: 'hidden' });
+  assert.match(await editor.textContent(), /proposal café/);
+  assert.equal(await fs.readFile(path.join(project, 'main.js'), 'utf8'), mainSource);
+  await editor.press('Control+z');
+  assert.match(await editor.textContent(), /const value = 1/);
+  assert.equal(await inline.count(), 0);
+
+  async function attachBoth() {
+    await selectLine();
+    await attachment.press('Enter');
+    await panel.getByRole('list', { name: 'Attachments' }).getByText('main.js:2 · Editor selection', { exact: false }).waitFor();
+    await app.evaluate(({ dialog }, file) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
+    }, path.join(project, 'helper.js'));
+    await panel.getByRole('button', { name: 'Attach saved file', exact: true }).click();
+    await panel.getByRole('list', { name: 'Attachments' }).getByText('helper.js · Saved file', { exact: false }).waitFor();
+  }
+  await attachBoth();
+  await propose();
+  await panelStatus('Edit proposal ready. Review it in the workbench.');
+  await showDiff();
+  assert.equal(await diff.locator('ins').count(), 2);
+  await fs.writeFile(path.join(project, 'helper.js'), 'export const helper = 7;\n');
+  await apply.press('Enter');
+  await diff.locator('#edits-status').getByText(/changed|expired/).waitFor();
+  assert.match(await editor.textContent(), /const value = 1/);
+  assert.equal(await fs.readFile(path.join(project, 'main.js'), 'utf8'), mainSource);
+  await diff.getByRole('button', { name: 'Cancel', exact: true }).press('Enter');
+
+  await attachBoth();
+  await propose();
+  await panelStatus('Edit proposal ready. Review it in the workbench.');
+  await showDiff();
+  await apply.press('Enter');
+  await diff.waitFor({ state: 'hidden' });
+  assert.match(await editor.textContent(), /proposal café/);
+  assert.equal(await fs.readFile(path.join(project, 'main.js'), 'utf8'), mainSource);
+  assert.equal(await fs.readFile(path.join(project, 'helper.js'), 'utf8'), 'export const helper = 7;\n');
+  const restarted = await workbench.restart({ crash: true, args: [flag] });
+  await restarted.open('main.js');
+  assert.match(await restarted.editor.textContent(), /proposal café/);
+  await restarted.open('helper.js');
+  assert.match(await restarted.editor.textContent(), /helper = 5/);
+});

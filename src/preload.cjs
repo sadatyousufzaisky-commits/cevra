@@ -11,6 +11,14 @@ contextBridge.exposeInMainWorld('cevra', {
     try { snapshot = await callback(request); } catch {}
     await ipcRenderer.invoke('cevra:intelligence-editor-snapshot', request.requestId, snapshot).catch(() => {});
   }),
+  onIntelligencePatchSnapshot: callback => ipcRenderer.on('cevra:intelligence-patch-snapshot', async (_event, request) => {
+    let snapshot = null;
+    try { snapshot = await callback(request); } catch {}
+    await ipcRenderer.invoke('cevra:intelligence-patch-snapshot', request.requestId, snapshot).catch(() => {});
+  }),
+  onIntelligenceProposalChanged: callback => ipcRenderer.on('cevra:intelligence-proposal-changed', (_event, proposal) => callback(proposal)),
+  intelligenceProposal: (id, proposalId) => ipcRenderer.invoke('cevra:intelligence-proposal', id, proposalId),
+  dismissIntelligenceProposal: (id, proposalId) => ipcRenderer.invoke('cevra:dismiss-intelligence-proposal', id, proposalId),
   onIntelligenceSourceLocation: callback => ipcRenderer.on('cevra:intelligence-source-location', async (_event, request) => {
     let opened = false;
     try { opened = await callback(request); } catch {}

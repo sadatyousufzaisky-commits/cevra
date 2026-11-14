@@ -12,11 +12,12 @@ const { createContextBroker, ContextError, contextMessages, describe, instructio
 const { preferenceMessage } = require('./response-preferences.cjs');
 const { sourceFileKey } = require('../source-files.cjs');
 const { inside } = require('../workspace.cjs');
+const { patchInstruction } = require('./patch-broker.cjs');
 
 const page = path.join(__dirname, 'mock.html');
 const pageURL = pathToFileURL(page).href;
 
-function createIntelligenceMockWindow(profile, { live = false, getWorkspace, readEditor, openSource, getPreferences, setPreferences } = {}) {
+function createIntelligenceMockWindow(profile, { live = false, getWorkspace, readEditor, openSource, getPreferences, setPreferences, patches } = {}) {
   const connections = createConnectionManager(profile, createWindowsCredentialVault());
   let panel;
   const registry = createProviderRegistry(live ? [mockProvider, createOpenAIProvider(async signal => {
@@ -99,18 +100,21 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
     if (!request) return;
     panel.active = undefined;
     if (cancelled) panel.cancelledId = request.id;
+    if (cancelled) request.proposalScope?.abort();
     request.controller.abort();
     void request.stream?.return().catch(() => {});
   }
 
   function retire(panel) {
     panel.connectionOwner.abort();
+    patches?.retire();
     stop(panel);
   }
 
   function invalidateConnection(owner, providerId) {
     if (owner.active?.providerId === providerId) stop(owner);
     owner.verified.delete(providerId);
+    if (providerId === 'openai') patches?.retire();
   }
 
   function close() {
@@ -217,6 +221,7 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
   handle('models', () => catalogs);
   handle('clear', owner => {
     stop(owner);
+    patches?.retire();
     owner.messages = [];
     owner.modelId = undefined;
     owner.context?.clear();
@@ -226,6 +231,7 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
   });
   handle('switch-model', owner => {
     if (owner.active) return false;
+    patches?.retire();
     owner.messages = [];
     owner.modelId = undefined;
     owner.sources = new Map();
@@ -235,7 +241,8 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
   });
   handle('start', async (owner, input) => {
     if (owner.active || owner.attachingSelection) return { message: 'Wait for the current Intelligence operation.' };
-    if (!exactRecord(input, ['modelId', 'prompt'])) throw new ProviderError('INVALID_REQUEST');
+    if (!exactRecord(input, ['modelId', 'prompt']) &&
+        !(exactRecord(input, ['modelId', 'prompt', 'mode']) && input.mode === 'patch')) throw new ProviderError('INVALID_REQUEST');
     owner.cancelledId = undefined;
     const catalog = catalogs.find(item => item.models.some(model => model.id === input.modelId));
     const model = catalog?.models.find(item => item.id === input.modelId);
@@ -243,16 +250,22 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
     if (typeof input.prompt !== 'string' || Buffer.byteLength(input.prompt) > 8192) {
       return { message: 'Enter a valid prompt of up to 8 KiB.' };
     }
-    const history = live && owner.modelId === model.id ? owner.messages : [];
+    const patch = input.mode === 'patch';
+    const history = !patch && live && owner.modelId === model.id ? owner.messages : [];
     const id = randomUUID();
     const controller = new AbortController();
     const sources = catalog.providerId === 'openai' ? owner.context?.items() ?? [] : [];
+    if (patch && !sources.some(item => item.kind !== 'instructions')) {
+      return { message: 'Select OpenAI and attach an editor selection or saved file to propose edits.' };
+    }
     if (catalog.providerId !== 'openai' && owner.context?.items().length) return { message: 'Select OpenAI to send attachments.' };
     const active = { id, providerId: catalog.providerId, controller, pulling: false, sources, changed: new Set(),
-      modelId: model.id, text: '', conversation: [...history, { role: 'user', content: input.prompt }] };
+      modelId: model.id, patch, text: '', conversation: [...history, { role: 'user', content: input.prompt }],
+      proposalScope: patch ? new AbortController() : undefined };
     owner.active = active;
     try {
       const additions = catalog.providerId === 'openai' ? contextMessages(sources, preferenceMessage(await getPreferences())) : [];
+      if (patch) additions.push(patchInstruction(sources));
       const messages = [...history, ...additions.map(({ role, content }) => ({ role, content })), active.conversation.at(-1)];
       if (messages.length > limits.messages ||
           messages.reduce((bytes, item) => bytes + Buffer.byteLength(item.content), 0) > model.maxInputBytes) {
@@ -275,6 +288,7 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
         await verifySources(owner, active);
       }
       active.stream = registry.stream(value, { signal: controller.signal });
+      patches?.retire();
       owner.sources = new Map();
       owner.historical = new Set();
       sendContext(owner);
@@ -299,6 +313,33 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
       if (done) throw new ProviderError('PROVIDER_PROTOCOL');
       if (value.kind === 'text.delta') request.text += value.text;
       const retained = !request.sources.length;
+      if (value.kind === 'complete' && request.patch) {
+        if (value.finishReason !== 'stop') {
+          stop(owner, false);
+          return { kind: 'proposal-invalid', requestId: id,
+            message: 'The proposed edit was cut off. Narrow the requested change and retry.' };
+        }
+        let proposalId;
+        try {
+          const scope = AbortSignal.any([owner.connectionOwner.signal, request.proposalScope.signal]);
+          proposalId = await patches.issue(owner.project, request.text, request.sources,
+            () => verifySources(owner, request, scope), scope);
+        } catch (error) {
+          if (owner.active !== request) throw new ProviderError('CANCELLED');
+          stop(owner, false);
+          return { kind: 'proposal-invalid', requestId: id,
+            message: 'The proposed edit was invalid or its source changed. Check the attachments and try again.' };
+        }
+        if (owner.active !== request) {
+          patches.dismiss(owner.project, proposalId);
+          throw new ProviderError('CANCELLED');
+        }
+        for (const item of request.sources) owner.context.remove(item.id);
+        sendContext(owner);
+        owner.verified.add(request.providerId);
+        stop(owner, false);
+        return { ...value, retained: false, proposalId };
+      }
       if (value.kind === 'complete' && request.text && live) {
         if (retained) {
           owner.modelId = request.modelId;
@@ -328,7 +369,10 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
     }
   });
   handle('stop', (owner, id) => {
-    if (owner.active?.id === id) stop(owner);
+    if (owner.active?.id === id) {
+      if (owner.active.patch) patches.retire();
+      stop(owner);
+    }
   });
 
   function connection(name, action) {
@@ -405,6 +449,7 @@ function createIntelligenceMockWindow(profile, { live = false, getWorkspace, rea
       }
     },
     documentChanged(project, file) {
+      patches?.documentChanged(project, file);
       const owner = panel;
       if (!owner?.context || owner.project !== project) return;
       const key = sourceFileKey(file);

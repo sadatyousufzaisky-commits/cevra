@@ -42,10 +42,15 @@ const drafts = createDraftStore(path.join(app.getPath('userData'), 'drafts'));
 const preferences = createPreferences(app.getPath('userData'));
 const safeStart = app.commandLine.hasSwitch('disable-extensions');
 const liveIntelligence = app.commandLine.hasSwitch('enable-intelligence');
+const intelligencePatches = liveIntelligence ?
+  require('./intelligence/patch-broker.cjs').createPatchBroker({
+    current: intelligenceWorkspace, readEditor: readPatchEditor, changed: showIntelligenceProposal,
+  }) : undefined;
 const intelligenceMock = liveIntelligence || app.commandLine.hasSwitch('enable-intelligence-mock') ?
   require('./intelligence/mock-window.cjs').createIntelligenceMockWindow(app.getPath('userData'), {
     live: liveIntelligence, getWorkspace: intelligenceWorkspace, readEditor: readContextEditor, openSource: openIntelligenceSource,
     getPreferences: () => preferences.getIntelligence(), setPreferences: values => preferences.setIntelligence(values),
+    patches: intelligencePatches,
   }) : undefined;
 const extensions = createExtensionRegistry(app.getPath('userData'));
 const flightpathStore = createFlightpathStore(path.join(app.getPath('userData'), 'flightpath'));
@@ -188,6 +193,17 @@ function readContextEditor(project, file, signal) {
   return requestEditor(project, 'intelligence-editor-snapshot', { path: file }, signal);
 }
 
+function readPatchEditor(project, file, signal) {
+  return requestEditor(project, 'intelligence-patch-snapshot', { path: file }, signal);
+}
+
+function showIntelligenceProposal(proposal) {
+  if (rendererReady && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
+    window.webContents.send('cevra:intelligence-proposal-changed', proposal);
+    if (proposal) window.flashFrame(true);
+  }
+}
+
 async function openIntelligenceSource(project, source, signal) {
   if (intelligenceWorkspace() !== project) throw new Error('This workspace has closed.');
   const opened = await requestEditor(project, 'intelligence-source-location', { source }, signal);
@@ -222,7 +238,11 @@ function finishEditorSnapshot(channel, requestId, snapshot) {
   const request = editorSnapshots.get(requestId);
   if (!request || request.channel !== channel || request.owner !== window?.webContents || request.project !== workspace) return;
   if (snapshot === null) return request.finish(undefined, null);
-  if (!exactKeys(snapshot, ['path', 'text', 'baseRevision', 'documentId', 'version', 'selection']) ||
+  const patch = channel === 'intelligence-patch-snapshot';
+  if (patch && snapshot?.blocked === true) return request.finish(new Error('The editor buffer is unavailable.'));
+  const fields = ['path', 'text', 'baseRevision', 'documentId', 'version', 'selection'];
+  if (patch) fields.push('lineEnding');
+  if (!exactKeys(snapshot, fields) || (patch && !['\n', '\r\n', '\r'].includes(snapshot.lineEnding)) ||
       !canonicalFile(snapshot.path) || (request.file && sourceFileKey(snapshot.path) !== sourceFileKey(request.file)) ||
       (request.allowedFiles && !request.allowedFiles.some(file => sourceFileKey(file) === sourceFileKey(snapshot.path))) ||
       typeof snapshot.text !== 'string' || !snapshot.text.isWellFormed() || Buffer.byteLength(snapshot.text) > 512 * 1024 ||
@@ -234,7 +254,7 @@ function finishEditorSnapshot(channel, requestId, snapshot) {
   request.finish(undefined, snapshot);
 }
 
-for (const channel of ['extension-editor-snapshot', 'intelligence-editor-snapshot']) {
+for (const channel of ['extension-editor-snapshot', 'intelligence-editor-snapshot', 'intelligence-patch-snapshot']) {
   handle(channel, (requestId, snapshot) => finishEditorSnapshot(channel, requestId, snapshot));
 }
 handle('intelligence-source-location', (requestId, opened) => {
@@ -324,6 +344,8 @@ handle('open-intelligence-mock', input => {
   }
   return intelligenceMock.open(window, input);
 });
+handle('intelligence-proposal', (id, proposalId) => intelligencePatches?.preview(currentWorkspace(id), proposalId));
+handle('dismiss-intelligence-proposal', (id, proposalId) => intelligencePatches?.dismiss(currentWorkspace(id), proposalId));
 
 handle('appearance', () => ({ theme: nativeTheme.themeSource, mode: colorMode() }));
 handle('set-theme', async choice => {
@@ -609,7 +631,10 @@ handle('stage-edits', async (id, changes, authority) => {
     }
   }
   currentWorkspace(id);
-  if (authority !== undefined) {
+  if (intelligencePatches && exactKeys(authority, ['intelligenceProposalId', 'review'])) {
+    await intelligencePatches.commit(project, authority.intelligenceProposalId, authority.review, changes,
+      beforeCommit => drafts.setMany(project.root, changes, { beforeCommit }));
+  } else if (authority !== undefined) {
     if (!exactKeys(authority, ['extensionId', 'proposalId'])) throw new Error('Invalid extension proposal.');
     await extensionBroker.commitProposal(authority.extensionId, authority.proposalId, changes,
       beforeCommit => drafts.setMany(project.root, changes, { beforeCommit }));

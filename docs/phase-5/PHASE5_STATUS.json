@@ -4,7 +4,7 @@
   "name": "CEVRA Intelligence",
   "status": "in_progress",
   "isImplementationComplete": false,
-  "branch": "cevra/phase5-g4",
+  "branch": "cevra/phase5-g5",
   "baselineCommit": "4960ef251237583f9ee7a21e067f949dd2f6d4b0",
   "baselinePhase4Ledger": "../phase-4/PHASE4_STATUS.json",
   "lastVerifiedPhase4Ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/42988060217",
@@ -121,7 +121,13 @@
         "knownLimitations": ["Electron preview only", "Synthetic provider responses in automated verification", "Explicit attachments only"]
       }
     },
-    { "id": "G5", "name": "Editor Actions & Patch Review", "status": "unverified", "evidence": [] },
+    {
+      "id": "G5",
+      "name": "Editor Actions & Patch Review",
+      "status": "implemented",
+      "evidence": ["g5-editor-actions-and-patch-review.md", "../../qa/intelligence-patch.test.cjs",
+        "../../qa/intelligence-stream-desktop.test.cjs"]
+    },
     { "id": "G6", "name": "Controlled Agentic Coding", "status": "unverified", "evidence": [] },
     { "id": "G7", "name": "Model Routing, Profiles & Offline", "status": "unverified", "evidence": [] },
     { "id": "G8", "name": "Privacy, Costs & Hardening", "status": "unverified", "evidence": [] },

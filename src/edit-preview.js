@@ -126,5 +126,12 @@ export function createEditPreview({ prepare, stage, errorText }) {
       dialog.showModal();
       void load(getFiles, undefined, true);
     },
+    intelligence(getFiles) {
+      if (dialog.open) return;
+      heading.textContent = 'Review Intelligence Edit';
+      form.hidden = true;
+      dialog.showModal();
+      void load(getFiles, undefined, true);
+    },
   };
 }

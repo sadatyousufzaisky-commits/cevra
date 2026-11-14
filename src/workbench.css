@@ -438,3 +438,9 @@ button.test-result:hover { background: var(--raised); }
 .type-problems { border-top: 1px solid var(--line); margin-top: 8px; }
 #type-retry { margin: 0 15px 8px; }
 #replace-text { width: 100%; margin: 3px 0 5px; font: inherit; }
+.intelligence-inline-suggestion {
+  opacity: .78;
+  font-style: italic;
+  pointer-events: none;
+  user-select: none;
+}
