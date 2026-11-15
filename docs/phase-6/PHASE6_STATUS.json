@@ -309,23 +309,43 @@
     {
       "id": "G7",
       "name": "VOKRI Extension Store and manager",
-      "status": "in_progress",
+      "status": "passed",
       "dependsOn": [
         "G4"
       ],
-      "commit": null,
+      "commit": "882439455f088a2773e985de221005294ee6ce4a",
       "evidence": [
         "g7-extension-store.md",
+        "evidence/g7/online-catalog.json",
         "../../qa/extension-manager.test.cjs",
         "../../qa/extension-packaging.test.cjs",
         "../../qa/extension-sdk-runtime.test.cjs",
         "../../qa/extension-store-online.test.cjs"
       ],
-      "ci": null,
-      "ownerSignoff": null,
-      "openBlockers": [
-        "Finish the full Windows reliability verification."
-      ]
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43743193387",
+      "ownerSignoff": {
+        "date": "2026-11-15",
+        "authorization": "Project owner directed G7 implementation with in-app online package download and installation."
+      },
+      "openBlockers": [],
+      "verification": {
+        "verifiedAt": "2026-11-15",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassed": 173,
+        "desktopPassed": 103,
+        "optionalNativePreviewSkipped": 1,
+        "extensionHostPassedCi": 19,
+        "credentialAccountIsolationCi": "passed",
+        "benchmarkPassedCi": 13,
+        "onlineCatalog": {
+          "revision": "eb404b0b7e05bcca74dd1250458ab89f4bb17ed2",
+          "generation": 1,
+          "livePackageInstalls": 2
+        },
+        "integrity": "Signed-index tampering, replay, expiration, package digest mismatch and installed version preservation passed.",
+        "permissionReview": "Keyboard, Electron accessibility tree, compact layout, native prompt contract, and separate executable session consent passed. A live screen-reader session remains unverified."
+      }
     },
     {
       "id": "G8",

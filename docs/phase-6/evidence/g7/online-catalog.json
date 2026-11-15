@@ -1,0 +1,20 @@
+{
+  "testedRevision": "882439455f088a2773e985de221005294ee6ce4a",
+  "catalogRevision": "eb404b0b7e05bcca74dd1250458ab89f4bb17ed2",
+  "windowsBuild": "10.0.26300",
+  "electron": "45.2.3",
+  "generation": 1,
+  "expiresAtUtc": "2027-05-14T17:42:49.806Z",
+  "exactDownloadsInstalledDisabledAfterReview": [
+    {
+      "id": "org.cevra.examples.starter-tools",
+      "version": "1.0.0",
+      "sha256": "71b5547ccb2784ef623156afe10978d64c1cb08e78ded6795af6d495bbdfec4d"
+    },
+    {
+      "id": "org.cevra.examples.hello-command",
+      "version": "1.0.0",
+      "sha256": "404a8522873d27bb2785a65871741f1c2422336d95dcab92bdd9e2a158fe875b"
+    }
+  ]
+}

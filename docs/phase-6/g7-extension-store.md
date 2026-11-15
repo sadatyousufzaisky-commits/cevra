@@ -36,4 +36,10 @@ From the application checkout, run `pwsh -File scripts/sign-extension-catalog.ps
 
 `npm test` covers signed-index tampering, replay, expiration, ZIP digest mismatch, unsupported activation, offline discovery, permission review, update, rollback, and an unavailable catalog. `npm run test:extension-host` exercises the bundled executable through the confined host after separately approving its permissions. To check the public feed with real HTTPS downloads, build the app and run `node --test qa/extension-store-online.test.cjs`.
 
-The manager test uses the editor and accessibility tree to verify keyboard focus, searchable and filtered entries, permission heading and list, and return to the reviewed package. [Catalog and integrity tests](../../qa/extension-packaging.test.cjs) · [Manager tests](../../qa/extension-manager.test.cjs) · [Live online test](../../qa/extension-store-online.test.cjs)
+Accessibility verification covered keyboard focus, the Electron accessibility tree, the permissions heading and list, and return to the selected catalog item. A Windows smoke check at 165% zoom verified the install action remained reachable. [Catalog and integrity tests](../../qa/extension-packaging.test.cjs) · [Manager tests](../../qa/extension-manager.test.cjs) · [Live online test](../../qa/extension-store-online.test.cjs)
+
+On Windows 11 x64 build 26300, implementation revision `882439455f088a2773e985de221005294ee6ce4a` passed 173 core tests and 103 Electron desktop tests. The optional native profile-handoff test was skipped. A separate live Electron replay downloaded and installed both packages from the public signed feed. Each install began disabled and matched its catalog digest. [Live online evidence](evidence/g7/online-catalog.json)
+
+## Gate decision
+
+G7 passed on Electron on 2026-11-15. Windows Server 2025 ran the same core and desktop suites with Windows credential account separation, 19 isolated extension-host tests, and 13 Intelligence benchmark checks. Permission review accessibility was checked through the Electron accessibility tree and keyboard walkthrough. A live screen-reader session remains unverified. [Phase 6 status](PHASE6_STATUS.json) · [Windows reliability run](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43743193387)
