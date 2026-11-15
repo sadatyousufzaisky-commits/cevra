@@ -325,6 +325,19 @@ button.test-result:hover { background: var(--raised); }
 .definition-dialog h2 { margin: 0; font-size: 16px; }
 .definition-dialog p { margin: 4px 0 12px; color: var(--muted); }
 .command-center { position: fixed; inset: clamp(55px, 11vh, 110px) 0 auto; width: min(650px, calc(100vw - 28px)); margin: 0 auto; }
+.editor-review { width: min(850px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); }
+.editor-review #review-file { overflow-wrap: anywhere; font: 12px var(--mono); }
+.review-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-block: 8px; color: var(--muted); }
+.review-legend span { border-inline-start: 3px solid var(--accent); padding-inline-start: 6px; }
+.review-legend span:first-child { border-color: var(--danger); }
+#review-source { overflow: hidden; border: 1px solid var(--control-border); border-radius: var(--radius-control); }
+#review-source .cm-editor { max-height: 58dvh; }
+#review-source .cm-deletedChunk { background: color-mix(in srgb, var(--danger) 11%, var(--base)); }
+#review-source .cm-changedLine { background: color-mix(in srgb, var(--accent) 10%, var(--base)); }
+#review-source .cm-changedText { background-image: none; text-decoration: underline; text-decoration-color: var(--accent); }
+#review-source .cm-deletedText { background-image: none; text-decoration: line-through; text-decoration-color: var(--danger); }
+#review-source .cm-changedLineGutter { background: var(--accent); }
+#review-source .cm-deletedLineGutter { background: var(--danger); }
 .command-modes { display: flex; gap: 6px; margin: 6px 0 9px; }
 .command-modes .button[aria-pressed="true"] { background: var(--selected); color: var(--current-text); }
 #command-query { width: 100%; min-height: 38px; padding: 6px 10px; }

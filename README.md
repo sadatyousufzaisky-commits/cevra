@@ -16,7 +16,7 @@ npm start
 Choose **Open example** to try the built-in JavaScript project, or choose **Open folder** to browse an existing project. The example includes a commented-out error you can enable to try source navigation.
 
 - **Ctrl+P** opens the Command Center for files, commands, and recent projects. **Ctrl+B** and **Ctrl+J** toggle the Explorer and bottom panel. [Workspace and keyboard guide](docs/phase-6/g4-workspace-shell.md)
-- **Ctrl+S** saves the active file. The editor accepts UTF-8 text files up to 2 MiB and preserves a BOM and surviving line endings. Select the line-ending indicator to convert the document.
+- **Ctrl+S** saves the active file. The editor accepts UTF-8 text files up to 2 MiB and preserves a BOM and surviving line endings. Select the line-ending indicator to convert the document, or run **Review Unsaved Changes** from the Command Center to compare the buffer with its last verified disk revision.
 - **Ctrl+Shift+S** saves all open drafts. VOKRI Code reports where the save stopped if a file fails its revision check.
 - **F5** saves the active file and runs it from the project root. VOKRI Code supports JavaScript, TypeScript, and Python entry files. Other files on disk are read as saved.
 - **Stop** cancels a run during preparation or execution. Its recent output remains visible in the run panel, with a notice when earlier output was truncated.
@@ -169,7 +169,7 @@ In project search, enter a replacement and choose **Preview Replace**. The previ
 
 Press **F2** on a JavaScript or TypeScript identifier, or choose **Rename Symbol** in **References**. Enter a new identifier and choose **Preview Rename**. VOKRI Code uses language analysis to find static references and rechecks the scope before applying. Rename requires a single readable workspace project. It refuses ambiguous edits, incomplete analysis, or a proposed name already used in the analyzed source. Runtime-computed names and external consumers are outside the analysis scope.
 
-**Apply as Drafts** checks all original revisions and records the batch as one recoverable operation. Changes open in tabs with per-file undo. Use **Ctrl+S** to save individually or **Ctrl+Shift+S** to save all. A changed or missing original blocks applying the batch. VOKRI Code preserves the BOM and line-ending style and asks you to normalize mixed line endings before a batch edit.
+**Apply as Drafts** checks all original revisions and records the batch as one recoverable operation. Changes open in tabs with per-file undo. Use **Ctrl+S** to save individually or **Ctrl+Shift+S** to save all. A changed or missing original blocks applying the batch. VOKRI Code preserves the BOM and surviving line endings, including in files with mixed line endings.
 
 ## Check syntax and types while editing
 

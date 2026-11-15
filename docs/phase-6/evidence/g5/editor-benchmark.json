@@ -1,0 +1,14 @@
+{
+  "windows": "10.0.26300",
+  "electron": "45.2.3",
+  "sourceBytes": 834438,
+  "lines": 24002,
+  "longLine": 65536,
+  "syntaxProblems": 2850,
+  "typingSamples": 25,
+  "scrollSamples": 8,
+  "typingP95Ms": 32.1,
+  "scrollP95Ms": 33.4,
+  "churnCycles": 5,
+  "retainedRendererHeapBytes": 266528
+}

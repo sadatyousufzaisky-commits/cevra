@@ -388,6 +388,18 @@
     <p id="command-status" role="status"></p>
     <ul id="command-results" class="definition-choices" role="listbox" aria-label="Command center results"></ul>
   </dialog>
+  <dialog id="editor-review" class="definition-dialog editor-review" aria-labelledby="review-heading" aria-describedby="review-summary">
+    <h2 id="review-heading">Unsaved Changes</h2>
+    <p id="review-file"></p>
+    <p id="review-summary"></p>
+    <div id="review-legend" class="review-legend" aria-label="Comparison legend"><span>Saved text</span><span>Unsaved text</span></div>
+    <div id="review-source"></div>
+    <div class="edits-actions">
+      <button id="review-previous" class="button">Previous Change</button>
+      <button id="review-next" class="button">Next Change</button>
+      <button id="review-close" class="button" autofocus>Close</button>
+    </div>
+  </dialog>
   <dialog id="definition-dialog" class="definition-dialog" aria-labelledby="definition-heading" aria-describedby="definition-summary">
     <h2 id="definition-heading">Choose a definition</h2>
     <p id="definition-summary"></p>

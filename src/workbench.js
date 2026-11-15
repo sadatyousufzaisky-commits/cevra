@@ -1,6 +1,9 @@
 import { basicSetup } from 'codemirror';
 import { autocompletion, closeCompletion } from '@codemirror/autocomplete';
-import { indentWithTab, isolateHistory } from '@codemirror/commands';
+import { addCursorAbove, addCursorBelow, indentWithTab, isolateHistory, redo, redoDepth, toggleLineComment,
+  undo, undoDepth } from '@codemirror/commands';
+import { foldCode, unfoldCode } from '@codemirror/language';
+import { gotoLine, openSearchPanel, selectNextOccurrence } from '@codemirror/search';
 import { EditorState, Text } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { javascript } from '@codemirror/lang-javascript';
@@ -8,6 +11,7 @@ import { linter, lintGutter, setDiagnostics, setDiagnosticsEffect } from '@codem
 import { createDefinitionNavigation } from './definition-navigation.js';
 import { createEditPreview } from './edit-preview.js';
 import { createEditorSettings, editorOptions, optionExtensions } from './editor-settings.js';
+import { createEditorReview } from './editor-review.js';
 import { colorModeExtension, editorColorMode, editorTheme } from './editor-theme.js';
 import { createExtensionContributions } from './extension-contributions.js';
 import { createExtensionManager } from './extension-manager.js';
@@ -36,7 +40,7 @@ import { createCommandCenter, createCommandRegistry } from './workbench-commands
 import { sourceLanguage } from './source-language.cjs';
 import { runtimeKind } from './runtime-kind.cjs';
 import { normalizeSource } from './source-text.cjs';
-import { changeLineEnding, detectLineEnding, formatLineEndings, lineEndings, lineEndingHistory,
+import { changeLineEnding, formatLineEndings, lineEndings, lineEndingHistory,
   parseLineEndings, sameLineEndings } from './line-endings.mjs';
 import { intelligenceSuggestion, showIntelligenceSuggestion } from './intelligence/inline-suggestion.js';
 
@@ -305,11 +309,12 @@ function isDirty(tab, state) {
     !sameLineEndings(state.doc, state.field(lineEndings), tab.savedEndings);
 }
 
-function queueDraft(tab) {
+function queueDraft(tab, coalesce = false) {
   tab.draftPending = true;
   if (!tab.draftTask) {
     tab.draftTask = (async () => {
       while (tab.draftPending) {
+        if (coalesce) await new Promise(resolve => setTimeout(resolve, 100));
         tab.draftPending = false;
         try {
           await api.draft(tab.projectId, tab.path, tab.dirty && !tab.discarding ? serialize(tab) : null,
@@ -332,11 +337,11 @@ function updateDocument(tab, before, state, changes, docChanged) {
   tab.state = state;
   const endingChanged = before.field(lineEndings) !== state.field(lineEndings);
   if (docChanged) {
-    tab.syntaxIssues = tab.typeIssues = tab.extensionIssues = undefined;
     navigation.map(tab.id, changes, state.doc);
     failureLens.mapBreakpoints(tab.path, before.doc, state.doc, changes);
   }
   if (docChanged || endingChanged) {
+    tab.syntaxIssues = tab.typeIssues = tab.extensionIssues = undefined;
     tab.version++;
     api.extensionDocumentChanged(tab.projectId, tab.path);
     testEvidence.changed();
@@ -349,10 +354,8 @@ function updateDocument(tab, before, state, changes, docChanged) {
       }
       syncDirty();
     }
-    queueDraft(tab);
+    queueDraft(tab, true);
     searchPanel.changed();
-  }
-  if (docChanged) {
     problemsPanel.changed(tab);
     semantic.changed();
     if (tab.language) {
@@ -1675,7 +1678,6 @@ const editPreview = createEditPreview({
       const tab = findDocument(file.path);
       const doc = tab?.state.doc;
       const version = tab?.version;
-      const ending = tab?.state.field(lineEndings);
       const path = tab?.path ?? file.path;
       const disk = await api.read(workspace.id, path);
       bytes += encoder.encode(disk.text).byteLength;
@@ -1686,10 +1688,6 @@ const editPreview = createEditPreview({
           (file.documentId === undefined ? file.revision !== disk.revision || tab?.dirty :
             tab?.id !== file.documentId || version !== file.version)) throw staleEdits(path);
       const original = doc ?? Text.of(normalizeSource(disk.text).split('\n'));
-      const eol = ending?.preferred ?? detectLineEnding(disk.text);
-      if (ending?.exceptions.size || new Set(disk.text.match(/\r\n|\r|\n/g)).size > 1) {
-        throw new Error('Normalize mixed line endings before applying a batch to ' + path);
-      }
       const edits = file.matches.map(match => {
         const from = match.offset ?? original.line(match.line).from + match.column - 1;
         return { from, to: from + match.length, insert: match.replacement ?? replacement };
@@ -1702,7 +1700,7 @@ const editPreview = createEditPreview({
         end = edit.to;
       }
       const changed = edits.filter(edit => original.sliceString(edit.from, edit.to) !== edit.insert);
-      if (changed.length) changes.push({ path, tab, version, eol, disk, doc: original, edits: changed });
+      if (changed.length) changes.push({ path, tab, version, disk, doc: original, edits: changed });
     }
     return { workspace, changes, skipped, authority };
   },
@@ -1726,14 +1724,14 @@ async function stageEdits({ workspace, changes, authority }, verify) {
   await verify?.();
   await Promise.all(changes.map(({ tab }) => tab?.draftTask));
   const staged = changes.map(file => {
-    const { path, tab, disk, doc, eol, version, edits } = file;
+    const { path, tab, disk, doc, version, edits } = file;
     if (findDocument(path) !== tab || tab?.version !== version ||
         (tab && (tab.state.doc !== doc || tab.revision !== disk.revision ||
           tab.recoveryConflict || tab.saving || tab.discarding || tab.formatting))) throw staleEdits(path);
-    const state = tab?.state ?? EditorState.create({ doc });
-    const modified = state.changes(edits).apply(doc);
+    const state = tab?.state ?? EditorState.create({ doc, extensions: lineEndings.init(() => parseLineEndings(disk.text)) });
+    const modified = state.update({ changes: edits }).state;
     const bom = tab?.bom ?? (disk.text.startsWith('\uFEFF') ? '\uFEFF' : '');
-    return { path, text: bom + modified.toString().replaceAll('\n', eol), revision: disk.revision };
+    return { path, text: bom + formatLineEndings(modified.doc, modified.field(lineEndings)), revision: disk.revision };
   });
   await api.stageEdits(workspace.id, staged, authority);
   let first;
@@ -1885,6 +1883,20 @@ const dockNames = { output: 'Run output', problems: 'Problems', references: 'Ref
 const canUse = button => () => !button.disabled && !button.hidden;
 const editorFocused = () => view.hasFocus;
 const canDebugFile = () => Boolean(active && runtimeKind(active.path) === 'javascript');
+const canEditDocument = () => Boolean(active && !changingProject && !active.discarding);
+const editorReview = createEditorReview();
+const editorActions = [
+  ['undo', 'Undo edit', undo, () => canEditDocument() && undoDepth(view.state) > 0],
+  ['redo', 'Redo edit', redo, () => canEditDocument() && redoDepth(view.state) > 0],
+  ['find-in-file', 'Find or replace in file', openSearchPanel],
+  ['go-line', 'Go to Line', gotoLine],
+  ['fold', 'Fold at cursor', foldCode],
+  ['unfold', 'Unfold at cursor', unfoldCode],
+  ['comment', 'Toggle Line Comment', toggleLineComment, () => canEditDocument() && Boolean(active.language)],
+  ['cursor-above', 'Add Cursor Above', addCursorAbove],
+  ['cursor-below', 'Add Cursor Below', addCursorBelow],
+  ['select-next', 'Select Next Occurrence', selectNextOccurrence],
+];
 const commands = createCommandRegistry([
   { id: 'find', title: 'Find files', detail: 'Search by file name or path', icon: 'search', key: 'Ctrl+P',
     enabled: canUse(byId('open-commands')), run: () => commandCenter.open() },
@@ -1899,6 +1911,13 @@ const commands = createCommandRegistry([
   { id: 'save-all', title: 'Save all files', icon: 'save', key: 'Ctrl+Shift+S',
     enabled: () => !changingProject && !changingGit && [...documents.values()].some(tab => tab.dirty), run: saveAll },
   { id: 'recover', title: 'Save recovery copy', icon: 'save', enabled: canUse(recoveryButton), run: () => saveRecoveredCopy(active) },
+  ...editorActions.map(([id, title, action, enabled = canEditDocument]) => ({ id, title, enabled, run: () => {
+    view.focus();
+    action(view);
+  } })),
+  { id: 'review-unsaved', title: 'Review Unsaved Changes', icon: 'file',
+    enabled: () => Boolean(canEditDocument() && active.dirty && active.savedDoc),
+    run: () => editorReview.open(active, { dark: colorMode === 'dark', options: editorSettings }) },
   { id: 'resume', title: 'Continue debugging', icon: 'play', key: 'F5',
     context: () => run?.mode === 'debug' && failureLens.phase === 'paused',
     enabled: () => run?.mode === 'debug' && failureLens.phase === 'paused', run: () => failureLens.action('resume') },
@@ -2033,7 +2052,7 @@ async function initialize() {
 }
 
 document.addEventListener('keydown', event => {
-  if (document.querySelector('dialog[open]') || closingWorkbench) return;
+  if (event.isComposing || (view.hasFocus && view.compositionStarted) || document.querySelector('dialog[open]') || closingWorkbench) return;
   if (terminalPanel.handles(event) && event.key !== 'F1' && event.code !== 'Backquote') return;
   if (event.key === 'Escape' && view.hasFocus && symbolInfo.dismiss(view)) event.preventDefault();
   commands.keydown(event);
