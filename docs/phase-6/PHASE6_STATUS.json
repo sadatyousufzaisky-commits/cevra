@@ -103,7 +103,7 @@
     {
       "id": "G2",
       "name": "VOKRI native SDK completion",
-      "status": "in_progress",
+      "status": "passed",
       "dependsOn": [
         "G0",
         "G1"
@@ -118,11 +118,16 @@
         "../../qa/vokri-native-surface.cs"
       ],
       "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43667758389",
-      "ownerSignoff": null,
-      "openBlockers": [
-        "Run the native SDK suite on a Windows 10 x64 client.",
-        "Verify a live IME composition session and a transition across mixed-DPI monitors."
+      "ownerSignoff": {
+        "date": "2026-11-15",
+        "authorization": "Project owner directed closure of G2 and commencement of G3 after reviewing the remaining platform checks.",
+        "reviewedRevision": "7824097"
+      },
+      "acceptanceExceptions": [
+        "A Windows 10 x64 client run was not performed for G2.",
+        "Live IME composition and a mixed-DPI monitor transition were not performed for G2."
       ],
+      "openBlockers": [],
       "verification": {
         "verifiedAt": "2026-11-15",
         "local": { "platform": "Windows 11 Home x64 build 26300", "testsPassed": 6, "resizePaintP95Ms": 8.484 },

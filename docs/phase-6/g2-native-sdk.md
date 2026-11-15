@@ -33,3 +33,5 @@ The local test machine runs Windows 11 x64 build 26300. The CI matrix uses Windo
 Results are for `9ccb09b`. Each run exercised 180 resize and paint iterations with a 100,000-document source. The local run exercised animation and timer-fault cleanup. The hosted runners exercised the single static frame specified by their reduced-motion configuration. [Server 2022 SDK tests](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43667758389/job/132670843539) · [Server 2025 SDK tests](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43667758389/job/132670843794)
 
 The same revision passed all 287 existing product tests, including core, desktop, extension-host, and Intelligence benchmark coverage. The separate Windows credential-account check also passed. [Product regression job](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43667758389/job/132670843876)
+
+The project owner closed G2 on 15 November 2026 with Windows 10 client testing, live IME composition, and a mixed-DPI monitor transition recorded as acceptance exceptions.
