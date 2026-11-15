@@ -1,4 +1,9 @@
 const api = window.intelligenceMock;
+const workspace = window.intelligenceWorkspace;
+const expand = document.getElementById('intelligence-expand');
+const dock = document.getElementById('intelligence-dock');
+const reviewEdits = document.getElementById('review-proposed-edits');
+const providerScope = document.getElementById('provider-scope');
 const form = document.getElementById('prompt-form');
 const model = document.getElementById('model');
 const prompt = document.getElementById('prompt');
@@ -43,6 +48,22 @@ const keyFor = (providerId, modelId) => providerId === 'ollama' ? 'ollama|' + mo
 const selected = () => models.get(model.value);
 const usd = micros => '$' + (micros / 1_000_000).toFixed(6);
 
+function showLayout(mode) {
+  document.documentElement.dataset.intelligenceLayout = mode;
+  expand.hidden = mode !== 'dock';
+  dock.hidden = mode !== 'workspace';
+}
+
+workspace.onLayoutChanged(showLayout);
+void workspace.layout().then(showLayout).catch(() => {});
+expand.onclick = () => void workspace.setLayout('workspace').catch(() => {});
+dock.onclick = () => void workspace.setLayout('dock').catch(() => {});
+document.getElementById('intelligence-close').onclick = () => void workspace.close().catch(() => {});
+workspace.onProposalChanged(available => { document.getElementById('proposal-actions').hidden = !available; });
+reviewEdits.onclick = () => void workspace.reviewPatch().catch(() => {
+  status.textContent = 'The proposed edit could not be opened. Check the workbench.';
+});
+
 function showBudget(data) {
   const unpriced = data.unpriced ? ` · ${data.unpriced} unpriced request${data.unpriced === 1 ? '' : 's'}` : '';
   document.getElementById('budget-today').textContent = `${data.day} UTC · ${usd(data.used)} estimated or reserved${unpriced}`;
@@ -83,6 +104,8 @@ function busy(active) {
 
 function showProvider() {
   const provider = selected()?.providerId;
+  providerScope.textContent = { openai: 'Cloud API', ollama: 'Local Ollama', mock: 'Offline simulation' }[provider] ?? '';
+  providerScope.hidden = !providerScope.textContent;
   note.textContent = {
     openai: 'OpenAI API. Review each request before sending. API charges may apply.',
     ollama: 'Ollama on this computer. Review each request before sending.',
@@ -335,9 +358,17 @@ function renderAgent(state) {
   document.getElementById('coding-goal').textContent = state.goal ?? '';
   document.getElementById('coding-plan-model').textContent = state.goal && agentRoute ?
     `${agentRoute.providerId === 'ollama' ? 'Ollama' : 'OpenAI'} · ${agentRoute.label}` : '';
-  document.getElementById('coding-plan').replaceChildren(...(state.goal ? state.plan.map(step => {
+  const currentStep = { plan: 0, baseline: 0, proposal: 1, generating: 1, review: 2, save: 3, verification: 3 }[state.stage];
+  const stageLabel = {
+    plan: 'Baseline approval', baseline: 'Baseline tests', proposal: 'Provider review', generating: 'Proposal request',
+    review: 'Edit review', save: 'Save and verify', verification: 'Verification tests',
+    passed: 'Passed', failed: 'Failed', unverified: 'Unverified', stopped: 'Stopped',
+  }[state.stage] ?? '';
+  document.getElementById('coding-stage-label').textContent = stageLabel;
+  document.getElementById('coding-plan').replaceChildren(...(state.goal ? state.plan.map((step, index) => {
     const item = document.createElement('li');
     item.textContent = step;
+    if (index === currentStep) item.setAttribute('aria-current', 'step');
     return item;
   }) : []));
   document.getElementById('coding-targets').textContent = state.targets?.length ?
@@ -412,7 +443,7 @@ Promise.all([api.models(), api.localStatus(), api.modelProfile()]).then(([catalo
   if (saved.ok) profile = saved.value;
   document.getElementById('local-port').value = local.defaultPort;
   budgetPanel.hidden = !local.enabled;
-  task.hidden = taskStatus.hidden = document.getElementById('task-model-label').hidden =
+  task.hidden = taskStatus.hidden = document.getElementById('task-model-label').hidden = document.getElementById('task-route-container').hidden =
     document.getElementById('models-and-local').hidden = !local.enabled;
   renderCatalog(catalogs);
   status.textContent = 'Ready.';

@@ -34,3 +34,12 @@ contextBridge.exposeInMainWorld('intelligenceMock', {
   stopAgent: () => ipcRenderer.invoke('cevra:intelligence-mock:stop-agent'),
   onAgentChanged: callback => ipcRenderer.on('cevra:intelligence-mock:agent-changed', (_event, state) => callback(state)),
 });
+
+contextBridge.exposeInMainWorld('intelligenceWorkspace', {
+  layout: () => ipcRenderer.invoke('cevra:intelligence-mock:layout'),
+  setLayout: layout => ipcRenderer.invoke('cevra:intelligence-mock:set-layout', layout),
+  close: () => ipcRenderer.invoke('cevra:intelligence-mock:close-panel'),
+  reviewPatch: () => ipcRenderer.invoke('cevra:intelligence-mock:review-patch'),
+  onLayoutChanged: callback => ipcRenderer.on('cevra:intelligence-mock:layout-changed', (_event, layout) => callback(layout)),
+  onProposalChanged: callback => ipcRenderer.on('cevra:intelligence-mock:proposal-changed', (_event, available) => callback(available)),
+});

@@ -29,14 +29,13 @@ On Windows, VOKRI Code starts programs and tests inside a Job Object and waits f
 
 ## Try VOKRI Intelligence
 
-On Windows x64, build VOKRI Code and launch the opt-in Intelligence preview.
+On Windows x64, launch VOKRI Code and select **AI Off** in the status bar to enable Intelligence for the session. It opens beside the editor. Select **Full workspace** for a focused view or **Dock** to return to editing. Select **AI On** to turn it off and clear the current session.
 
 ```powershell
-npm run build
-npx electron . --enable-intelligence
+npm start
 ```
 
-Open **VOKRI Intelligence** in the status bar. The deterministic mock runs offline. To try OpenAI, add your own API project key in **Provider connections**, select **GPT-5.6 Terra**, and review the exact conversation before sending. OpenAI API charges may apply. [Conversation and streaming guide](docs/phase-5/g3-conversation-streaming.md)
+The deterministic mock model runs offline. To try OpenAI, add your own API project key in **Provider connections**, select **GPT-5.6 Terra**, and review the exact conversation before sending. OpenAI API charges may apply. The status bar also offers a separate Intelligence window. [Intelligence workspace guide](docs/phase-6/g8-intelligence-workspace.md)
 
 Select code in the editor and choose **Attach selection to Intelligence** to include that range, including unsaved edits. You can also attach saved files and explicitly include `.cevra/ai-instructions.md`. Open **Response preferences** to set language, length, code style, and testing preferences. [Context and personalization guide](docs/phase-5/g4-context-and-personalization.md)
 

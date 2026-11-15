@@ -5,7 +5,11 @@ contextBridge.exposeInMainWorld('cevra', {
   initial: () => ipcRenderer.invoke('cevra:initial'),
   appearance: () => ipcRenderer.invoke('cevra:appearance'),
   setTheme: choice => ipcRenderer.invoke('cevra:set-theme', choice),
-  openIntelligenceMock: selection => ipcRenderer.invoke('cevra:open-intelligence-mock', selection),
+  openIntelligenceMock: (selection, mode) => ipcRenderer.invoke('cevra:open-intelligence-mock', selection, mode),
+  setIntelligenceEnabled: enabled => ipcRenderer.invoke('cevra:set-intelligence-enabled', enabled),
+  setIntelligenceBounds: bounds => ipcRenderer.send('cevra:intelligence-bounds', bounds),
+  onIntelligenceLayout: callback => ipcRenderer.on('cevra:intelligence-layout-changed', (_event, mode) => callback(mode)),
+  onIntelligenceReviewRequested: callback => ipcRenderer.on('cevra:intelligence-review-requested', () => callback()),
   intelligenceDocumentClosed: (id, path) => ipcRenderer.send('cevra:intelligence-document-closed', id, path),
   onIntelligenceEditorSnapshot: callback => ipcRenderer.on('cevra:intelligence-editor-snapshot', async (_event, request) => {
     let snapshot = null;

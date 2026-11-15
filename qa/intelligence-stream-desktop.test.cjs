@@ -82,6 +82,116 @@ async function installFixture(app) {
   });
 }
 
+test('G8 workspace preserves separate test, send, diff and verification decisions',
+  { skip: !supported, timeout: 55_000 }, async t => {
+    buildVaultProbe();
+    const keyRef = randomUUID();
+    const vault = createWindowsCredentialVault();
+    let scope;
+    t.after(async () => { if (scope) assert.equal(await vault.remove(scope, 'openai', keyRef), 'ok'); });
+    const original = 'export const helper = 2;\n';
+    const fixed = 'export const helper = 5;\n';
+    const workbench = await openWorkbench(t, {
+      'helper.js': original,
+      'helper.test.mjs': 'import { test } from "node:test";\nimport assert from "node:assert/strict";\n' +
+        'import { helper } from "./helper.js";\ntest("helper", () => assert.equal(helper, 5));\n',
+      'package.json': '{"type":"module"}',
+    }, async (_project, profile) => {
+      scope = createHash('sha256').update((await fs.realpath(profile)).toLowerCase()).digest('hex');
+      const directory = path.join(profile, 'intelligence');
+      await fs.mkdir(directory);
+      await fs.writeFile(path.join(directory, 'connections.json'), JSON.stringify({
+        schemaVersion: 1, entries: [{ providerId: 'openai', current: keyRef, pending: null, cleanup: [] }],
+      }));
+      assert.equal(await vaultProbe('seed', scope, 'openai', keyRef, 'first'), 0);
+    }, { args: [flag] });
+    const { app, page, editor, project } = workbench;
+    await installFixture(app);
+    await app.evaluate(({ dialog }, file) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
+      globalThis.g3.patch = 'valid';
+    }, path.join(project, 'helper.js'));
+    const evidence = [];
+    const captureDirectory = process.env.VOKRI_G8_EVIDENCE_DIR;
+    if (captureDirectory) await fs.mkdir(captureDirectory, { recursive: true });
+    const capture = (locator, name) => captureDirectory ?
+      locator.screenshot({ path: path.join(captureDirectory, name + '.png') }) : undefined;
+    const mark = (action, startedAt) => evidence.push({ action, elapsedMs: Math.round(performance.now() - startedAt) });
+    const stamp = () => performance.now();
+    const traffic = () => app.evaluate(() => globalThis.g3);
+    const started = stamp();
+    const paneOpened = page.context().waitForEvent('page');
+    await page.getByRole('button', { name: 'Intelligence workspace', exact: true }).press('Enter');
+    const pane = await paneOpened;
+    await pane.locator('#status').getByText('Ready.', { exact: true }).waitFor();
+    await pane.getByRole('button', { name: 'Full workspace', exact: true }).press('Enter');
+    await pane.getByRole('button', { name: 'Dock', exact: true }).waitFor();
+    mark('Open Intelligence and switch to full workspace', started);
+
+    await pane.getByLabel('Model', { exact: true }).selectOption('gpt-5.6-terra');
+    await pane.getByText('Cloud API', { exact: true }).waitFor();
+    await pane.getByRole('button', { name: 'Attach saved file', exact: true }).press('Enter');
+    await pane.getByRole('list', { name: 'Attachments' }).getByText('helper.js · Saved file').waitFor();
+    await pane.getByRole('textbox', { name: 'Prompt' }).fill('Fix the helper to pass its test.');
+    await pane.getByRole('button', { name: 'Plan coding task', exact: true }).press('Enter');
+    await pane.locator('#coding-plan [aria-current="step"]').getByText(/Run project tests/).waitFor();
+    const baseline = stamp();
+    await pane.getByRole('button', { name: 'Run baseline tests', exact: true }).press('Enter');
+    await pane.getByText('Baseline · 0 passed, 1 failed · Observed revision', { exact: true }).waitFor();
+    assert.equal((await traffic()).count, 0);
+    mark('Authorize the local baseline and record its failed revision', baseline);
+
+    const send = stamp();
+    const approval = app.waitForEvent('window');
+    await pane.getByRole('button', { name: 'Review proposal request', exact: true }).press('Enter');
+    const review = await approval;
+    await review.getByText('Cloud API', { exact: true }).waitFor();
+    await review.getByText('Observed baseline test counts', { exact: true }).waitFor();
+    assert.match(await review.locator('#review-cost').textContent(), /Reserve/);
+    assert.equal((await traffic()).count, 0);
+    assert.equal(await review.getByRole('button', { name: 'Cancel', exact: true }).evaluate(node => node === document.activeElement), true);
+    await capture(review.locator('main'), 'provider-review');
+    const dismissed = review.waitForEvent('close');
+    try { await review.getByRole('button', { name: 'Send to OpenAI', exact: true }).press('Enter'); }
+    catch (error) { if (!review.isClosed()) throw error; }
+    await dismissed;
+    await pane.locator('#coding-status').getByText('Review the proposed edits in the workbench.', { exact: true }).waitFor();
+    assert.equal((await traffic()).count, 1);
+    assert.equal(await fs.readFile(path.join(project, 'helper.js'), 'utf8'), original);
+    mark('Review destination, cost and context, then explicitly send', send);
+
+    const draft = stamp();
+    await pane.getByRole('button', { name: 'Review proposed edits', exact: true }).press('Enter');
+    const diff = page.getByRole('dialog', { name: 'Review Intelligence Edit', exact: true });
+    await diff.locator('ins').getByText(fixed.trim(), { exact: false }).waitFor();
+    const obscured = await app.evaluate(async ({ BrowserWindow }) => {
+      const view = BrowserWindow.getAllWindows()[0].contentView.children[0];
+      for (let frame = 0; frame < 25 && view.getVisible(); frame++) await new Promise(resolve => setTimeout(resolve, 20));
+      return view.getVisible();
+    });
+    assert.equal(obscured, false);
+    await capture(diff, 'edit-review');
+    await diff.getByRole('button', { name: 'Apply as Drafts', exact: true }).press('Enter');
+    await diff.waitFor({ state: 'hidden' });
+    await pane.getByRole('button', { name: 'Dock', exact: true }).press('Enter');
+    await page.waitForFunction(() => document.getElementById('workbench').dataset.intelligenceLayout === 'dock');
+    assert.equal(await fs.readFile(path.join(project, 'helper.js'), 'utf8'), original);
+    await editor.press('Control+s');
+    await page.locator('#message').getByText('Saved helper.js', { exact: true }).waitFor();
+    assert.equal(await fs.readFile(path.join(project, 'helper.js'), 'utf8'), fixed);
+    mark('Review the staged proposal, apply as drafts, and save', draft);
+
+    const verify = stamp();
+    await pane.getByRole('button', { name: 'Verify saved changes', exact: true }).press('Enter');
+    await pane.getByText('Verification · 1 passed, 0 failed · Observed revision', { exact: true }).waitFor();
+    const result = await traffic();
+    assert.deepEqual(result.testApprovals.map(item => item.title), ['Run baseline tests', 'Verify Intelligence change']);
+    assert.equal(result.count, 1);
+    mark('Authorize verification and observe the passing revision', verify);
+    await capture(pane.locator('#coding-task'), 'test-evidence');
+    t.diagnostic('G8_TRACE ' + JSON.stringify({ layout: 'dock and full workspace', providerTransport: 'synthetic', evidence }));
+  });
+
 test('Windows Intelligence confirms exact live turns, cancels streams and clears session state',
   { skip: !supported, timeout: 80_000 }, async t => {
     buildVaultProbe();

@@ -59,6 +59,17 @@ button svg:where(:not(.file-type-icon)), .project-root svg {
 kbd { font: 11px var(--mono); border-radius: var(--radius-control); padding: 2px 4px; background: var(--shortcut-surface); }
 
 .workbench { position: relative; min-height: 0; display: flex; flex-direction: column; }
+.workbench[data-intelligence-layout="dock"] {
+  --intelligence-width: clamp(310px, 30vw, 460px);
+  padding-inline-end: var(--intelligence-width);
+}
+#intelligence-dock-space { position: absolute; inset: 0 0 0 auto; width: var(--intelligence-width); border-inline-start: 1px solid var(--line); }
+@media (max-width: 850px) {
+  .workbench[data-intelligence-layout="dock"] {
+    --intelligence-width: min(100%, 350px);
+    padding-inline-end: 0;
+  }
+}
 .workspace-body {
   position: relative;
   flex: 1;

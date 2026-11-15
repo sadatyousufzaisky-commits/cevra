@@ -11,19 +11,22 @@
   <script defer src="send-review.js"></script>
 </head>
 <body class="intelligence">
-  <main>
-    <h1 id="review-heading">Review provider request</h1>
-    <p id="destination"></p>
-    <p id="review-privacy"></p>
-    <p id="review-cost" hidden></p>
-    <div class="actions">
-      <button id="cancel" type="button" disabled>Cancel</button>
-      <button id="approve" class="primary" type="button" disabled>Send</button>
-    </div>
-    <section aria-labelledby="review-title">
+  <main class="provider-review">
+    <header>
+      <span id="review-scope" class="provider-scope"></span>
+      <h1 id="review-heading">Review provider request</h1>
+      <p id="destination"></p>
+      <p id="review-privacy" class="muted"></p>
+      <p id="review-cost" hidden></p>
+    </header>
+    <section class="review-payload" aria-labelledby="review-title">
       <h2 id="review-title">Text included in this request</h2>
       <ol id="review-messages"></ol>
     </section>
+    <footer class="actions">
+      <button id="cancel" type="button" disabled>Cancel</button>
+      <button id="approve" class="primary" type="button" disabled>Send</button>
+    </footer>
   </main>
 </body>
 </html>

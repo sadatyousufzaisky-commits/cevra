@@ -43,6 +43,7 @@ import { normalizeSource } from './source-text.cjs';
 import { changeLineEnding, formatLineEndings, lineEndings, lineEndingHistory,
   parseLineEndings, sameLineEndings } from './line-endings.mjs';
 import { intelligenceSuggestion, showIntelligenceSuggestion } from './intelligence/inline-suggestion.js';
+import { createIntelligenceLayout } from './intelligence/workbench-layout.js';
 
 const api = window.cevra;
 const flightpathPanel = createFlightpathPanel({ api, errorText, checkInputs: () => testEvidence.recheck() });
@@ -134,6 +135,7 @@ const extensionContributions = createExtensionContributions({ api, editor, view,
   builtInTheme: () => selectedTheme, report });
 for (const [name, button] of Object.entries(dockButtons)) button.dataset.view = name;
 const layout = createWorkspaceLayout({ persist: api.setWorkbenchLayout, reveal: revealFolder, report });
+const intelligenceLayout = createIntelligenceLayout({ api, report });
 const syntaxDecorations = [
   linter(null),
   lintGutter(),
@@ -219,6 +221,7 @@ function syncCommands() {
   const runtime = runtimeKind(active?.path);
   byId('extension-manager-open').disabled = changingProject;
   byId('intelligence-mock-open').disabled = changingProject;
+  intelligenceLayout.setBusy(changingProject || closingWorkbench);
   byId('intelligence-attach-selection').disabled = changingProject || !active || active.state.selection.main.empty;
   byId('intelligence-review-proposal').disabled = Boolean(changingProject || saving || discarding || run || stagingEdits);
   dock.dataset.runtime = runtime ?? '';
@@ -1822,6 +1825,10 @@ byId('intelligence-review-proposal').onclick = () => {
   const proposal = intelligenceProposal;
   if (proposal) editPreview.intelligence(() => api.intelligenceProposal(proposal.workspaceId, proposal.id));
 };
+api.onIntelligenceReviewRequested(() => {
+  const button = byId('intelligence-review-proposal');
+  if (!button.disabled && !button.hidden) button.click();
+});
 byId('intelligence-dismiss-proposal').onclick = () => {
   const proposal = intelligenceProposal;
   if (proposal) void api.dismissIntelligenceProposal(proposal.workspaceId, proposal.id).catch(report);
@@ -2016,6 +2023,8 @@ const commands = createCommandRegistry([
   { id: 'extension-store', title: 'Extension Store', detail: 'Browse online and bundled packages',
     enabled: canUse(byId('extension-manager-open')), run: extensionManager.openStore },
   { id: 'intelligence', title: 'VOKRI Intelligence', enabled: canUse(byId('intelligence-mock-open')), run: () => api.openIntelligenceMock() },
+  { id: 'intelligence-workspace', title: 'Open Intelligence workspace', enabled: canUse(byId('intelligence-dock-open')),
+    run: intelligenceLayout.openDock },
 ], report);
 
 const commandCenter = createCommandCenter({ api, registry: commands, workspace: () => project, recent: () => recentProjects,
@@ -2076,8 +2085,7 @@ async function initialize() {
     syncWorkspaceContext();
     await extensionContributions.refresh();
     const initial = await api.initial();
-    byId('intelligence-mock-open').hidden = initial.intelligenceMock !== true;
-    byId('intelligence-attach-selection').hidden = initial.intelligenceContext !== true;
+    intelligenceLayout.setFeatures(initial);
     if (initial.project) await adoptProject(initial.project);
     else {
       applyEditorSettings((await api.editorSettings()).effective);

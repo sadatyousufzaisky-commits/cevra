@@ -53,20 +53,40 @@ const tests = createTestSession(app.getPath('temp'));
 const drafts = createDraftStore(path.join(app.getPath('userData'), 'drafts'));
 const preferences = createPreferences(app.getPath('userData'));
 const safeStart = app.commandLine.hasSwitch('disable-extensions');
-const liveIntelligence = app.commandLine.hasSwitch('enable-intelligence');
-const intelligencePatches = liveIntelligence ?
-  require('./intelligence/patch-broker.cjs').createPatchBroker({
-    current: intelligenceWorkspace, readEditor: readPatchEditor, changed: showIntelligenceProposal,
-  }) : undefined;
-const intelligenceMock = liveIntelligence || app.commandLine.hasSwitch('enable-intelligence-mock') ?
-  require('./intelligence/mock-window.cjs').createIntelligenceMockWindow(app.getPath('userData'), {
+const launchIntelligence = app.commandLine.hasSwitch('enable-intelligence');
+const launchIntelligenceMock = app.commandLine.hasSwitch('enable-intelligence-mock');
+const liveIntelligence = launchIntelligence || !launchIntelligenceMock;
+let intelligenceEnabled = launchIntelligence || launchIntelligenceMock;
+let intelligencePatches;
+let intelligenceMock;
+
+function intelligenceController() {
+  if (intelligenceMock) return intelligenceMock;
+  if (liveIntelligence) {
+    intelligencePatches = require('./intelligence/patch-broker.cjs').createPatchBroker({
+      current: intelligenceWorkspace, readEditor: readPatchEditor, changed: showIntelligenceProposal,
+    });
+  }
+  intelligenceMock = require('./intelligence/mock-window.cjs').createIntelligenceMockWindow(app.getPath('userData'), {
     live: liveIntelligence, getWorkspace: intelligenceWorkspace, readEditor: readContextEditor, openSource: openIntelligenceSource,
+    onLayout: (parent, mode) => {
+      if (parent === window && !parent.isDestroyed()) parent.webContents.send('cevra:intelligence-layout-changed', mode);
+    },
+    reviewProposal: project => {
+      if (intelligenceWorkspace() === project) window.webContents.send('cevra:intelligence-review-requested');
+    },
     getAppearance: appearance,
     getPreferences: () => preferences.getIntelligence(), setPreferences: values => preferences.setIntelligence(values),
     getModels: () => preferences.getIntelligenceModels(), setModels: values => preferences.setIntelligenceModels(values),
     patches: intelligencePatches, runAgentTests, recheckBaseline: (project, id) =>
       intelligenceWorkspace() === project ? workstream.recheck(id) : undefined,
-  }) : undefined;
+  });
+  return intelligenceMock;
+}
+
+function intelligenceFeatures() {
+  return { intelligenceMock: intelligenceEnabled, intelligenceContext: intelligenceEnabled && liveIntelligence };
+}
 const extensions = createExtensionRegistry(app.getPath('userData'));
 const flightpathStore = createFlightpathStore(path.join(app.getPath('userData'), 'flightpath'));
 const syntax = createSyntaxService();
@@ -221,7 +241,7 @@ async function changeWorkspaceTrust(project, trusted) {
 }
 
 function intelligenceWorkspace() {
-  return changingWorkspace || closePending || allowClose || !rendererReady ? undefined : workspace;
+  return !intelligenceEnabled || changingWorkspace || closePending || allowClose || !rendererReady ? undefined : workspace;
 }
 
 function readExtensionEditor(project, file, signal, allowedFiles) {
@@ -237,7 +257,7 @@ function readPatchEditor(project, file, signal) {
 }
 
 function showIntelligenceProposal(proposal) {
-  if (!proposal) intelligenceMock?.proposalRetired();
+  intelligenceMock?.proposalChanged(Boolean(proposal));
   if (rendererReady && window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
     window.webContents.send('cevra:intelligence-proposal-changed', proposal);
     if (proposal) window.flashFrame(true);
@@ -299,6 +319,7 @@ async function openIntelligenceSource(project, source, signal) {
   if (intelligenceWorkspace() !== project) throw new Error('This workspace has closed.');
   const opened = await requestEditor(project, 'intelligence-source-location', { source }, signal);
   if (!opened || intelligenceWorkspace() !== project) throw new Error('This source is no longer current.');
+  intelligenceMock?.revealEditor();
   if (window && !window.isDestroyed()) window.focus();
 }
 
@@ -418,7 +439,7 @@ async function openWorkspace(folder, { entry, discard, recent, recovering = fals
 
 handle('initial', async () => {
   const { entries, unreadable } = await readDrafts();
-  const features = intelligenceMock ? { intelligenceMock: true, intelligenceContext: liveIntelligence } : {};
+  const features = intelligenceFeatures();
   const roots = new Set([workspace?.root, ...entries.map(draft => draft.root)]);
   let unavailable = false;
   for (const root of roots) {
@@ -432,12 +453,24 @@ handle('initial', async () => {
   return { ...features, unavailable, unreadable };
 });
 
-handle('open-intelligence-mock', input => {
-  if (!intelligenceMock) throw new Error('The Intelligence mock is disabled.');
+handle('open-intelligence-mock', (input, mode = 'window') => {
+  if (!intelligenceEnabled) throw new Error('VOKRI Intelligence is disabled.');
   if (!rendererReady || changingWorkspace || closePending || allowClose || !window || window.isDestroyed()) {
     throw new Error('Wait for the workbench to become available.');
   }
-  return intelligenceMock.open(window, input);
+  if (mode !== 'window' && mode !== 'dock' && mode !== 'workspace') throw new Error('Choose an Intelligence layout.');
+  return intelligenceController().open(window, input, mode);
+});
+handle('set-intelligence-enabled', enabled => {
+  if (typeof enabled !== 'boolean' || !rendererReady || changingWorkspace || closePending || allowClose) {
+    throw new Error('Wait for the workbench to become available.');
+  }
+  intelligenceEnabled = enabled;
+  if (!enabled) intelligenceMock?.close();
+  return intelligenceFeatures();
+});
+ipcMain.on('cevra:intelligence-bounds', (event, bounds) => {
+  if (isWorkbench(event)) intelligenceMock?.setBounds(window, bounds);
 });
 handle('intelligence-proposal', (id, proposalId) => intelligencePatches?.preview(currentWorkspace(id), proposalId));
 handle('dismiss-intelligence-proposal', (id, proposalId) => intelligencePatches?.dismiss(currentWorkspace(id), proposalId));

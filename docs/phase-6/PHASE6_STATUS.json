@@ -350,17 +350,23 @@
     {
       "id": "G8",
       "name": "VOKRI Intelligence experience",
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "G4",
         "G5",
         "G6"
       ],
       "commit": null,
-      "evidence": [],
+      "evidence": [
+        "g8-intelligence-workspace.md",
+        "../../qa/intelligence-mock-desktop.test.cjs",
+        "../../qa/intelligence-stream-desktop.test.cjs"
+      ],
       "ci": null,
       "ownerSignoff": null,
-      "openBlockers": []
+      "openBlockers": [
+        "Complete full Windows reliability verification and publish the approval walkthrough evidence."
+      ]
     },
     {
       "id": "G9",

@@ -1,5 +1,6 @@
 window.reviewConversation = ({ provider, model, messages, labels, maxOutputTokens, cost }) => {
   delete window.reviewConversation;
+  document.getElementById('review-scope').textContent = provider.local ? 'Local Ollama' : 'Cloud API';
   document.getElementById('review-heading').textContent = 'Send conversation to ' + provider.label + '?';
   document.getElementById('destination').textContent = `${model} · ${provider.endpoint} · Up to ${maxOutputTokens} output tokens`;
   document.getElementById('review-privacy').textContent = provider.local ?

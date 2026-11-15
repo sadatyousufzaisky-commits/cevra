@@ -1,4 +1,4 @@
-const { BrowserWindow, dialog, ipcMain } = require('electron');
+const { BrowserWindow, WebContentsView, dialog, ipcMain } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
@@ -24,7 +24,7 @@ const pageURL = pathToFileURL(page).href;
 
 function createIntelligenceMockWindow(profile, {
   live = false, getWorkspace, readEditor, openSource, getPreferences, setPreferences, getModels, setModels, getAppearance,
-  patches, runAgentTests, recheckBaseline,
+  patches, runAgentTests, recheckBaseline, onLayout, reviewProposal,
 } = {}) {
   const connections = createConnectionManager(profile, createWindowsCredentialVault());
   const budget = live ? createUsageBudget(profile) : undefined;
@@ -32,10 +32,10 @@ function createIntelligenceMockWindow(profile, {
   let panel;
   const reviewWindows = new Set();
 
-  function applyAppearance(window) {
+  function applyAppearance(contents) {
     const { theme, mode } = getAppearance();
     const dataset = JSON.stringify({ direction: theme === 'midnight' ? 'midnight' : 'ink', colorMode: mode });
-    return window.webContents.executeJavaScript('void Object.assign(document.documentElement.dataset, ' + dataset + ')');
+    return contents.executeJavaScript('void Object.assign(document.documentElement.dataset, ' + dataset + ')');
   }
   const adapters = live ? [mockProvider, createOpenAIProvider(async signal => {
     const owner = panel;
@@ -126,7 +126,7 @@ function createIntelligenceMockWindow(profile, {
     try {
       await review.loadFile(path.join(__dirname, 'send-review.html'));
       if (signal.aborted || review.isDestroyed()) return false;
-      await applyAppearance(review);
+      await applyAppearance(review.webContents);
       if (signal.aborted || review.isDestroyed()) return false;
       const data = JSON.stringify({ provider, model: model.label, messages: value.messages, labels, maxOutputTokens: value.maxOutputTokens, cost });
       const decision = review.webContents.executeJavaScript('window.reviewConversation(' + data + ')');
@@ -172,12 +172,17 @@ function createIntelligenceMockWindow(profile, {
     const previous = panel;
     panel = undefined;
     retire(previous);
-    if (!previous.window.isDestroyed()) previous.window.destroy();
+    if (previous.view) {
+      previous.view.setVisible(false);
+      if (!previous.window.isDestroyed()) previous.window.contentView.removeChildView(previous.view);
+      onLayout(previous.window, null);
+      if (!previous.contents.isDestroyed()) previous.contents.close();
+    } else if (!previous.window.isDestroyed()) previous.window.destroy();
   }
 
   function handle(name, operation) {
     ipcMain.handle('cevra:intelligence-mock:' + name, (event, ...args) => {
-      if (!panel || event.sender !== panel.window.webContents ||
+      if (!panel || event.sender !== panel.contents ||
           event.senderFrame?.parent !== null || event.senderFrame.url !== pageURL) {
         throw new Error('Unrecognized Intelligence window.');
       }
@@ -186,10 +191,30 @@ function createIntelligenceMockWindow(profile, {
   }
 
   function sendContext(owner) {
-    if (owner.loaded && panel === owner && !owner.window.isDestroyed()) {
-      owner.window.webContents.send('cevra:intelligence-mock:context-changed', contextState(owner));
+    if (owner.loaded && panel === owner && !owner.contents.isDestroyed()) {
+      owner.contents.send('cevra:intelligence-mock:context-changed', contextState(owner));
     }
   }
+
+  function present(owner, mode, focus = true) {
+    if (!owner.view) {
+      owner.window.focus();
+      return;
+    }
+    owner.layout = mode;
+    owner.focusPending ||= focus;
+    owner.contents.send('cevra:intelligence-mock:layout-changed', mode);
+    onLayout(owner.window, mode);
+  }
+
+  handle('layout', owner => owner.layout);
+  handle('set-layout', (owner, mode) => {
+    if (owner.view && (mode === 'dock' || mode === 'workspace')) present(owner, mode);
+  });
+  handle('close-panel', close);
+  handle('review-patch', owner => {
+    if (owner.proposalReady && owner.project) reviewProposal(owner.project);
+  });
 
   function contextState(owner) {
     return {
@@ -579,12 +604,11 @@ function createIntelligenceMockWindow(profile, {
 
   return {
     syncAppearance() {
-      const windows = panel?.loaded ? [panel.window, ...reviewWindows] : [...reviewWindows];
-      for (const window of windows) {
-        if (!window.isDestroyed()) void applyAppearance(window).catch(() => {});
-      }
+      const contents = [...reviewWindows].map(window => window.webContents);
+      if (panel?.loaded) contents.unshift(panel.contents);
+      for (const renderer of contents) if (!renderer.isDestroyed()) void applyAppearance(renderer).catch(() => {});
     },
-    async open(parent, selection) {
+    async open(parent, selection, mode) {
       let owner = panel;
       if (selection !== undefined) {
         const project = live && getWorkspace();
@@ -602,7 +626,7 @@ function createIntelligenceMockWindow(profile, {
         if (owner !== panel || owner?.active || owner?.attachingSelection) {
           throw new ContextError('Wait for the current Intelligence operation.');
         }
-        if (!owner) owner = makePanel(parent, project);
+        if (!owner) owner = makePanel(parent, project, mode);
         owner.attachingSelection = true;
         try { await owner.context.attachSelection(snapshot, owner.connectionOwner.signal); }
         catch (error) {
@@ -611,13 +635,42 @@ function createIntelligenceMockWindow(profile, {
         } finally { owner.attachingSelection = false; }
         if (panel !== owner) return;
       }
-      owner ??= panel ?? makePanel(parent, live ? getWorkspace() : undefined);
+      owner ??= panel ?? makePanel(parent, live ? getWorkspace() : undefined, mode);
       owner.loading ??= load(owner);
       await owner.loading;
-      if (panel === owner && !owner.window.isDestroyed()) {
-        owner.window.focus();
+      if (panel === owner && !owner.contents.isDestroyed()) {
+        present(owner, mode === 'window' ? owner.layout : mode);
         sendContext(owner);
       }
+    },
+    setBounds(parent, bounds) {
+      const owner = panel;
+      if (!owner?.loaded || !owner.view || owner.window !== parent) return;
+      if (!bounds) {
+        owner.view.setVisible(false);
+        return;
+      }
+      if (!exactRecord(bounds, ['x', 'y', 'width', 'height']) ||
+          Object.values(bounds).some(value => !Number.isFinite(value) || value < 0 || value > 32768)) return;
+      const zoom = parent.webContents.getZoomFactor();
+      const content = parent.getContentBounds();
+      const x = Math.round(bounds.x * zoom);
+      const y = Math.round(bounds.y * zoom);
+      const width = Math.min(content.width - x, Math.round(bounds.width * zoom));
+      const height = Math.min(content.height - y, Math.round(bounds.height * zoom));
+      if (width < 1 || height < 1) {
+        owner.view.setVisible(false);
+        return;
+      }
+      owner.view.setBounds({ x, y, width, height });
+      owner.view.setVisible(true);
+      if (owner.focusPending) {
+        owner.focusPending = false;
+        owner.contents.focus();
+      }
+    },
+    revealEditor() {
+      if (panel?.layout === 'workspace') present(panel, 'dock', false);
     },
     documentChanged(project, file) {
       patches?.documentChanged(project, file);
@@ -638,29 +691,39 @@ function createIntelligenceMockWindow(profile, {
     patchApplied(project, changes) {
       if (panel?.project === project) panel.agent?.applied(changes);
     },
-    proposalRetired() { panel?.agent?.proposalRetired(); },
+    proposalChanged(available) {
+      if (!panel) return;
+      panel.proposalReady = available;
+      if (panel.loaded) panel.contents.send('cevra:intelligence-mock:proposal-changed', available);
+      if (!available) panel.agent?.proposalRetired();
+    },
     stopAgent() { panel?.agent?.stop(); },
     close,
   };
 
-  function makePanel(parent, project) {
-    const window = new BrowserWindow({
-      parent, width: 660, height: 590, minWidth: 420, minHeight: 410, show: false,
-      title: live ? intelligenceName : intelligenceName + ' · Offline mock', icon,
-      webPreferences: {
-        preload: path.join(__dirname, 'mock-preload.cjs'),
-        sandbox: true, contextIsolation: true, nodeIntegration: false,
-      },
+  function makePanel(parent, project, layout) {
+    const webPreferences = { preload: path.join(__dirname, 'mock-preload.cjs'),
+      sandbox: true, contextIsolation: true, nodeIntegration: false };
+    const view = layout === 'window' ? undefined : new WebContentsView({ webPreferences });
+    const window = view ? parent : new BrowserWindow({
+      parent, width: 1010, height: 740, minWidth: 420, minHeight: 410, show: false,
+      title: live ? intelligenceName : intelligenceName + ' · Offline mock', icon, webPreferences,
     });
-    if (process.platform === 'win32') window.setAppDetails({ appId, appIconPath: icon, relaunchDisplayName: intelligenceName });
-    const opened = { window, project, registry: baseRegistry, messages: [], verified: new Set(), sources: new Map(), historical: new Set(),
+    if (view) {
+      view.setVisible(false);
+      parent.contentView.addChildView(view);
+    } else if (process.platform === 'win32') {
+      window.setAppDetails({ appId, appIconPath: icon, relaunchDisplayName: intelligenceName });
+    }
+    const contents = view?.webContents ?? window.webContents;
+    const opened = { window, view, contents, layout, project, registry: baseRegistry, messages: [], verified: new Set(), sources: new Map(), historical: new Set(),
       connectionOwner: new AbortController(), connectionBusy: false };
     if (project) opened.context = createContextBroker(project, { readEditor, current: item => item === getWorkspace() });
     if (project && live) opened.agent = createAgentWorkflow(project, {
       current: getWorkspace, runTests: runAgentTests, recheckBaseline,
       publish: state => {
-        if (panel === opened && opened.loaded && !window.isDestroyed()) {
-          window.webContents.send('cevra:intelligence-mock:agent-changed', state);
+        if (panel === opened && opened.loaded && !contents.isDestroyed()) {
+          contents.send('cevra:intelligence-mock:agent-changed', state);
         }
       },
       retired: () => {
@@ -669,31 +732,34 @@ function createIntelligenceMockWindow(profile, {
       },
     });
     panel = opened;
-    window.on('page-title-updated', event => event.preventDefault());
-    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    window.webContents.on('will-navigate', event => event.preventDefault());
-    window.webContents.on('will-attach-webview', event => event.preventDefault());
-    window.webContents.once('render-process-gone', () => { if (panel === opened) close(); });
-    window.webContents.on('did-start-navigation', details => {
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    contents.on('will-navigate', event => event.preventDefault());
+    contents.on('will-attach-webview', event => event.preventDefault());
+    contents.once('render-process-gone', () => { if (panel === opened) close(); });
+    contents.on('did-start-navigation', details => {
       if (opened.loaded && details.isMainFrame && !details.isSameDocument && panel === opened) close();
     });
-    window.on('focus', () => { if (panel === opened) void refreshSources(opened); });
-    window.once('closed', () => {
-      retire(opened);
-      if (panel === opened) panel = undefined;
-    });
+    contents.on('focus', () => { if (panel === opened) void refreshSources(opened); });
+    if (!view) {
+      window.on('page-title-updated', event => event.preventDefault());
+      window.once('closed', () => {
+        if (panel !== opened) return;
+        panel = undefined;
+        retire(opened);
+      });
+    }
     return opened;
   }
 
   async function load(opened) {
-    const { window } = opened;
+    const { window, view, contents } = opened;
     try {
-      await window.loadFile(page);
+      await contents.loadFile(page);
       if (panel !== opened) return;
-      await applyAppearance(window);
+      await applyAppearance(contents);
       if (panel !== opened) return;
       opened.loaded = true;
-      window.show();
+      if (!view) window.show();
     } catch {
       if (panel !== opened) return;
       close();
