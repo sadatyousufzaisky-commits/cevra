@@ -13,6 +13,7 @@ internal static class VokriProbe
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr root, Enumerate callback, IntPtr parameter);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr handle, out int process);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr handle, StringBuilder text, int capacity);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr handle, StringBuilder text, int capacity);
     [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr handle, uint command);
     [DllImport("user32.dll")] private static extern IntPtr GetDlgItem(IntPtr handle, int id);
     [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr handle);
@@ -55,6 +56,13 @@ internal static class VokriProbe
     {
         var caption = new StringBuilder(Send(handle, 0x000e).ToInt32() + 2);
         Send(handle, 0x000d, caption.Capacity, caption);
+        return caption.ToString();
+    }
+
+    private static string FrameTitle(IntPtr handle)
+    {
+        var caption = new StringBuilder(512);
+        GetWindowText(handle, caption, caption.Capacity);
         return caption.ToString();
     }
 
@@ -153,9 +161,14 @@ internal static class VokriProbe
                     break;
                 case "confirm":
                 case "cancel":
-                    IntPtr dialog = WaitFor(() => FindWindow(process, "#32770", root), () => "The confirmation dialog did not appear.");
-                    Check(Caption(dialog) == args[2], "Unexpected confirmation dialog " + Caption(dialog) + ".");
                     int choice = args[1] == "confirm" ? 6 : 2;
+                    IntPtr dialog = WaitFor(() =>
+                    {
+                        IntPtr candidate = FindWindow(process, "#32770", root);
+                        if (candidate == IntPtr.Zero || FrameTitle(candidate) != args[2]) return IntPtr.Zero;
+                        IntPtr action = GetDlgItem(candidate, choice);
+                        return action != IntPtr.Zero && IsWindowEnabled(action) ? candidate : IntPtr.Zero;
+                    }, () => "The expected dialog did not appear: " + args[2] + ".");
                     Check(PostMessage(dialog, 0x0111, new IntPtr(choice), GetDlgItem(dialog, choice)), "Unable to close the dialog.");
                     break;
                 case "close":
