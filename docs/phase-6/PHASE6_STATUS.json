@@ -223,31 +223,47 @@
     {
       "id": "G5",
       "name": "Professional editor experience",
-      "status": "in_progress",
+      "status": "passed",
       "dependsOn": [
         "G4"
       ],
-      "commit": "43736ff197c43ee44c4cb392f200e699c7e3a565",
+      "commit": "d1fc28e2a43f889efac5872d65a1edf432a590d4",
       "evidence": [
         "g5-editor-fidelity.md",
+        "evidence/g5/editor-benchmark.json",
+        "evidence/g5/live-ime.json",
         "../../qa/core.test.cjs",
-        "../../qa/workbench.test.cjs"
+        "../../qa/workbench.test.cjs",
+        "../../qa/editor-experience.test.cjs",
+        "../../qa/editor-live-ime.test.cjs"
       ],
-      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43690788863",
-      "ownerSignoff": null,
-      "openBlockers": [
-        "Complete the Phase 2 editor workflow parity review.",
-        "Measure typing, scrolling, memory and undo on large-file and multi-tab workloads.",
-        "Verify live Windows IME and remaining editor input cases."
-      ],
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43696494049",
+      "ownerSignoff": {
+        "date": "2026-11-15",
+        "authorization": "Project owner directed completion of G5 on the Electron workbench."
+      },
+      "openBlockers": [],
       "verification": {
         "verifiedAt": "2026-11-15",
         "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
         "corePassed": 170,
-        "desktopPassed": 94,
+        "desktopPassed": 98,
         "optionalNativePreviewSkipped": 1,
+        "extensionHostPassedCi": 18,
+        "credentialAccountIsolationCi": "passed",
+        "benchmarkPassedCi": 13,
+        "phase2WorkflowReview": "passed against the Phase 5 workflow reference",
         "mixedEndingsRoundTrip": "32 seeded files, 448 edits, grouped undo, and explicit conversion passed",
-        "windowsByteChecks": "Exact save, formatter preservation, crash recovery, and recovery copy passed",
+        "windowsByteChecks": "Exact save, formatter preservation, project replacement crash replay, and recovery copy passed",
+        "liveIme": "Vietnamese Telex on Windows 11 with trusted preedit, observed commit, undo, redo, and exact UTF-8 save",
+        "editorBenchmark": {
+          "sourceLines": 24002,
+          "longestLineCharacters": 65536,
+          "diagnostics": 2850,
+          "local": { "typingP95Ms": 32.1, "scrollP95Ms": 33.4, "retainedRendererHeapBytes": 266528 },
+          "ci": { "typingP95Ms": 30, "scrollP95Ms": 31.9, "retainedRendererHeapBytes": 299892 }
+        },
         "hostedWindowsReliability": "passed on Windows Server 2025"
       }
     },

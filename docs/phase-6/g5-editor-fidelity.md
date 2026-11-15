@@ -42,3 +42,7 @@ The [editor benchmark](evidence/g5/editor-benchmark.json) measures 25 typing and
 The automated desktop test exercises composition commit, cancellation, undo, redo, and multilingual save through Chromium. The [live Windows test](../../qa/editor-live-ime.test.cjs) recorded trusted preedit events from Vietnamese Telex, committed `ấ`, verified undo and redo, and checked the exact resulting bytes in a UTF-8 file with a BOM and mixed separators. The [recorded result](evidence/g5/live-ime.json) includes the trust flags for each observed composition stage.
 
 To repeat the live check, build the app with `npm run build`, select the Windows Vietnamese Telex input method, set `$env:VOKRI_G5_LIVE_IME = '1'`, and run `node --test qa/editor-live-ime.test.cjs`. After `G5_LIVE_IME_READY` appears, type `a`, `a`, `s`, then **Space** in the test window. The helper uses a temporary workspace and profile.
+
+## Gate decision
+
+G5 passed on 2026-11-15 for the Electron workbench. Windows Server 2025 reproduced the editor stress test at 30.0 ms typing p95 and 31.9 ms scrolling p95 and passed the full reliability workflow. That workflow included 170 core tests, 98 desktop tests, credential account separation, 18 extension-host tests, and 13 Intelligence benchmark checks. [Phase 6 status](PHASE6_STATUS.json) · [Windows reliability run](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43696494049)
