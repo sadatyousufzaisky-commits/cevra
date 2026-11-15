@@ -29,6 +29,20 @@ test('G8 moves the same sandboxed conversation between dock and full workspace, 
   { timeout: 35_000 }, async t => {
     const { app, page, open, editor } = await openWorkbench(t, { 'source.js': source }, undefined, { args: [flag] });
     await open('source.js');
+    await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window.unmaximize();
+      window.setSize(920, 660);
+    });
+    const theme = page.getByLabel('Theme', { exact: true });
+    await theme.focus();
+    await theme.selectOption('midnight');
+    await page.locator('#message').getByText('Theme saved.', { exact: true }).waitFor({ state: 'visible' });
+    await page.waitForFunction(() => {
+      const message = document.getElementById('message');
+      const { left, right, width } = message.getBoundingClientRect();
+      return left >= 0 && right <= window.innerWidth && width >= 120;
+    });
     const paneOpened = page.context().waitForEvent('page');
     await page.getByRole('button', { name: 'Intelligence workspace', exact: true }).press('Enter');
     const pane = await paneOpened;

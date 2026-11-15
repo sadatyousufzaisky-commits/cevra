@@ -368,27 +368,29 @@
   <footer class="statusbar">
     <button id="workspace-trust-state" class="status-action workspace-trust" title="Workspace trust settings" hidden><svg aria-hidden="true"><use href="#shield"></use></svg><span>Restricted</span></button>
     <span id="message" class="message" role="status">Ready to open a project</span>
-    <span id="draft-status" class="status-field" data-state="clear" hidden></span>
-    <button id="inspect-symbol" class="status-action" title="Inspect symbol (Ctrl+Alt+I)" disabled>Inspect symbol</button>
-    <button id="go-definition" class="status-action" title="Go to Definition (F12)" disabled>Go to Definition</button>
-    <button id="extension-manager-open" class="status-action" disabled>Extensions</button>
-    <button id="intelligence-power" class="status-action" aria-label="Turn on VOKRI Intelligence" aria-pressed="false" disabled>AI Off</button>
-    <button id="intelligence-dock-open" class="status-action" hidden disabled>Intelligence workspace</button>
-    <button id="intelligence-mock-open" class="status-action" hidden disabled>VOKRI Intelligence</button>
-    <button id="intelligence-attach-selection" class="status-action" hidden disabled>Attach selection to Intelligence</button>
-    <button id="intelligence-review-proposal" class="status-action" hidden>Review Intelligence edit</button>
-    <button id="intelligence-dismiss-proposal" class="status-action" hidden>Dismiss Intelligence edit</button>
-    <label class="theme-control">Theme
-      <select id="theme-choice" aria-label="Theme" disabled>
-        <option value="dark">Iris Ink Dark</option>
-        <option value="light">Iris Ink Light</option>
-        <option value="midnight">Midnight Atelier</option>
-        <option value="system">System</option>
-      </select>
-    </label>
-    <span id="language" class="status-field"></span>
-    <button id="line-ending" class="status-action" aria-haspopup="dialog" hidden></button>
-    <span id="cursor" class="status-field"></span>
+    <div class="status-tools">
+      <span id="draft-status" class="status-field" data-state="clear" hidden></span>
+      <button id="inspect-symbol" class="status-action" title="Inspect symbol (Ctrl+Alt+I)" disabled>Inspect symbol</button>
+      <button id="go-definition" class="status-action" title="Go to Definition (F12)" disabled>Go to Definition</button>
+      <button id="extension-manager-open" class="status-action" disabled>Extensions</button>
+      <button id="intelligence-power" class="status-action" aria-label="Turn on VOKRI Intelligence" aria-pressed="false" disabled>AI Off</button>
+      <button id="intelligence-dock-open" class="status-action" hidden disabled>Intelligence workspace</button>
+      <button id="intelligence-mock-open" class="status-action" hidden disabled>VOKRI Intelligence</button>
+      <button id="intelligence-attach-selection" class="status-action" hidden disabled>Attach selection to Intelligence</button>
+      <button id="intelligence-review-proposal" class="status-action" hidden>Review Intelligence edit</button>
+      <button id="intelligence-dismiss-proposal" class="status-action" hidden>Dismiss Intelligence edit</button>
+      <label class="theme-control">Theme
+        <select id="theme-choice" aria-label="Theme" disabled>
+          <option value="dark">Iris Ink Dark</option>
+          <option value="light">Iris Ink Light</option>
+          <option value="midnight">Midnight Atelier</option>
+          <option value="system">System</option>
+        </select>
+      </label>
+      <span id="language" class="status-field"></span>
+      <button id="line-ending" class="status-action" aria-haspopup="dialog" hidden></button>
+      <span id="cursor" class="status-field"></span>
+    </div>
   </footer>
   <dialog id="command-center" class="definition-dialog command-center" aria-labelledby="command-heading">
     <header class="symbols-header"><h2 id="command-heading">Command center</h2><button id="close-commands" class="sidebar-action" aria-label="Close command center"><svg aria-hidden="true"><use href="#close"></use></svg></button></header>

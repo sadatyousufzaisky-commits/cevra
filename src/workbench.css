@@ -328,9 +328,11 @@ button.test-result:hover { background: var(--raised); }
 .test-result span:first-child { color: var(--danger); font-weight: 650; }
 .test-result span:not(:first-child) { color: var(--muted); font-size: 12px; }
 .test-result span.test-source { font-family: var(--mono); color: var(--accent); }
-.statusbar { display: flex; align-items: center; gap: clamp(6px, 1vw, 16px); overflow: auto hidden; scrollbar-width: none; padding: 0 12px; background: var(--chrome); border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-.message { margin-right: auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.statusbar { display: flex; align-items: center; gap: clamp(6px, 1vw, 16px); min-width: 0; padding: 0 12px; background: var(--chrome); border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.message { flex: 1 0 min(10.5rem, 30vw); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .message[data-error="true"] { color: var(--danger); }
+.status-tools { display: flex; align-items: center; gap: inherit; min-width: 0; overflow: auto hidden; scrollbar-width: none; }
+.status-tools > * { flex-shrink: 0; }
 .status-field[data-state="error"] { color: var(--danger); }
 .status-field { white-space: nowrap; }
 .status-action { min-height: var(--target-min); padding: 2px 5px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); font-size: inherit; white-space: nowrap; }
