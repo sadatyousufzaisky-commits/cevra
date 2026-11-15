@@ -659,7 +659,7 @@ test('a named test workstream links an exact failure and marks edited or externa
     await page.getByRole('button', { name: 'Check inputs' }).click();
     await status.getByText(/^Historical · workspace inputs changed/).waitFor();
     await state.getByText(/^Historical pass/).waitFor();
-    assert.equal(await state.getAttribute('data-state'), '');
+    assert.equal(await state.getAttribute('data-state'), 'unverified');
   });
 
 test('Flightpath keeps opt-in capsules across a crash and shows reopened passes as historical',
