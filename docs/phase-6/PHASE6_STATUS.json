@@ -54,7 +54,7 @@
     {
       "id": "G1",
       "name": "Original premium design system",
-      "status": "in_progress",
+      "status": "passed",
       "dependsOn": [
         "G0"
       ],
@@ -74,9 +74,15 @@
         "authorization": "Project owner selected Iris Ink after viewing the three design directions in dark and light mode.",
         "reviewedRevision": "6d038dc"
       },
-      "openBlockers": [
-        "Capture novice and experienced participant comprehension results."
-      ],
+      "closure": {
+        "date": "2026-11-15",
+        "authorization": "Project owner directed G1 closure after reviewing the remaining participant-study requirement.",
+        "acceptanceExceptions": [
+          "The novice and experienced developer participant study and its success rates were waived for G1.",
+          "The Windows Narrator smoke test was omitted from G1 at the project owner's direction."
+        ]
+      },
+      "openBlockers": [],
       "verification": {
         "verifiedAt": "2026-11-14",
         "corePassed": 167,

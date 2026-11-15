@@ -54,13 +54,13 @@ On Windows 11 Home build 26300, the 1366 × 768 display offered 100% and 125% na
 
 Ten scripted Windows workflow checks passed locally on `462c1a1`. These exercised nested file saving, process start and stop, syntax and runtime error navigation, persistent settings, keyboard symbol search, provider consent, reviewed Intelligence edits, and verification and Git commit of a repair. The scripts verify task outcomes and record automated timings.
 
-## Human acceptance
+## G1 closure
+
+The project owner approved Iris Ink and directed closure of G1 on 15 November 2026. The acceptance record includes Windows reliability, contrast, keyboard, and native 125% display evidence. The novice and experienced developer participant study and Windows Narrator smoke test were waived for G1. The workflow test results are scripted, and participant success rates were never collected.
+
+## Participant study plan
 
 Use a fresh sample for each participant. Record first attempt, completion without help, time to act, error or hesitation, and any inaccessible control. Report completed tasks divided by attempted tasks for each cohort.
 
 - **New developer** opens a folder, identifies JavaScript and Python files, edits and saves, runs a file, follows a source error, and changes editor font size.
 - **Experienced developer** finds a symbol, switches files, runs and stops a process, checks a failing source location, reviews a proposed change, and identifies the provider and consent before a request.
-- **Windows Narrator smoke** was omitted from G1 at the owner’s direction.
-- **Owner direction review** selected Iris Ink on 14 November 2026 after reviewing the three designs at revision `6d038dc`. Its palette, geometry, and layout guide the VOKRI SDK migration.
-
-Participant comprehension and success rates remain pending.
