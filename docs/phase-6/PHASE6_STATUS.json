@@ -108,7 +108,7 @@
         "G0",
         "G1"
       ],
-      "commit": null,
+      "commit": "9ccb09b6d69de82b81be34b3d138ae4437b579bf",
       "evidence": [
         "g2-native-sdk.md",
         "../../vokri/README.md",
@@ -117,12 +117,27 @@
         "../../qa/vokri.test.cjs",
         "../../qa/vokri-native-surface.cs"
       ],
-      "ci": null,
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43667758389",
       "ownerSignoff": null,
       "openBlockers": [
         "Run the native SDK suite on a Windows 10 x64 client.",
         "Verify a live IME composition session and a transition across mixed-DPI monitors."
-      ]
+      ],
+      "verification": {
+        "verifiedAt": "2026-11-15",
+        "local": { "platform": "Windows 11 Home x64 build 26300", "testsPassed": 6, "resizePaintP95Ms": 8.484 },
+        "hosted": [
+          { "platform": "Windows Server 2022 x64 build 20348", "testsPassed": 6, "resizePaintP95Ms": 8.219, "job": 132670843539 },
+          { "platform": "Windows Server 2025 x64 build 26100", "testsPassed": 6, "resizePaintP95Ms": 9.962, "job": 132670843794 }
+        ],
+        "standaloneRuntimeFiles": ["Vokri.Sample.exe", "Vokri.dll"],
+        "virtualDocumentCount": 100000,
+        "maximumRowsPerAccessibilityPage": 64,
+        "nativeResizePaintSamples": 180,
+        "nativeAccessibilityWalkthrough": "Windows UI Automation enumerated the bounded list and F7 then End opened the final document.",
+        "existingProductRegressionTestsPassed": 287,
+        "credentialAccountIsolationCi": "passed"
+      }
     },
     {
       "id": "G3",

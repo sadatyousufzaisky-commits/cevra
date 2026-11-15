@@ -23,3 +23,13 @@ The sample uses a Windows manifest with PerMonitorV2 DPI awareness and version 6
 ## Platform evidence
 
 The local test machine runs Windows 11 x64 build 26300. The CI matrix uses Windows Server 2022 and 2025 x64. Windows Server results supplement local Windows client testing. Windows 10 client testing, moving a window across mixed-DPI monitors, and a live IME composition check need hardware or a Windows client image with those configurations. The automated tests cover synthetic DPI transitions, Unicode and native accessibility roles and names.
+
+| Windows x64 configuration | Native tests | Resize and paint p95 | Row-label requests |
+| --- | ---: | ---: | ---: |
+| Windows 11 Home build 26300 | 6 passed | 8.484 ms | 7,020 |
+| Windows Server 2022 build 20348 | 6 passed | 8.219 ms | 6,763 |
+| Windows Server 2025 build 26100 | 6 passed | 9.962 ms | 6,763 |
+
+Results are for `9ccb09b`. Each run exercised 180 resize and paint iterations with a 100,000-document source. The local run exercised animation and timer-fault cleanup. The hosted runners exercised the single static frame specified by their reduced-motion configuration. [Server 2022 SDK tests](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43667758389/job/132670843539) · [Server 2025 SDK tests](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43667758389/job/132670843794)
+
+The same revision passed all 287 existing product tests, including core, desktop, extension-host, and Intelligence benchmark coverage. The separate Windows credential-account check also passed. [Product regression job](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43667758389/job/132670843876)
