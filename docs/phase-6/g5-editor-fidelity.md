@@ -18,4 +18,6 @@ The status bar shows **Mixed EOL** when the buffer retains exceptions to its pre
 
 `npm run test:core` exercises a seeded mixed-ending corpus with Unicode text, undo and redo, grouped deletion, and unsupported save input. `npm run test:desktop` exercises byte-for-byte saves and recovery through real Windows Electron windows, including BOM, right-to-left text, emoji, a forced app crash, a formatter conversion, and an externally changed original. The checks cover undo of both direct and formatter conversions.
 
+On `43736ff`, 170 core and 94 desktop tests passed on Windows 11. The full reliability workflow passed on Windows Server 2025. The native preview checks were skipped. [Windows reliability run](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43690788863)
+
 G5 remains in progress. The remaining acceptance work includes Phase 2 workflow parity, typing and scrolling benchmarks with large files and multiple tabs, and live Windows IME coverage.

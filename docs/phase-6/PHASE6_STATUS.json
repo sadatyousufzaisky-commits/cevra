@@ -227,19 +227,29 @@
       "dependsOn": [
         "G4"
       ],
-      "commit": null,
+      "commit": "43736ff197c43ee44c4cb392f200e699c7e3a565",
       "evidence": [
         "g5-editor-fidelity.md",
         "../../qa/core.test.cjs",
         "../../qa/workbench.test.cjs"
       ],
-      "ci": null,
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43690788863",
       "ownerSignoff": null,
       "openBlockers": [
         "Complete the Phase 2 editor workflow parity review.",
         "Measure typing, scrolling, memory and undo on large-file and multi-tab workloads.",
         "Verify live Windows IME and remaining editor input cases."
-      ]
+      ],
+      "verification": {
+        "verifiedAt": "2026-11-15",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "corePassed": 170,
+        "desktopPassed": 94,
+        "optionalNativePreviewSkipped": 1,
+        "mixedEndingsRoundTrip": "32 seeded files, 448 edits, grouped undo, and explicit conversion passed",
+        "windowsByteChecks": "Exact save, formatter preservation, crash recovery, and recovery copy passed",
+        "hostedWindowsReliability": "passed on Windows Server 2025"
+      }
     },
     {
       "id": "G6",
