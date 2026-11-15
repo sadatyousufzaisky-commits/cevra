@@ -350,23 +350,42 @@
     {
       "id": "G8",
       "name": "VOKRI Intelligence experience",
-      "status": "in_progress",
+      "status": "passed",
       "dependsOn": [
         "G4",
         "G5",
         "G6"
       ],
-      "commit": null,
+      "commit": "3326c26872b5a060262a311183cf989d3a9a6b0a",
       "evidence": [
         "g8-intelligence-workspace.md",
+        "evidence/g8/windows-intelligence-approval.json",
+        "evidence/g8/provider-review.png",
+        "evidence/g8/edit-review.png",
+        "evidence/g8/test-evidence.png",
         "../../qa/intelligence-mock-desktop.test.cjs",
         "../../qa/intelligence-stream-desktop.test.cjs"
       ],
-      "ci": null,
-      "ownerSignoff": null,
-      "openBlockers": [
-        "Complete full Windows reliability verification and publish the approval walkthrough evidence."
-      ]
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43747104389",
+      "ownerSignoff": {
+        "date": "2026-11-15",
+        "authorization": "Project owner directed G8 implementation on Electron."
+      },
+      "openBlockers": [],
+      "verification": {
+        "verifiedAt": "2026-11-15",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "localFullSuiteRevision": "683243ea431d51a7947ad189aaff86b84e4bfe43",
+        "localFocusedPassed": 4,
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassedCi": 173,
+        "desktopPassedCi": 105,
+        "optionalNativePreviewSkipped": 1,
+        "credentialAccountIsolationCi": "passed",
+        "extensionHostPassedCi": 19,
+        "benchmarkPassedCi": 13,
+        "providerVerification": "Synthetic OpenAI transport and numeric loopback Ollama fixture. Live provider smoke checks remain optional."
+      }
     },
     {
       "id": "G9",

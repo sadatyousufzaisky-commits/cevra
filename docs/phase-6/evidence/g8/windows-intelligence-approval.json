@@ -1,0 +1,32 @@
+{
+  "testedRevision": "3326c26872b5a060262a311183cf989d3a9a6b0a",
+  "windows": "10.0.26300",
+  "electron": "45.2.3",
+  "timingScope": "Synthetic provider, real local tests, and evidence capture on this Windows machine",
+  "walkthrough": {
+    "layout": "dock and full workspace",
+    "providerTransport": "synthetic",
+    "evidence": [
+      {
+        "action": "Open Intelligence and switch to full workspace",
+        "elapsedMs": 201
+      },
+      {
+        "action": "Authorize the local baseline and record its failed revision",
+        "elapsedMs": 342
+      },
+      {
+        "action": "Review destination, cost and context, then explicitly send",
+        "elapsedMs": 499
+      },
+      {
+        "action": "Review the staged proposal, apply as drafts, and save",
+        "elapsedMs": 364
+      },
+      {
+        "action": "Authorize verification and observe the passing revision",
+        "elapsedMs": 337
+      }
+    ]
+  }
+}

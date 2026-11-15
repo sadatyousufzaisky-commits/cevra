@@ -1,8 +1,22 @@
 # G8 VOKRI Intelligence workspace
 
-The workbench starts with **AI Off**. Select it to enable Intelligence for the current session. **Intelligence workspace** opens the dock beside the editor. **Full workspace** expands that same view and keeps the prompt, conversation, attachments, and coding-task progress. **Dock** restores the editor. The workbench also offers the separate Intelligence window used in the Phase 5 preview.
+G8 uses the Electron workbench selected for Phase 6. The workbench starts with **AI Off**. Select it to enable Intelligence for the current session and open the dock beside the editor. **Full workspace** expands that same view and keeps the prompt, conversation, attachments, and coding-task progress. **Dock** brings the editor back beside Intelligence. **Intelligence workspace** reopens the dock, and the separate Phase 5 Intelligence window is also available. [Phase 6 runtime decision](g3-native-foundation.md)
 
 The workspace shows whether the selected model uses a cloud API, local Ollama, or the offline simulation. Attachments and model connections stay visible beside the conversation in the full workspace. For a coding task, the plan marks the current step and keeps baseline and verification results next to it. **Stop** stops a stream, and **Stop coding task** cancels the active task. **AI On** turns Intelligence off and clears the open session. Model preferences and credentials remain available for a later session.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Off
+    Off --> Docked: Enable
+    Docked --> Full: Full workspace
+    Full --> Docked: Dock
+    Docked --> Enabled: Close panel or change project
+    Full --> Enabled: Close panel or change project
+    Enabled --> Docked: Open Intelligence workspace
+    Docked --> Off: Turn off
+    Full --> Off: Turn off
+    Enabled --> Off: Turn off
+```
 
 ## Approval flow
 
@@ -10,7 +24,7 @@ The workspace shows whether the selected model uses a cloud API, local Ollama, o
 flowchart TD
     Off["AI Off"] -->|Enable for this session| Dock["Docked Intelligence"]
     Dock <-->|Change layout| Full["Full workspace"]
-    Dock --> Plan["Select model and attachments; review the plan"]
+    Dock --> Plan["Select model and attachments, then review the plan"]
     Full --> Plan
     Plan --> B["Approve the local baseline tests"]
     B -->|Failed baseline| S["Review provider, exact context, and cost estimate"]
@@ -42,4 +56,10 @@ Google Antigravity documents review of planning artifacts and code diffs. The G8
 
 ## Verification
 
-The Windows desktop suite covers the shared sandboxed view and a complete repair with baseline, exact send review, patch, save, and verification. The Phase 5 tests still cover cancellation, revoked keys, stale context, rejected patches, provider switching, the loopback Ollama fixture, and recovery after restart. The desktop suite uses synthetic cloud transport and does not require a provider account. [Mock and layout regression](../../qa/intelligence-mock-desktop.test.cjs) · [Provider and repair tests](../../qa/intelligence-stream-desktop.test.cjs)
+The Windows desktop suite covers the shared sandboxed view, status feedback in a narrow window, and a complete repair with baseline, exact send review, patch, save, and verification. The Phase 5 tests still cover cancellation, revoked keys, stale context, rejected patches, provider switching, the loopback Ollama fixture, and recovery after restart. The desktop suite runs with synthetic cloud transport and fixture credentials. [Mock and layout regression](../../qa/intelligence-mock-desktop.test.cjs) · [Provider and repair tests](../../qa/intelligence-stream-desktop.test.cjs)
+
+On Windows 11 x64 build 26300, revision `683243ea431d51a7947ad189aaff86b84e4bfe43` passed 173 core and 105 Electron desktop tests. The optional native profile-handoff test was skipped. Four focused Windows tests passed on `3326c26872b5a060262a311183cf989d3a9a6b0a` and produced the walkthrough below. The trace timings include capture of the three review surfaces. [Approval trace](evidence/g8/windows-intelligence-approval.json) · [Provider review](evidence/g8/provider-review.png) · [Edit review](evidence/g8/edit-review.png) · [Test evidence](evidence/g8/test-evidence.png)
+
+## Gate decision
+
+G8 passed on 2026-11-15 for the Electron workbench. The final implementation revision passed 173 core tests, 105 desktop tests, credential account isolation, 19 extension-host tests, and 13 Intelligence benchmark checks on Windows Server 2025. The provider checks used synthetic OpenAI transport and a numeric loopback Ollama fixture. Live provider smoke checks remain optional. [Phase 6 status](PHASE6_STATUS.json) · [Windows reliability run](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43747104389)
