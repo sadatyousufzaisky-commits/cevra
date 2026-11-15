@@ -188,7 +188,7 @@
     {
       "id": "G4",
       "name": "Unified workspace and navigation shell",
-      "status": "in_progress",
+      "status": "passed",
       "dependsOn": [
         "G1"
       ],
@@ -199,10 +199,15 @@
         "../../qa/workspace-shell.test.cjs"
       ],
       "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43689226530",
-      "ownerSignoff": null,
-      "openBlockers": [
-        "Record independent usability observation and a live screen-reader walkthrough of the Electron workbench."
+      "ownerSignoff": {
+        "date": "2026-11-15",
+        "reviewedRevision": "43422d7",
+        "authorization": "Project owner directed G4 closure and commencement of G5 after the automated Windows tests passed."
+      },
+      "acceptanceExceptions": [
+        "Independent usability observation and a live screen-reader walkthrough were outside the automated evidence used for closure."
       ],
+      "openBlockers": [],
       "verification": {
         "verifiedAt": "2026-11-15",
         "localPlatform": "Windows 11 x64 build 26300",

@@ -52,4 +52,4 @@ On `43422d7`, the local Windows run passed 169 core and 92 desktop tests. A sepa
 
 For a focused run, use `node --test --test-concurrency=1 qa/workspace-shell.test.cjs` after `npm run build`. Set `VOKRI_G4_EVIDENCE` to an existing output directory for screenshots. To record the journey, install Playwright's FFmpeg with `npx playwright install ffmpeg` and set `VOKRI_G4_RECORD=1` for that run.
 
-The recording and automated journeys cover the first-use and experienced workflows on Windows. Independent usability observation and live screen-reader walkthroughs remain to be recorded.
+The project owner closed G4 on 2026-11-15 based on the automated Windows results and directed work to begin on G5. The evidence includes recorded keyboard journeys, accessibility-tree checks, and forced-colors coverage. Independent usability observation and a live screen-reader walkthrough were outside the evidence used for closure. [Phase 6 gate record](PHASE6_STATUS.json)
