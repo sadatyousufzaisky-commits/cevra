@@ -154,4 +154,4 @@ function parseManifest(bytes, currentVersion) {
   return data;
 }
 
-module.exports = { checkKeys, comparePackageVersions, packageId, parseManifest, versionPattern };
+module.exports = { checkEngine, checkKeys, comparePackageVersions, packageId, parseManifest, versionPattern };

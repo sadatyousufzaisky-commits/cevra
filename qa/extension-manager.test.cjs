@@ -7,6 +7,7 @@ const { promisify } = require('node:util');
 const { archive, executableManifest, json, manifest, minimalModule } = require('./extension-fixtures.cjs');
 const { sha256 } = require('../src/extensions/inspect-package.cjs');
 const { openWorkbench, replaceEditor } = require('./desktop-workbench.cjs');
+const bundledStarter = require('../examples/extensions/starter-tools/extension.json');
 
 const id = 'org.cevra.manager-test';
 const title = 'Studio Palette';
@@ -44,6 +45,78 @@ async function install(ui, update = false) {
   await ui.button(update ? 'Install Update' : 'Install Package').click();
   await ui.entry.getByText('Disabled', { exact: true }).waitFor();
 }
+
+test('G7 catalog works offline with keyboard filters, exact review, update, and rollback', { timeout: 40_000 }, async t => {
+  const workbench = await openWorkbench(t, { 'example.js': 'const ready = true;\n' });
+  const { page, profile } = workbench;
+  const ui = manager(page);
+  const packageFile = path.join(path.dirname(profile), 'starter-tools-older.zip');
+  const old = archive({ ...bundledStarter, version: '0.9.0' });
+  await fs.writeFile(packageFile, old);
+  await selectPackage(workbench, packageFile);
+  await page.context().setOffline(true);
+  await ui.open.press('Enter');
+  await ui.button('Choose ZIP Package').press('Enter');
+  await ui.button('Install Package').press('Enter');
+  const starter = ui.dialog.getByRole('listitem', { name: 'Starter Tools', exact: true });
+  await starter.getByText('Disabled', { exact: true }).waitFor();
+  await starter.getByRole('button', { name: 'Enable', exact: true }).press('Enter');
+  await starter.getByText('Enabled', { exact: true }).waitFor();
+
+  await ui.button('Browse Catalog').press('Enter');
+  const store = ui.dialog.getByRole('region', { name: 'Extension Store' });
+  const search = store.getByRole('searchbox', { name: 'Search catalog' });
+  assert.equal(await search.evaluate(node => document.activeElement === node), true);
+  await store.getByRole('combobox', { name: 'Source', exact: true }).selectOption('bundled');
+  await store.getByRole('listitem', { name: 'Hello Command' }).waitFor();
+  await search.fill('unmatched');
+  await store.getByText('No packages match these filters.', { exact: true }).waitFor();
+  await search.fill('');
+  await store.getByLabel('Category', { exact: true }).selectOption('Commands');
+  await starter.waitFor({ state: 'hidden' });
+  await store.getByLabel('Category', { exact: true }).selectOption('');
+  await search.fill('starter vokri');
+  const update = starter.getByRole('button', { name: 'Review Update', exact: true });
+  await update.press('Enter');
+  const detail = ui.dialog.getByRole('region', { name: 'Review Starter Tools' });
+  await detail.getByText('Matched the bundled catalog digest', { exact: true }).waitFor();
+  assert.match(await detail.ariaSnapshot(), /heading "Requested permissions"/);
+  assert.match(await detail.ariaSnapshot(), /No runtime permissions requested/);
+  assert.equal((await packages(page))[0].sha256, sha256(old));
+  await page.keyboard.press('Escape');
+  await update.waitFor();
+  assert.equal(await update.evaluate(node => document.activeElement === node), true);
+  await update.press('Enter');
+  await ui.button('Install Update').press('Enter');
+  await starter.getByText('Disabled', { exact: true }).waitFor();
+  assert.equal((await packages(page))[0].version, '1.0.0');
+  await starter.getByRole('button', { name: 'Inspect', exact: true }).press('Enter');
+  await ui.dialog.getByText('Retained for rollback · 0.9.0', { exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+  await starter.getByRole('button', { name: 'Restore Previous Version', exact: true }).press('Enter');
+  await ui.status.getByText('Version 0.9.0 restored and disabled.', { exact: true }).waitFor();
+  assert.equal((await packages(page))[0].sha256, sha256(old));
+});
+
+test('G7 an unavailable catalog keeps installed management and the editor usable', { timeout: 30_000 }, async t => {
+  const workbench = await openWorkbench(t, { 'example.js': 'const ready = true;\n' });
+  const { page, app } = workbench;
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('cevra:extension-store');
+    ipcMain.handle('cevra:extension-store', () => ({ entries: [], error: 'The bundled catalog is unavailable.' }));
+  });
+  const ui = manager(page);
+  await page.keyboard.press('Control+Shift+P');
+  const command = page.getByRole('dialog', { name: 'Command center' });
+  await command.getByRole('combobox').fill('Extension Store');
+  await command.getByRole('option', { name: 'Extension Store', exact: false }).press('Enter');
+  await ui.dialog.getByText('The bundled catalog is unavailable.', { exact: true }).waitFor();
+  await ui.button('Installed').press('Enter');
+  await ui.dialog.getByText('No extensions installed.', { exact: true }).waitFor();
+  await ui.button('Close').press('Enter');
+  await workbench.open('example.js');
+  await replaceEditor(workbench, 'const ready = false;\n');
+});
 
 test('a keyboard-only package review works before opening a workspace and preserves explicit enablement',
   { timeout: 35_000 }, async t => {

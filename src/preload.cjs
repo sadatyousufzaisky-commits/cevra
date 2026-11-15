@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('cevra', {
   onExtensionContributionsChanged: callback => ipcRenderer.on('cevra:extension-contributions-changed', (_event, id) => callback(id)),
   extensionRuntime: (id, includeCatalog) => ipcRenderer.invoke('cevra:extension-runtime', id, includeCatalog),
   selectExtensionPackage: () => ipcRenderer.invoke('cevra:select-extension-package'),
+  extensionStore: source => ipcRenderer.invoke('cevra:extension-store', source),
+  selectCatalogExtension: (id, digest, source) => ipcRenderer.invoke('cevra:select-catalog-extension', id, digest, source),
   inspectInstalledExtension: (id, digest) => ipcRenderer.invoke('cevra:inspect-installed-extension', id, digest),
   installExtension: (token, approveDowngrade) => ipcRenderer.invoke('cevra:install-extension', token, approveDowngrade),
   discardExtensionReview: token => ipcRenderer.invoke('cevra:discard-extension-review', token),

@@ -372,20 +372,51 @@ button.test-result:hover { background: var(--raised); }
 .command-option-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .command-option-text small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .definition-choices { max-height: min(320px, 50vh); overflow: auto; margin: 0 0 12px; padding: 0; list-style: none; }
-#extension-manager { width: min(680px, calc(100vw - 32px)); }
-#extension-manager-list { margin: 4px 0 0; max-height: min(440px, 50vh); }
-#extension-manager-list > li { border-bottom: 1px solid var(--line); padding: 12px 6px 12px 0; overflow-wrap: anywhere; }
+#extension-manager { width: min(800px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); }
+.extension-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.extension-shelves { display: flex; flex-wrap: wrap; gap: 6px; padding-block: 8px; border-bottom: 1px solid var(--line); }
+.extension-shelves .button[aria-pressed="true"] { color: var(--current-text); background: var(--selected); border-color: var(--accent); }
+.extension-shelf { padding-top: 10px; }
+.extension-store-intro { border-inline-start: 2px solid var(--accent); padding: 3px 10px; }
+#extension-manager .extension-store-intro p { margin-block-end: 0; }
+.extension-store-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin-top: 12px; }
+.extension-store-field { display: grid; gap: 4px; min-width: 0; font-size: 12px; color: var(--muted); }
+.extension-store-field:first-child { flex: 1 1 215px; }
+.extension-store-filters input, .extension-store-filters select { min-height: var(--target-min); padding: 4px 8px; }
+.extension-store-list {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr));
+  gap: 10px; margin: 0; padding: 0; list-style: none;
+}
+.extension-store-card {
+  display: flex; flex-direction: column; align-items: flex-start;
+  border: 1px solid var(--control-border); border-radius: var(--radius-control);
+  background: var(--panel); padding: 12px; overflow-wrap: anywhere;
+}
+#extension-manager .extension-store-card h4 { margin: 0 0 3px; font-size: 15px; }
+#extension-manager .extension-store-card p { margin: 0 0 7px; }
+.extension-release-identity, .extension-release-detail { color: var(--muted); font-size: 12px; }
+.extension-release-detail[data-unavailable="true"] { color: var(--danger); }
+.extension-release-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+.extension-release-state { color: var(--muted); font-size: 12px; }
+.extension-release-state:is([data-state="enabled"], [data-state="active"]) { color: var(--verified); }
+.extension-release-state:is([data-state="quarantined"], [data-state="failed"]) { color: var(--danger); }
+#extension-manager-list { margin: 8px 0 0; max-height: min(440px, 45vh); }
+#extension-manager-list > li { border-bottom: 1px solid var(--line); padding: 10px 6px 10px 0; overflow-wrap: anywhere; }
 #extension-manager h3 { margin: 0; font-size: 15px; }
 #extension-manager h4 { margin: 14px 0 4px; font-size: 13px; }
 #extension-manager-empty { margin: 12px 0; }
 #extension-manager-details { margin-top: 8px; }
 #extension-manager-detail-body { max-height: min(430px, 48vh); overflow: auto; overflow-wrap: anywhere; }
-#extension-manager-detail-body dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; }
+#extension-manager-detail-body dl { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 4px 12px; }
 #extension-manager-detail-body dt { color: var(--muted); }
 #extension-manager-detail-body dd { margin: 0; min-width: 0; }
 #extension-manager-detail-body ul { padding-inline-start: 20px; }
 #extension-manager-detail-body code { display: block; color: var(--muted); font: 12px var(--mono); }
 .extension-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+@media (max-width: 520px) {
+  #extension-manager-detail-body dl { grid-template-columns: minmax(0, 1fr); }
+  #extension-manager-detail-body dt { margin-top: 4px; }
+}
 .definition-choice { display: grid; gap: 3px; width: 100%; padding: 8px; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; overflow-wrap: anywhere; }
 .definition-choice:hover { background: var(--raised); }
 .definition-location { color: var(--muted); font: 12px var(--mono); }

@@ -4,7 +4,7 @@ const { inspectExtensionPackage } = require('./inspect-package.cjs');
 const { comparePermissions, digestPattern, safeText } = require('./capabilities.cjs');
 const { comparePackageVersions, packageId } = require('./manifest.cjs');
 
-function createExtensionManager({ registry, broker, owner, choosePackage, confirm }) {
+function createExtensionManager({ registry, broker, owner, choosePackage, catalog, onlineCatalog, confirm }) {
   let review;
   let pending;
 
@@ -30,6 +30,20 @@ function createExtensionManager({ registry, broker, owner, choosePackage, confir
     return entry;
   }
 
+  async function prepareReview(window, { file, archive, report, source, publisher, expiresAt }) {
+    const current = (await registry.list()).find(entry => entry.id === report.manifest.id);
+    checkOwner(window);
+    const token = randomUUID();
+    const comparison = current && comparePackageVersions(report.manifest.version, current.version);
+    const direction = comparison < 0 ? 'downgrade' : comparison > 0 ? 'upgrade' : 'replacement';
+    const update = current ? { direction,
+      permissions: current.permissions ? comparePermissions(current.permissions, report.manifest.permissions) : null,
+    } : null;
+    review = { window, packageSource: archive ?? file, token, id: report.manifest.id, digest: report.sha256, expiresAt,
+      expectedCurrent: current?.sha256 ?? null, downgrade: direction === 'downgrade' };
+    return { token, report, current: current ?? null, update, source, publisher };
+  }
+
   return {
     get busy() { return Boolean(pending); },
     wait: () => pending?.catch(() => {}),
@@ -41,18 +55,14 @@ function createExtensionManager({ registry, broker, owner, choosePackage, confir
       checkOwner(window);
       if (!file) return null;
       const report = await inspectExtensionPackage(file);
-      const current = (await registry.list()).find(entry => entry.id === report.manifest.id);
-      checkOwner(window);
-      const token = randomUUID();
-      const comparison = current && comparePackageVersions(report.manifest.version, current.version);
-      const direction = comparison < 0 ? 'downgrade' : comparison > 0 ? 'upgrade' : 'replacement';
-      const update = current ? { direction,
-        permissions: current.permissions ? comparePermissions(current.permissions, report.manifest.permissions) : null,
-      } : null;
-      review = { window, file, token, id: report.manifest.id, digest: report.sha256,
-        expectedCurrent: current?.sha256 ?? null, downgrade: direction === 'downgrade' };
       const basename = path.basename(file);
-      return { token, report, current: current ?? null, update, source: safeText(basename, 255) ? basename : 'Local ZIP package' };
+      const source = safeText(basename, 255) ? basename : 'Local ZIP package';
+      return prepareReview(window, { file, report, source });
+    }),
+    selectCatalog: (id, digest, source = 'bundled') => run(async window => {
+      review = undefined;
+      if (source !== 'bundled' && source !== 'online') throw new Error('Choose an extension catalog.');
+      return prepareReview(window, await (source === 'online' ? onlineCatalog : catalog).select(id, digest));
     }),
     inspect: (id, digest) => run(async window => {
       const report = await registry.inspect(id, digest);
@@ -60,13 +70,14 @@ function createExtensionManager({ registry, broker, owner, choosePackage, confir
       return report;
     }),
     install: (token, approveDowngrade) => run(async window => {
-      if (!review || review.window !== window || review.token !== token) throw new Error('Choose a ZIP package and review it again.');
-      const { file, id, digest, expectedCurrent, downgrade } = review;
+      if (!review || review.window !== window || review.token !== token) throw new Error('Choose a package and review it again.');
+      const { packageSource, id, digest, expectedCurrent, downgrade, expiresAt } = review;
       if (downgrade && approveDowngrade !== true) throw new Error('Approve the older version in the package review.');
       review = undefined;
+      if (expiresAt !== undefined && expiresAt <= Date.now()) throw new Error('The online package review expired. Refresh the catalog and review it again.');
       checkOwner(window);
       // The registry publishes a committed replacement before the old host is stopped.
-      const result = await registry.install(file, { reviewedDigest: digest, expectedCurrent, allowDowngrade: downgrade });
+      const result = await registry.install(packageSource, { reviewedDigest: digest, expectedCurrent, allowDowngrade: downgrade });
       if (expectedCurrent && expectedCurrent !== digest) await broker.revoke(id);
       return result;
     }),

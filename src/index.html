@@ -445,10 +445,47 @@
     </form>
   </dialog>
   <dialog id="extension-manager" class="definition-dialog" aria-labelledby="extension-manager-heading">
-    <h2 id="extension-manager-heading">Extension Manager</h2>
+    <div class="extension-heading">
+      <h2 id="extension-manager-heading">Extension Manager</h2>
+      <button id="extension-manager-close" class="button">Close</button>
+    </div>
     <p id="extension-manager-safe-mode" hidden>Safe mode is active. Extension commands, snippets, and palettes are suspended for this session.</p>
     <p id="extension-manager-status" role="status"></p>
-    <section id="extension-manager-catalog" aria-label="Installed extensions">
+    <div id="extension-manager-shelves" class="extension-shelves" role="group" aria-label="Extension views">
+      <button id="extension-browse" class="button" aria-controls="extension-store" aria-pressed="false">Browse Catalog</button>
+      <button id="extension-installed" class="button" aria-controls="extension-manager-catalog" aria-pressed="true">Installed</button>
+    </div>
+    <section id="extension-store" class="extension-shelf" aria-label="Extension Store" hidden>
+      <div class="extension-store-intro">
+        <h3 id="extension-store-heading">Online catalog</h3>
+        <p id="extension-store-source-note">Download an extension over HTTPS, then review the package before installation.</p>
+      </div>
+      <div class="extension-store-filters">
+        <div class="extension-store-field">
+          <label for="extension-store-search">Search catalog</label>
+          <input id="extension-store-search" type="search" maxlength="100" autocomplete="off" placeholder="Name, publisher, or extension ID">
+        </div>
+        <div class="extension-store-field">
+          <label for="extension-store-source">Source</label>
+          <select id="extension-store-source">
+            <option value="online">Online</option>
+            <option value="bundled">Bundled</option>
+          </select>
+        </div>
+        <div class="extension-store-field">
+          <label for="extension-store-category">Category</label>
+          <select id="extension-store-category">
+            <option value="">All categories</option>
+            <option>Editing</option>
+            <option>Commands</option>
+          </select>
+        </div>
+        <button id="extension-store-refresh" class="button">Refresh Catalog</button>
+      </div>
+      <p id="extension-store-status" role="status"></p>
+      <ul id="extension-store-list" class="extension-store-list" aria-label="Catalog packages"></ul>
+    </section>
+    <section id="extension-manager-catalog" class="extension-shelf" aria-label="Installed extensions">
       <button id="extension-manager-choose" class="button primary" autofocus>Choose ZIP Package</button>
       <p id="extension-manager-catalog-error" role="alert" hidden></p>
       <p id="extension-manager-empty" hidden>No extensions installed.</p>
@@ -464,7 +501,6 @@
     </section>
     <div class="edits-actions">
       <button id="extension-manager-restart" class="button">Restart in Safe Mode</button>
-      <button id="extension-manager-close" class="button">Close</button>
     </div>
   </dialog>
   <dialog id="edits-dialog" class="definition-dialog edits-dialog" aria-labelledby="edits-heading">

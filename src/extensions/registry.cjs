@@ -235,12 +235,13 @@ function createExtensionRegistry(userData, { checkpoint = () => {} } = {}) {
         if (!subscribers.size && listeners.get(writerKey) === subscribers) listeners.delete(writerKey);
       };
     },
-    async install(filename, { reviewedDigest, expectedCurrent = null, allowDowngrade = false } = {}) {
+    async install(source, { reviewedDigest, expectedCurrent = null, allowDowngrade = false } = {}) {
       if (!matches(reviewedDigest, digestPattern) || (expectedCurrent !== null && !matches(expectedCurrent, digestPattern)) ||
           typeof allowDowngrade !== 'boolean') {
         fail('INVALID_EXTENSION_REQUEST', 'Review the package digest and the current installed version first.');
       }
-      const { archive, report } = await loadExtensionPackage(filename);
+      const { archive, report } = Buffer.isBuffer(source) ?
+        { archive: source, report: describePackage(source) } : await loadExtensionPackage(source);
       if (report.sha256 !== reviewedDigest) fail('REVIEW_CHANGED', 'The package bytes changed after review.');
       const { id, version } = report.manifest;
       return run(async (data, commit) => {

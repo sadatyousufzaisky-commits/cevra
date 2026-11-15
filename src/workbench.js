@@ -2013,6 +2013,8 @@ const commands = createCommandRegistry([
     enabled: canUse(button), run: () => showDock(pane, true) })),
   { id: 'settings', title: 'Settings', icon: 'settings-icon', key: 'Ctrl+,', enabled: canUse(settingsButton), run: openSettings },
   { id: 'extensions', title: 'Extensions', enabled: canUse(byId('extension-manager-open')), run: () => byId('extension-manager-open').click() },
+  { id: 'extension-store', title: 'Extension Store', detail: 'Browse online and bundled packages',
+    enabled: canUse(byId('extension-manager-open')), run: extensionManager.openStore },
   { id: 'intelligence', title: 'VOKRI Intelligence', enabled: canUse(byId('intelligence-mock-open')), run: () => api.openIntelligenceMock() },
 ], report);
 

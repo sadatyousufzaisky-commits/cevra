@@ -1,4 +1,5 @@
 import { permissionLabel } from './extensions/capabilities.cjs';
+import { createExtensionStore } from './extension-store.js';
 
 function element(tag, text) {
   const node = document.createElement(tag);
@@ -56,6 +57,11 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
   const detailHeading = byId('extension-manager-detail-heading');
   const detailBody = byId('extension-manager-detail-body');
   const install = byId('extension-manager-install');
+  const browse = byId('extension-browse');
+  const installed = byId('extension-installed');
+  const shelves = byId('extension-manager-shelves');
+  const backButton = byId('extension-manager-back');
+  const store = createExtensionStore({ api, review: reviewCatalog, errorText });
   let request = 0;
   let opening = 0;
   let busy = false;
@@ -63,18 +69,39 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
   let token;
   let detailOpener;
   let focusAction;
+  let shelf = 'installed';
+  let hostSupported = false;
+
+  function showShelf() {
+    const visible = details.hidden;
+    const browsing = shelf === 'store';
+    shelves.hidden = !visible;
+    browse.setAttribute('aria-pressed', String(browsing));
+    installed.setAttribute('aria-pressed', String(!browsing));
+    catalog.hidden = !visible || browsing;
+    store.show(visible && browsing);
+  }
+
+  function setShelf(next) {
+    shelf = next;
+    showShelf();
+    if (next === 'store') {
+      store.focus();
+      void store.load();
+    } else choose.focus();
+  }
 
   function discardDetails() {
     if (token) void api.discardExtensionReview(token).catch(() => {});
     token = undefined;
     details.hidden = true;
-    catalog.hidden = false;
     detailBody.replaceChildren();
     install.onclick = null;
+    showShelf();
   }
 
   function focusCatalog() {
-    if (!dialog.open || !details.hidden) return;
+    if (!dialog.open || !details.hidden || shelf !== 'installed') return;
     const focused = document.activeElement;
     if (focused !== document.body && focused !== dialog && focused !== detailHeading && !list.contains(focused)) return;
     const row = [...list.children].find(item => item.dataset.extensionId === focusAction?.id);
@@ -86,11 +113,13 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
     if (busy && !interrupt) return;
     if (!interrupt) busy = true;
     choose.disabled = restart.disabled = true;
+    store.setBusy(true);
     try { await action(); }
     catch (error) { status.textContent = errorText(error); }
     finally {
       if (!interrupt) busy = false;
       choose.disabled = restart.disabled = busy;
+      store.setBusy(busy);
       if (token && !install.hidden) install.disabled = busy;
       await refresh();
       focusCatalog();
@@ -112,15 +141,19 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
     return control;
   }
 
-  function showDetails({ report: inspection, source, current, update, token: selectedToken }, opener) {
+  function showDetails({ report: inspection, source, publisher, current, update, installedEntry, token: selectedToken }, opener) {
     const { manifest, sha256, inventory } = inspection;
     detailOpener = opener;
     token = selectedToken;
     detailHeading.textContent = selectedToken ? `Review ${manifest.displayName}` : manifest.displayName;
     const metadata = element('dl');
     const entries = [
-      ['Source', source], ['Extension ID', manifest.id], ['Version', manifest.version], ['Publisher', 'Unverified'], ['SHA-256', sha256],
+      ['Source', source], ['Publisher', publisher ?? 'Unverified'], ['Extension ID', manifest.id],
+      ['Version', manifest.version], ['VOKRI Code compatibility', manifest.engines.cevra],
+      ['SHA-256', sha256],
     ];
+    if (publisher) entries.push(['Package integrity', source === 'Signed online catalog' ?
+      'Matched the signed catalog digest' : 'Matched the bundled catalog digest']);
     if (current) entries.push(['Installed version', current.version], ['Installed SHA-256', current.sha256]);
     for (const [name, value] of entries) metadata.append(element('dt', name), element('dd', value));
     const files = element('ul');
@@ -131,6 +164,11 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
     }
     detailBody.replaceChildren(element('p', manifest.description), metadata,
       element('h4', 'Requested permissions'), permissionList(manifest.permissions));
+    if (manifest.schemaVersion === 2) {
+      detailBody.append(element('p', hostSupported ?
+        'Activation uses isolated Wasm with a separate permission review for each workspace session.' :
+        'Executable activation is unavailable on this system.'));
+    }
     if (update) {
       detailBody.append(element('h4', 'Permission changes'), permissionDiff(update.permissions));
       if (manifest.schemaVersion === 2 && current.sha256 !== sha256) {
@@ -138,6 +176,12 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
       }
     }
     if (selectedToken && current?.permissions) detailBody.append(element('h4', 'Installed permissions'), permissionList(current.permissions));
+    if (installedEntry?.rollback || current?.rollback) {
+      const entry = installedEntry ?? current;
+      const history = element('ul');
+      history.append(element('li', 'Current · ' + entry.version), element('li', 'Retained for rollback · ' + entry.rollback.version));
+      detailBody.append(element('h4', 'Version history'), history);
+    }
     detailBody.append(element('h4', 'Package contents'), files);
     const snippets = manifest.contributes.snippets?.length ?? 0;
     const themes = manifest.contributes.themes?.length ?? 0;
@@ -159,10 +203,11 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
       token = undefined;
       install.disabled = true;
       void act(async () => {
-        const installed = await api.installExtension(approved, downgrade);
-        status.textContent = `${installed.displayName ?? installed.id} ${installed.version} installed. ${stateLabels[installed.state]}.`;
+        const result = await api.installExtension(approved, downgrade);
+        status.textContent = `${result.displayName ?? result.id} ${result.version} installed. ${stateLabels[result.state]}.`;
+        shelf = 'installed';
         discardDetails();
-        focusAction = { id: installed.id, action: 'enable' };
+        focusAction = { id: result.id, action: 'enable' };
       });
     };
     if (selectedToken) {
@@ -172,14 +217,16 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
       else if (update?.direction === 'replacement') status.textContent = 'This package has the same version and different bytes. It starts disabled.';
       else status.textContent = 'Review the package before installing. The new version starts disabled.';
     }
-    catalog.hidden = true;
     details.hidden = false;
+    backButton.textContent = shelf === 'store' ? 'Back to Catalog' : 'Back to Installed';
+    showShelf();
     detailHeading.focus();
   }
 
   function back() {
     discardDetails();
     if (detailOpener?.isConnected && !detailOpener.disabled) detailOpener.focus();
+    else if (shelf === 'store') store.focus(detailOpener?.dataset.releaseId);
     else {
       detailHeading.focus();
       focusCatalog();
@@ -189,6 +236,8 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
 
   function render(snapshot, project) {
     safeStart = snapshot.safeStart;
+    hostSupported = snapshot.supported;
+    store.update(snapshot);
     safeMode.hidden = !safeStart;
     restart.textContent = safeStart ? 'Restart with Extensions' : 'Restart in Safe Mode';
     restart.disabled = busy;
@@ -211,7 +260,12 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
       const state = session ? (session.ready ? 'Active for this session' : 'Activating…') :
         failed && entry.enabled ? 'Stopped after a host failure' : stateLabels[entry.state];
       const type = entry.executable === undefined ? 'Local ZIP' : entry.executable ? 'Executable' : 'Declarative';
-      row.append(title, element('p', `${entry.id} · ${entry.version} · ${type}`), element('p', state));
+      const identity = element('p', `${entry.id} · ${entry.version} · ${type}`);
+      identity.className = 'extension-release-identity';
+      const packageState = element('p', state);
+      packageState.className = 'extension-release-state';
+      packageState.dataset.state = session?.ready ? 'active' : entry.state;
+      row.append(title, identity, packageState);
       if (entry.pinned) row.append(element('p', 'Version pinned'));
       if (entry.state === 'failed') row.append(element('p', 'The stored package could not be verified. Restore a previous version or uninstall it.'));
       if (entry.executable && entry.enabled && !session && !safeStart) {
@@ -227,7 +281,7 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
       if (entry.state !== 'failed') controls.append(action(entry, 'inspect', 'Inspect', async control => {
         const epoch = opening;
         const inspection = await api.inspectInstalledExtension(entry.id, entry.sha256);
-        if (dialog.open && epoch === opening) showDetails({ report: inspection, source: 'Local ZIP package' }, control);
+        if (dialog.open && epoch === opening) showDetails({ report: inspection, source: 'Local ZIP package', installedEntry: entry }, control);
       }));
       if (entry.state === 'disabled') controls.append(change('enable', 'Enable', 'Extension enabled.'));
       if (entry.enabled) controls.append(change('disable', 'Disable', 'Extension disabled.', true));
@@ -285,29 +339,41 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
     }
   }
 
-  choose.onclick = () => {
+  function reviewPackage(select, control) {
     const epoch = opening;
     void act(async () => {
-      const selected = await api.selectExtensionPackage();
+      const selected = await select();
       if (!selected) return;
       if (!dialog.open || epoch !== opening) {
         await api.discardExtensionReview(selected.token);
         return;
       }
-      showDetails(selected, choose);
+      showDetails(selected, control);
     });
-  };
+  }
+  function reviewCatalog(entry, control, source) {
+    if (source === 'online') status.textContent = 'Downloading and checking the package…';
+    reviewPackage(() => api.selectCatalogExtension(entry.id, entry.sha256, source), control);
+  }
+
+  choose.onclick = () => reviewPackage(api.selectExtensionPackage, choose);
+  browse.onclick = () => setShelf('store');
+  installed.onclick = () => setShelf('installed');
   restart.onclick = () => void act(() => api.restartExtensions(!safeStart));
-  byId('extension-manager-back').onclick = back;
+  backButton.onclick = back;
   byId('extension-manager-close').onclick = () => dialog.close();
-  open.onclick = () => {
+  function openManager(next) {
     ++opening;
     focusAction = undefined;
     status.textContent = '';
     restart.disabled = true;
+    shelf = next;
+    showShelf();
     dialog.showModal();
+    if (next === 'store') setShelf('store');
     void refresh();
-  };
+  }
+  open.onclick = () => openManager('installed');
   dialog.oncancel = event => {
     if (details.hidden) return;
     event.preventDefault();
@@ -322,6 +388,7 @@ export function createExtensionManager({ api, getProject, review, diagnostics, r
   api.onExtensionRuntimeChanged(() => void refresh());
   return {
     refresh,
+    openStore: () => openManager('store'),
     reset() {
       dialog.close();
       discardDetails();

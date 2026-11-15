@@ -20,6 +20,8 @@ const { createFormatService } = require('./format-service.cjs');
 const { createSemanticService } = require('./semantic-service.cjs');
 const { createPreferences } = require('./preferences.cjs');
 const { createExtensionRegistry } = require('./extensions/registry.cjs');
+const { createExtensionCatalog } = require('./extensions/catalog.cjs');
+const { createOnlineCatalog } = require('./extensions/online-catalog.cjs');
 const { createExtensionManager } = require('./extensions/manager.cjs');
 const { InspectionError } = require('./extensions/inspection-error.cjs');
 const { createExtensionAudit } = require('./extensions/audit.cjs');
@@ -117,8 +119,10 @@ const extensionBroker = createCapabilityBroker({
   },
   changed: notifyExtensionRuntime,
 });
+const extensionCatalog = createExtensionCatalog({ hostSupported: supportedRuntime() });
+const onlineCatalog = createOnlineCatalog({ hostSupported: supportedRuntime(), remember: preferences.rememberExtensionCatalog });
 const extensionManager = createExtensionManager({
-  registry: extensions, broker: extensionBroker,
+  registry: extensions, broker: extensionBroker, catalog: extensionCatalog, onlineCatalog,
   owner: () => rendererReady && !changingWorkspace && !closePending && !allowClose && !authorizingExtension &&
     window && !window.isDestroyed() ? window : undefined,
   async choosePackage(owner) {
@@ -473,6 +477,12 @@ handle('extension-runtime', async (id, includeCatalog = true) => {
   return { ...runtime, safeStart, catalog, catalogError, sessions: id === undefined ? [] : runtime.sessions };
 });
 handle('select-extension-package', () => extensionManager.select());
+handle('extension-store', source => {
+  if (source === 'online') return onlineCatalog.list();
+  if (source === 'bundled') return extensionCatalog.list();
+  throw new Error('Choose an extension catalog.');
+});
+handle('select-catalog-extension', (id, digest, source) => extensionManager.selectCatalog(id, digest, source));
 handle('inspect-installed-extension', (id, digest) => extensionManager.inspect(id, digest));
 handle('install-extension', (token, approveDowngrade) => extensionManager.install(token, approveDowngrade));
 handle('discard-extension-review', token => extensionManager.discard(token));

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "releases": [
+    {
+      "id": "org.cevra.examples.starter-tools",
+      "version": "1.0.0",
+      "displayName": "Starter Tools",
+      "description": "A JavaScript snippet and a three-color editor palette.",
+      "category": "Editing",
+      "executable": false,
+      "sha256": "71b5547ccb2784ef623156afe10978d64c1cb08e78ded6795af6d495bbdfec4d"
+    },
+    {
+      "id": "org.cevra.examples.hello-command",
+      "version": "1.0.0",
+      "displayName": "Hello Command",
+      "description": "Register a command that completes without accessing workspace files.",
+      "category": "Commands",
+      "executable": true,
+      "sha256": "404a8522873d27bb2785a65871741f1c2422336d95dcab92bdd9e2a158fe875b"
+    }
+  ]
+}

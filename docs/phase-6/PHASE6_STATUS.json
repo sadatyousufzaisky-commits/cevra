@@ -309,15 +309,23 @@
     {
       "id": "G7",
       "name": "VOKRI Extension Store and manager",
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "G4"
       ],
       "commit": null,
-      "evidence": [],
+      "evidence": [
+        "g7-extension-store.md",
+        "../../qa/extension-manager.test.cjs",
+        "../../qa/extension-packaging.test.cjs",
+        "../../qa/extension-sdk-runtime.test.cjs",
+        "../../qa/extension-store-online.test.cjs"
+      ],
       "ci": null,
       "ownerSignoff": null,
-      "openBlockers": []
+      "openBlockers": [
+        "Finish the full Windows reliability verification."
+      ]
     },
     {
       "id": "G8",

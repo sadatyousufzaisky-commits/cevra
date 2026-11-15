@@ -76,6 +76,7 @@ function createPreferences(directory) {
     const operation = writes.then(async () => {
       const data = await (loaded ??= read());
       const next = update(data);
+      if (next === data) return data;
       await fs.mkdir(directory, { recursive: true });
       await writeAtomic(file, JSON.stringify(next, null, 2) + '\n');
       loaded = Promise.resolve(next);
@@ -86,6 +87,17 @@ function createPreferences(directory) {
   }
 
   return {
+    async rememberExtensionCatalog(generation, digest) {
+      await save(data => {
+        const prior = data.extensionCatalog;
+        if (Number.isSafeInteger(prior?.generation) && prior.generation > generation) throw new Error('The online catalog is older than the last accepted version.');
+        if (prior?.generation === generation) {
+          if (prior.digest !== digest) throw new Error('The online catalog changed without a new version.');
+          return data;
+        }
+        return { ...data, extensionCatalog: { generation, digest } };
+      });
+    },
     async getWorkbenchLayout() { return workbenchLayout((await current()).workbenchLayout); },
     async setWorkbenchLayout(value) { await save(data => ({ ...data, workbenchLayout: workbenchLayout(value) })); },
     async recentWorkspaces() {
