@@ -107,19 +107,22 @@ function summarize(samples) {
   }));
 }
 
-test('Windows compares Phase 4 to Phase 5 with Intelligence off and enabled', { timeout: 360_000 }, async t => {
+test('Windows compares Phase 4 to the current build with Intelligence off and enabled', { timeout: 360_000 }, async t => {
   assert.equal(process.platform + '-' + process.arch, 'win32-x64');
   assert.ok(process.env.CEVRA_PHASE5_BASELINE, 'Set CEVRA_PHASE5_BASELINE to the built Phase 4 worktree.');
   const baseline = await fs.realpath(process.env.CEVRA_PHASE5_BASELINE);
   assert.equal(git(baseline, 'rev-parse', 'HEAD'), baselineCommit);
   assert.equal(git(baseline, 'status', '--porcelain'), '');
-  const lockfile = async folder => {
-    const data = JSON.parse(await fs.readFile(path.join(folder, 'package-lock.json'), 'utf8'));
-    delete data.name;
-    delete data.packages[''].name;
-    return data;
-  };
-  assert.deepEqual(await lockfile(baseline), await lockfile(root), 'The baseline and current build must use the same dependencies.');
+  const readLockfile = async folder => JSON.parse(await fs.readFile(path.join(folder, 'package-lock.json'), 'utf8'));
+  const [baselineLock, currentLock] = await Promise.all([readLockfile(baseline), readLockfile(root)]);
+  assert.equal(currentLock.lockfileVersion, baselineLock.lockfileVersion);
+  for (const [packagePath, baselinePackage] of Object.entries(baselineLock.packages)) {
+    if (!packagePath) continue;
+    assert.deepEqual(currentLock.packages[packagePath], baselinePackage, 'Changed baseline dependency: ' + packagePath);
+  }
+  const addedPackages = Object.fromEntries(Object.entries(currentLock.packages)
+    .filter(([packagePath]) => !Object.hasOwn(baselineLock.packages, packagePath))
+    .map(([packagePath, dependency]) => [packagePath, dependency.version]));
   const count = Number(process.env.CEVRA_PHASE5_SAMPLES ?? '20');
   assert.ok(Number.isInteger(count) && count > 0 && count <= 30);
   const projectPath = await temporaryFolder(t, 'cevra-phase5-benchmark-');
@@ -146,9 +149,10 @@ test('Windows compares Phase 4 to Phase 5 with Intelligence off and enabled', { 
     schemaVersion: 1, baselineCommit, implementationCommit: git(root, 'rev-parse', 'HEAD'),
     platform: os.platform(), arch: os.arch(), osRelease: os.release(), cpu: os.cpus()[0]?.model,
     logicalCpus: os.cpus().length, ramMiB: Math.round(os.totalmem() / 1024 / 1024), node: process.version, runtime,
-    fixtureFiles: 49, measuredPerMode: count, warmupsPerMode: 1, order, samples,
+    fixtureFiles: 49, measuredPerMode: count, warmupsPerMode: 1, addedPackages, order, samples,
     summaries: Object.fromEntries(modes.map(mode => [mode, summarize(samples[mode])])),
   };
   await fs.writeFile(path.join(root, 'dist', 'phase5-g9-benchmark.json'), JSON.stringify(result, null, 2) + '\n');
+  t.diagnostic('Packages added since the baseline: ' + JSON.stringify(addedPackages));
   t.diagnostic(JSON.stringify(result.summaries));
 });

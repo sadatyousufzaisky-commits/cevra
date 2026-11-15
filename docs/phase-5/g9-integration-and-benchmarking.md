@@ -16,7 +16,7 @@ The coding repair fixture is synthetic. It verifies editor and provider boundari
 
 ## Repeat the performance comparison
 
-Build the pinned Phase 4 revision and the current checkout with the same lockfile. The benchmark uses the current checkout's Electron binary for all three modes.
+Build the pinned Phase 4 revision and the current checkout with their committed lockfiles. The benchmark verifies that Phase 4's installed package records remain the same and reports packages introduced by later builds. It uses the current checkout's Electron binary for all three modes.
 
 ```powershell
 $baseline = Join-Path ([IO.Path]::GetTempPath()) ('cevra-phase4-' + [Guid]::NewGuid().ToString('N'))
@@ -29,7 +29,7 @@ $env:CEVRA_PHASE5_BASELINE = $baseline
 npm run benchmark:intelligence
 ```
 
-Each mode uses the same generated 49-file project and a fresh Electron process and profile. The three modes are Phase 4, Phase 5 with Intelligence off, and Phase 5 with Intelligence enabled. Run order rotates to reduce order effects. One warm-up per mode is excluded. Filesystem caches remain warm. `CEVRA_PHASE5_SAMPLES` selects 1–30 measured samples per mode and defaults to 20. The runner writes the measurements and revision metadata to `dist/phase5-g9-benchmark.json`. [Benchmark runner](../../qa/intelligence-benchmark.test.cjs)
+Each mode uses the same generated 49-file project and a fresh Electron process and profile. The three modes are Phase 4, the current checkout with Intelligence off, and the current checkout with Intelligence enabled. Run order rotates to reduce order effects. One warm-up per mode is excluded. Filesystem caches remain warm. `CEVRA_PHASE5_SAMPLES` selects 1–30 measured samples per mode and defaults to 20. The runner writes the measurements and revision metadata to `dist/phase5-g9-benchmark.json`. [Benchmark runner](../../qa/intelligence-benchmark.test.cjs)
 
 Startup measures launch through workspace readiness. Editor paint measures keydown through the second animation frame after the editor DOM updates. Working set and cumulative CPU time are the sum reported by Electron for its processes at the post-edit checkpoint. Working sets may include shared memory. The opt-in panel records opening time and first mock text on the next animation frame, with raw and 120 ms delay-adjusted values. The delay-adjusted number includes scheduling overhead. p50 is the median and p95 uses nearest rank.
 
