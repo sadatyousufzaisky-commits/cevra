@@ -10,7 +10,7 @@ namespace Vokri
         internal const uint Close = 0x0010, Destroy = 0x0002, Paint = 0x000f, Size = 0x0005,
             Command = 0x0111, MinMax = 0x0024, DpiChanged = 0x02e0, SetFont = 0x0030,
             Notify = 0x004e, DrawItem = 0x002b, Timer = 0x0113, SettingChange = 0x001a,
-            EraseBackground = 0x0014, SystemColorChange = 0x0015, StaticColor = 0x0138,
+            EraseBackground = 0x0014, SystemColorChange = 0x0015, ListBoxColor = 0x0134, StaticColor = 0x0138,
             Dispatch = 0x8001, MouseDown = 0x0201, KeyDown = 0x0100, SysKeyDown = 0x0104;
         internal const uint Child = 0x40000000, Visible = 0x10000000, TabStop = 0x00010000,
             VScroll = 0x00200000, HScroll = 0x00100000, ClipChildren = 0x02000000,

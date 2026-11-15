@@ -154,6 +154,9 @@ internal static class VokriProbe
                 case "output":
                     Console.Write(Caption(Children(root, "RichEdit50W")[args[1] == "editor" ? 0 : 1]));
                     break;
+                case "editor-lines":
+                    Console.Write(Send(Children(root, "RichEdit50W").First(), 0x00ba).ToInt32());
+                    break;
                 case "type":
                     IntPtr editor = Children(root, "RichEdit50W").First();
                     Send(editor, 0x00b1, 0, IntPtr.Zero);

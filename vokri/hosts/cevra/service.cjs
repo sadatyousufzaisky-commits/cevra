@@ -1,4 +1,5 @@
 const { randomUUID } = require('node:crypto');
+const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { fields, serve } = require('../../bridge/stdio.cjs');
@@ -7,6 +8,9 @@ const { createWorkspace, workspacePath, listFolder, readSource, saveSource, save
 const { normalizeSource } = require('../../../src/source-text.cjs');
 const { sourceFileKey } = require('../../../src/source-files.cjs');
 const { createDraftStore } = require('../../../src/drafts.cjs');
+const { createPreferences } = require('../../../src/preferences.cjs');
+const { acquireProfileLease } = require('../../../src/profile-lease.cjs');
+const { profileLocation } = require('../../../src/profile-location.cjs');
 const { createExecutionSessions } = require('../../../src/execution/sessions.cjs');
 const { createTestSession } = require('../../../src/project-tests.cjs');
 const { startSourceRun } = require('../../../src/runner.cjs');
@@ -30,7 +34,12 @@ function rootPath(value) {
 }
 
 function createCevraService(profile) {
-  const drafts = createDraftStore(path.join(rootPath(profile), 'drafts'));
+  if (typeof profile !== 'string' || !path.isAbsolute(profile) || profile.includes('\0') ||
+      (process.platform === 'win32' && path.parse(path.normalize(profile)).root === '\\')) {
+    reject('INVALID_PROFILE', 'Use an absolute profile directory.');
+  }
+  const drafts = createDraftStore(path.join(profile, 'drafts'));
+  const preferences = createPreferences(profile);
   const tests = createTestSession(os.tmpdir());
   const opened = new Map();
   let workspace;
@@ -73,16 +82,22 @@ function createCevraService(profile) {
     return sourceFileKey(left) === sourceFileKey(right);
   }
 
+  async function appearance(project) {
+    const [theme, editor] = await Promise.all([preferences.getTheme(), preferences.getEditor(project)]);
+    return { theme, editor: editor.effective };
+  }
+
   async function activate(folder, backup = undefined) {
     if (active || sessions.busy) reject('EXECUTION_ACTIVE', 'Stop the current run before switching projects.');
     const project = await createWorkspace(rootPath(folder));
     const listing = await directory(project, '');
     const { entries, unreadable } = backup ?? await drafts.list();
+    const settings = await appearance(project);
     const recovery = entries.filter(draft => matchesRoot(draft.root, project.root)).map(draft => draft.path).slice(0, 64);
     workspace = project;
     opened.clear();
     retryAvailable = false;
-    return { workspace: { id: project.id, root: project.root, name: project.name }, listing, recovery, unreadable };
+    return { workspace: { id: project.id, root: project.root, name: project.name }, listing, recovery, unreadable, settings };
   }
 
   function sourceBytes(doc, text) {
@@ -178,7 +193,7 @@ function createCevraService(profile) {
       for (const root of new Set(backup.entries.map(entry => entry.root))) {
         try { return await activate(root, backup); } catch {}
       }
-      return { workspace: null, unreadable: backup.unreadable || backup.entries.length > 0 };
+      return { workspace: null, unreadable: backup.unreadable || backup.entries.length > 0, settings: await appearance() };
     },
     open(args) { shape(args, ['folder']); return activate(args.folder); },
     list(args) {
@@ -259,9 +274,25 @@ function createCevraService(profile) {
   return { routes, async close() { await stop(); tests.dispose(); } };
 }
 
-if (require.main === module) {
-  const service = createCevraService(process.argv[2]);
-  serve(process.stdin, process.stdout, service.routes, service.close).catch(() => { process.exitCode = 1; });
+async function run() {
+  let lease, service, routes;
+  try {
+    const directory = process.argv[2] === '--roaming-profile'
+      ? profileLocation(process.argv[3], process.argv[4]).directory : process.argv[2];
+    service = createCevraService(directory);
+    await fs.mkdir(directory, { recursive: true });
+    lease = await acquireProfileLease(directory);
+    routes = service.routes;
+  } catch (error) {
+    const failure = () => { throw error; };
+    routes = { initial: failure, open: failure, shutdown: () => ({}) };
+  }
+  await serve(process.stdin, process.stdout, routes, async () => {
+    try { await service?.close(); }
+    finally { await lease?.release(); }
+  });
 }
+
+if (require.main === module) run().catch(() => { process.exitCode = 1; });
 
 module.exports = { createCevraService };

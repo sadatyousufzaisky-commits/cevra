@@ -6,6 +6,7 @@ const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
 const { productName, appId, icon } = require('./identity.cjs');
 const { profileLocation } = require('./profile-location.cjs');
+const { acquireProfileLease } = require('./profile-lease.cjs');
 const { createWorkspace, listFolder, maxFileBytes, readSource, saveSource, saveRecoveryCopy,
   resolveEntry, verifyRevision, workspacePath } = require('./workspace.cjs');
 const { sourceFileKey } = require('./source-files.cjs');
@@ -1105,8 +1106,14 @@ if (app.requestSingleInstanceLock()) {
     if (window?.isMinimized()) window.restore();
     window?.focus();
   });
-  app.whenReady().then(launch).catch(error => {
+  app.whenReady().then(async () => {
+    await acquireProfileLease(selectedProfile.directory, () => app.exit(1));
+    await launch();
+  }).catch(error => {
     console.error(error);
+    if (error.code === 'PROFILE_BUSY' || error.code === 'PROFILE_UNAVAILABLE') {
+      dialog.showErrorBox(productName, error.message);
+    }
     app.exit(1);
   });
 } else {

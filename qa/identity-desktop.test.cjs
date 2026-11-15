@@ -1,11 +1,15 @@
 const assert = require('node:assert/strict');
+const { execFile, spawn } = require('node:child_process');
 const { createHash, randomUUID } = require('node:crypto');
+const { once } = require('node:events');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { test } = require('node:test');
+const { promisify } = require('node:util');
 const { _electron } = require('playwright');
 const { createDraftStore } = require('../src/drafts.cjs');
 const { createPreferences } = require('../src/preferences.cjs');
+const { acquireProfileLease } = require('../src/profile-lease.cjs');
 const { createWorkspace, readSource } = require('../src/workspace.cjs');
 const { createExtensionRegistry } = require('../src/extensions/registry.cjs');
 const { sha256 } = require('../src/extensions/inspect-package.cjs');
@@ -13,23 +17,33 @@ const { archive, manifest } = require('./extension-fixtures.cjs');
 const { createWindowsCredentialVault } = require('../src/intelligence/credential-vault-win.cjs');
 const { buildVaultProbe, vaultProbe } = require('./credential-vault-probe.cjs');
 const { temporaryFolder } = require('./temp.cjs');
+const { compile, until } = require('./vokri-support.cjs');
 
+const execute = promisify(execFile);
 const root = path.resolve(__dirname, '..');
 const windows = process.platform === 'win32' && process.arch === 'x64';
 const source = 'const fixture = "saved";\n';
 const draft = 'const fixture = "recovered";\n';
 
-async function start(appData, args = [], appRoot = root) {
+async function writeBootstrap(appData, appRoot, beforeMain = '') {
   const bootstrap = path.join(appData, 'launch.cjs');
   // Electron on Windows resolves Roaming AppData through the shell, independent of the APPDATA environment variable.
-  await fs.writeFile(bootstrap, `const { app } = require('electron');\n` +
-    `app.setPath('appData', ${JSON.stringify(appData)});\nrequire(${JSON.stringify(path.join(appRoot, 'src/main.cjs'))});\n`);
+  await fs.writeFile(bootstrap, `const { app, dialog } = require('electron');\n` +
+    `app.setPath('appData', ${JSON.stringify(appData)});\n${beforeMain}\nrequire(${JSON.stringify(path.join(appRoot, 'src/main.cjs'))});\n`);
   await fs.writeFile(path.join(appData, 'package.json'), JSON.stringify({ name: 'vokri-code', main: 'launch.cjs', version: '0.1.0' }));
+}
+
+function electronEnvironment() {
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
   delete env.ELECTRON_RUN_AS_NODE;
+  return env;
+}
+
+async function start(appData, args = [], appRoot = root) {
+  await writeBootstrap(appData, appRoot);
   const app = await _electron.launch({ executablePath: require('electron'),
-    args: [appData, ...args], cwd: root, env, chromiumSandbox: true, timeout: 15_000 });
+    args: [appData, ...args], cwd: root, env: electronEnvironment(), chromiumSandbox: true, timeout: 15_000 });
   const page = await app.firstWindow();
   page.setDefaultTimeout(8000);
   await app.evaluate(({ dialog }) => {
@@ -41,6 +55,92 @@ async function start(appData, args = [], appRoot = root) {
   });
   return { app, page };
 }
+
+test('Windows hands an existing profile and its drafts between the native and Electron workbenches',
+  { skip: !windows, timeout: 75_000 }, async t => {
+    const appData = await temporaryFolder(t, 'vokri-profile-handoff-');
+    const profile = path.join(appData, 'CEVRA');
+    const alias = path.join(appData, 'Profile alias');
+    const folder = path.join(appData, 'workspace café');
+    const entry = path.join(folder, 'app.js');
+    const updatedDraft = '/* Native draft */ ';
+    await fs.mkdir(folder);
+    await fs.writeFile(entry, source);
+    const project = await createWorkspace(folder);
+    const preferences = createPreferences(profile);
+    await preferences.setTheme('midnight');
+    await preferences.setEditor(project, 'workspace', { fontSize: 21, wrap: true, indentWidth: 4 });
+    const preferencesFile = path.join(profile, 'preferences.json');
+    const originalPreferences = await fs.readFile(preferencesFile);
+    await createDraftStore(path.join(profile, 'drafts')).set(project.root, 'app.js', draft, (await readSource(project, 'app.js')).revision);
+    await fs.symlink(profile, alias, 'junction');
+    await execute(process.execPath, [path.join(root, 'scripts', 'build-vokri.cjs')], { timeout: 20_000, windowsHide: true });
+    const probe = await compile('Vokri.ProfileProbe', 'vokri-probe.cs', []);
+    const native = path.join(root, 'dist', 'vokri', 'Vokri.Cevra.exe');
+
+    async function withNative(directory, run) {
+      const child = spawn(native, [process.execPath, root, directory], { cwd: root, stdio: 'ignore' });
+      const exited = once(child, 'exit');
+      void exited.catch(() => {});
+      const query = async (...args) => (await execute(probe, [child.pid, ...args], { timeout: 12_000, windowsHide: true })).stdout;
+      try { await run(child, query, exited); }
+      finally {
+        if (child.exitCode === null && child.signalCode === null) child.kill();
+        await exited.catch(() => {});
+      }
+    }
+
+    async function waitForRelease() {
+      await until(async () => {
+        try {
+          const lease = await acquireProfileLease(profile);
+          await lease.release();
+          return true;
+        } catch (error) {
+          if (error.code !== 'PROFILE_BUSY') throw error;
+          return false;
+        }
+      }, Boolean, 'The profile stayed locked after the workbench exited.');
+    }
+
+    const first = await start(appData);
+    try {
+      await first.page.getByRole('textbox', { name: 'Source editor' }).getByText('recovered', { exact: false }).waitFor();
+      await withNative(alias, async (_child, query, exited) => {
+        await query('wait', 'This profile is already open.');
+        await query('close');
+        assert.deepEqual(await exited, [0, null]);
+      });
+    } finally { await first.app.close(); }
+    await waitForRelease();
+
+    await withNative(profile, async (child, query, exited) => {
+      await query('wait', 'Recovered 1 draft.');
+      assert.match(await query('editor'), /const fixture = "recovered";/);
+      await writeBootstrap(appData, root, 'dialog.showErrorBox = () => {};');
+      await assert.rejects(execute(require('electron'), [appData], {
+        cwd: root, env: electronEnvironment(), timeout: 12_000, windowsHide: true,
+      }), error => error.code === 1 && /PROFILE_BUSY/.test(error.stderr));
+      await query('type', updatedDraft);
+      await query('wait', 'Draft backed up.');
+      child.kill('SIGKILL');
+      assert.deepEqual(await exited, [null, 'SIGKILL']);
+    });
+    await waitForRelease();
+
+    const last = await start(appData);
+    try {
+      const editor = last.page.getByRole('textbox', { name: 'Source editor' });
+      await editor.getByText('Native draft', { exact: false }).waitFor();
+      assert.match(await editor.innerText(), /recovered/);
+      assert.equal(await last.page.locator('#theme-choice').inputValue(), 'midnight');
+      await last.page.getByRole('button', { name: 'Settings', exact: true }).click();
+      assert.equal(await last.page.getByLabel('Font size').inputValue(), '21');
+    } finally { await last.app.close(); }
+    assert.deepEqual(await fs.readFile(preferencesFile), originalPreferences);
+    assert.equal(await fs.readFile(entry, 'utf8'), source);
+    await assert.rejects(fs.access(path.join(appData, 'VOKRI Code')), { code: 'ENOENT' });
+  });
 
 test('Windows shows VOKRI Code identity and uses a branded profile on first launch', { skip: !windows, timeout: 25_000 }, async t => {
   const appData = await temporaryFolder(t, 'vokri-identity-fresh-');

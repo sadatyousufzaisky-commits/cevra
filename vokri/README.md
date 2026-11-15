@@ -58,9 +58,9 @@ Save the example as `Notes.cs` and a copy of the manifest as `Notes.manifest` at
 | API | Behavior |
 | --- | --- |
 | `Application` | STA message loop, bounded UI callback queue via `Post`, and an application error event |
-| `Window` | Multiple windows, optional ownership, minimum sizing, per-monitor DPI scaling, keyboard shortcuts, and cancellable close. `Appearance`, `SetFontSizes`, and `DisplayChanged` support visual changes. |
+| `Window` | Multiple windows, optional ownership, minimum sizing, per-monitor DPI scaling, keyboard shortcuts, and cancellable close. `Appearance` and `DisplayChanged` support visual changes. `SetFontSizes` accepts an optional editor font family. |
 | `Grid` | Nested fixed, automatic, and proportional tracks with gaps, padding, and spans |
-| `Label`, `Button`, `TextField`, `TextEditor`, `ListBox` | Native controls with focus, keyboard navigation, and Windows accessibility for standard control roles. The `Button` overload with a primary/secondary argument applies the VOKRI palette. |
+| `Label`, `Button`, `TextField`, `TextEditor`, `ListBox` | Native controls with focus, keyboard navigation, and Windows accessibility for standard control roles. The `Button` overload with a primary/secondary argument applies the VOKRI palette. `TextEditor.WordWrap` wraps text to the editor width. |
 | `VirtualList` | Single-selection report list backed by `SetRows(count, labelAt)`. Win32 requests labels on demand and exposes up to 64 rows at once. `Select(index)` reveals a logical row and `MovePage(direction)` moves to the previous or next page. Supply labels quickly on the UI thread and keep the data stable until the next `SetRows`. |
 | `Canvas`, `DrawingContext` | Native paint callback for text, lines, and fills in logical coordinates, plus pointer presses |
 | `Palette`, `Window.Animate` | Iris Ink and Midnight Atelier colors, Windows contrast color fallback, and UI-thread frame callbacks. Dispose an animation on the UI thread. The SDK ends it on window close or callback failure and emits a static frame when Windows animations are disabled. |

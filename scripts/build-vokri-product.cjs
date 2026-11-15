@@ -13,11 +13,13 @@ const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 // Keep the service file layout so the runner can locate its reporter and process host.
 const serviceFiles = [
   'vokri/hosts/cevra/service.cjs', 'vokri/bridge/stdio.cjs',
-  'src/atomic-file.cjs', 'src/drafts.cjs', 'src/node-reporter.cjs', 'src/project-tests.cjs',
+  'src/atomic-file.cjs', 'src/drafts.cjs', 'src/identity.cjs', 'src/node-reporter.cjs', 'src/preferences.cjs',
+  'src/profile-lease.cjs', 'src/profile-location.cjs', 'src/project-tests.cjs',
   'src/runner.cjs', 'src/runtime-kind.cjs', 'src/source-files.cjs', 'src/source-language.cjs',
   'src/source-location.cjs', 'src/source-text.cjs', 'src/workspace.cjs',
   'src/continuum/revisions.cjs', 'src/execution/process-host.cjs', 'src/execution/runtime-location.cjs',
   'src/execution/sessions.cjs', 'src/execution/test-report.cjs',
+  'src/intelligence/model-profiles.cjs', 'src/intelligence/provider-contract.cjs', 'src/intelligence/response-preferences.cjs',
 ];
 
 async function build() {

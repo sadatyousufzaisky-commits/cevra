@@ -218,6 +218,7 @@ namespace Vokri
         private const int Limit = 2 * 1024 * 1024;
         private string initial = "";
         private bool readOnly;
+        private bool wordWrap;
         public TextEditor(Size preferred, bool readOnly = false) : base(preferred) { this.readOnly = readOnly; }
         internal override string ClassName { get { return "RICHEDIT50W"; } }
         internal override uint Style { get { return Native.TabStop | Native.HScroll | Native.VScroll | 0x01c4; } }
@@ -230,6 +231,7 @@ namespace Vokri
             Native.Send(Handle, 0x0435, IntPtr.Zero, new IntPtr(Limit));
             Native.Send(Handle, 0x0445, IntPtr.Zero, new IntPtr(1)); // ENM_CHANGE
             ReadOnly = readOnly;
+            ApplyWordWrap();
             AppearanceChanged();
             if (initial.Length != 0) Text = initial;
         }
@@ -258,6 +260,24 @@ namespace Vokri
         }
 
         public event Action Changed;
+
+        public bool WordWrap
+        {
+            get { return wordWrap; }
+            set
+            {
+                VerifyAccess();
+                if (wordWrap == value) return;
+                wordWrap = value;
+                if (Handle != IntPtr.Zero) ApplyWordWrap();
+            }
+        }
+
+        private void ApplyWordWrap()
+        {
+            Native.Send(Handle, 0x0448, IntPtr.Zero, wordWrap ? IntPtr.Zero : new IntPtr(1)); // EM_SETTARGETDEVICE
+        }
+
         public string Text
         {
             get
@@ -319,6 +339,7 @@ namespace Vokri
         public event Action SelectionChanged;
         public event Action Activated;
         internal override void Created() { Update(); }
+        internal override void AppearanceChanged() { Native.InvalidateRect(Handle, IntPtr.Zero, true); }
 
         public void SetItems(IEnumerable<string> entries)
         {

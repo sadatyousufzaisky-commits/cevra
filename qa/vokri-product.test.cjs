@@ -8,6 +8,9 @@ const { test } = require('node:test');
 const { promisify } = require('node:util');
 const { temporaryFolder } = require('./temp.cjs');
 const { compile, until, processExists } = require('./vokri-support.cjs');
+const { frame, readFrames } = require('../vokri/bridge/stdio.cjs');
+const { createPreferences } = require('../src/preferences.cjs');
+const { createWorkspace } = require('../src/workspace.cjs');
 
 const execute = promisify(execFile);
 const root = path.resolve(__dirname, '..');
@@ -17,15 +20,23 @@ test('the native product folder runs independently and recovers after a workspac
     const temp = await temporaryFolder(t, 'vokri-native-product-');
     const install = path.join(temp, 'VOKRI Code (QA) & café');
     const workspace = path.join(temp, 'Work (QA) & café');
-    const profile = path.join(temp, 'Profile');
+    const roaming = path.join(temp, 'Roaming');
+    const profile = path.join(roaming, 'CEVRA');
+    const branded = path.join(roaming, 'VOKRI Code');
     const cwd = path.join(temp, 'Unrelated working directory');
     const entry = path.join(workspace, 'nested', 'entry.cjs');
+    const faultSource = 'throw new Error("Staged native runner failure"); // ' + 'long comment '.repeat(220) + '\n';
     await Promise.all([fs.mkdir(path.dirname(entry), { recursive: true }), fs.mkdir(cwd)]);
     await Promise.all([
       fs.writeFile(entry, 'require("./fault.cjs");\n'),
-      fs.writeFile(path.join(workspace, 'nested', 'fault.cjs'), 'throw new Error("Staged native runner failure");\n'),
+      fs.writeFile(path.join(workspace, 'nested', 'fault.cjs'), faultSource),
       fs.writeFile(path.join(workspace, 'math.test.cjs'), 'require("node:test")("staged reporter", () => {});\n'),
     ]);
+    const legacyPreferences = createPreferences(profile);
+    await legacyPreferences.setTheme('midnight');
+    await legacyPreferences.setEditor(undefined, 'global', { wrap: false, fontSize: 18 });
+    await legacyPreferences.setEditor(await createWorkspace(workspace), 'workspace', { wrap: true, fontSize: 22, fontFamily: 'courier' });
+    const legacySettings = await fs.readFile(path.join(profile, 'preferences.json'), 'utf8');
     await execute(process.execPath, [path.join(root, 'scripts', 'build-vokri-product.cjs'), install],
       { timeout: 45_000, windowsHide: true, cwd });
     const packaged = JSON.parse(await fs.readFile(path.join(install, 'runtime-manifest.json'), 'utf8'));
@@ -39,6 +50,39 @@ test('the native product folder runs independently and recovers after a workspac
       const actual = createHash('sha256').update(await fs.readFile(path.join(install, file))).digest('hex');
       assert.equal(actual, expected, file);
     }
+
+    async function readSettings({ directory = roaming, override, folder } = {}) {
+      const child = spawn(path.join(install, 'runtime', 'node.exe'), [
+        path.join(install, 'vokri', 'hosts', 'cevra', 'service.cjs'), '--roaming-profile', directory,
+        ...(override ? [override] : []),
+      ], { cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'inherit'] });
+      const exited = once(child, 'exit');
+      try {
+        child.stdin.end(frame({ version: 1, id: 1, operation: folder ? 'open' : 'initial', arguments: folder ? { folder } : {} }));
+        const replies = [];
+        for await (const reply of readFrames(child.stdout)) replies.push(reply);
+        assert.deepEqual(await exited, [0, null]);
+        assert.equal(replies.length, 1);
+        assert.equal(replies[0].ok, true);
+        return replies[0].result.settings;
+      } finally {
+        if (child.exitCode === null && child.signalCode === null) child.kill();
+        await exited.catch(() => {});
+      }
+    }
+
+    const fresh = path.join(temp, 'Fresh Roaming');
+    assert.equal((await readSettings({ directory: fresh })).theme, 'dark');
+    assert.deepEqual(await fs.readdir(fresh), ['VOKRI Code']);
+    assert.equal((await readSettings()).theme, 'midnight');
+    await assert.rejects(fs.access(branded), { code: 'ENOENT' });
+    await createPreferences(branded).setTheme('light');
+    assert.equal((await readSettings()).theme, 'light');
+    const { theme, editor } = await readSettings({ override: profile, folder: workspace });
+    assert.equal(theme, 'midnight');
+    assert.equal(editor.fontFamily, 'courier');
+    assert.equal(editor.fontSize, 22);
+    assert.equal(editor.wrap, true);
 
     const probe = await compile('Vokri.Probe', 'vokri-probe.cs', []);
     const system = path.join(process.env.SystemRoot, 'System32');
@@ -89,6 +133,7 @@ test('the native product folder runs independently and recovers after a workspac
       assert.match(await query('output'), /Staged native runner failure/);
       await click('Go to Error');
       await wait('Error at ' + path.join('nested', 'fault.cjs') + ':1:');
+      assert.ok(Number(await query('editor-lines')) > 3, 'The editor did not apply the saved workspace wrap setting.');
       await click('Run Tests');
       await query('confirm', 'Run workspace code');
       await wait('Passed.');
@@ -99,7 +144,7 @@ test('the native product folder runs independently and recovers after a workspac
       await query('close');
       assert.deepEqual(await app.exited, [0, null]);
       assert.equal(await fs.readFile(path.join(workspace, 'nested', 'fault.cjs'), 'utf8'),
-        'throw new Error("Staged native runner failure");\n');
+        faultSource);
 
       app = start();
       await wait('Recovered 1 draft.');
@@ -111,6 +156,7 @@ test('the native product folder runs independently and recovers after a workspac
       await query('close');
       assert.deepEqual(await app.exited, [0, null]);
       await until(() => processExists(recoveredService), alive => !alive, 'The staged service survived window exit.');
+      assert.equal(await fs.readFile(path.join(profile, 'preferences.json'), 'utf8'), legacySettings);
     } finally {
       if (app.child.exitCode === null && app.child.signalCode === null) app.child.kill();
       await app.exited.catch(() => {});

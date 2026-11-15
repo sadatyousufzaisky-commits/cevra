@@ -110,7 +110,10 @@ internal sealed class Workbench : IDisposable
         Refresh();
     }
 
-    private static Button Button(string caption, int width) { return new Button(caption, new Size(width, 30)); }
+    private static Button Button(string caption, int width)
+    {
+        return new Button(caption, new Size(width, 30), caption == "Open Folder" || caption == "Run File");
+    }
     private static Grid Bar(params Button[] buttons)
     {
         var grid = new Grid(buttons.Select(button => Track.Fixed(button.PreferredSize.Width)).ToArray(), new[] { Track.Star() }, 5);
@@ -142,7 +145,11 @@ internal sealed class Workbench : IDisposable
         {
             var result = project == null ? await service.Request("initial") : await service.Request("open", Args("folder", project));
             if (Record(result, "workspace") != null) await Adopt(result);
-            else status.Text = Flag(result, "unreadable") ? "A draft project could not be reopened. Open its folder to recover it." : "Choose a project folder.";
+            else
+            {
+                ApplySettings(Record(result, "settings"));
+                status.Text = Flag(result, "unreadable") ? "A draft project could not be reopened. Open its folder to recover it." : "Choose a project folder.";
+            }
         });
     }
 
@@ -206,6 +213,7 @@ internal sealed class Workbench : IDisposable
 
     private async Task Adopt(IDictionary<string, object> result)
     {
+        ApplySettings(Record(result, "settings"));
         var project = Record(result, "workspace");
         workspace = Text(project, "id");
         projectTitle.Text = Text(project, "name");
@@ -227,6 +235,23 @@ internal sealed class Workbench : IDisposable
             Select(documents[0]);
             status.Text = "Recovered " + documents.Count + (documents.Count == 1 ? " draft." : " drafts.");
         }
+    }
+
+    private void ApplySettings(IDictionary<string, object> settings)
+    {
+        if (settings == null) return;
+        switch (Text(settings, "theme"))
+        {
+            case "light": window.Appearance = Appearance.IrisInkLight; break;
+            case "midnight": window.Appearance = Appearance.MidnightAtelier; break;
+            case "system": window.Appearance = Appearance.System; break;
+            default: window.Appearance = Appearance.IrisInkDark; break;
+        }
+        var editorSettings = Record(settings, "editor");
+        if (editorSettings == null) return;
+        string family = Text(editorSettings, "fontFamily") == "courier" ? "Courier New" : "Consolas";
+        window.SetFontSizes(14, (int)Get(editorSettings, "fontSize"), family);
+        editor.WordWrap = Flag(editorSettings, "wrap");
     }
 
     private async Task ShowFolder(string directory)

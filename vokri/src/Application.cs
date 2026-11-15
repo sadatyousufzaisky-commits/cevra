@@ -225,6 +225,7 @@ namespace Vokri
         private IntPtr editorFont;
         private IntPtr backgroundBrush;
         private int uiFontSize = 14, codeFontSize = 15;
+        private string codeFontFamily = "Consolas";
         private Appearance appearance;
         private readonly Dictionary<IntPtr, FrameSubscription> frames = new Dictionary<IntPtr, FrameSubscription>();
         private int nextTimer;
@@ -300,11 +301,20 @@ namespace Vokri
 
         public void SetFontSizes(int interfaceSize, int editorSize)
         {
+            SetFontSizes(interfaceSize, editorSize, codeFontFamily);
+        }
+
+        public void SetFontSizes(int interfaceSize, int editorSize, string editorFamily)
+        {
             VerifyOpen();
             if (interfaceSize < 10 || interfaceSize > 28 || editorSize < 10 || editorSize > 40)
                 throw new ArgumentOutOfRangeException("size");
+            if (string.IsNullOrWhiteSpace(editorFamily) || editorFamily.Length > 31 || editorFamily.IndexOf('\0') >= 0)
+                throw new ArgumentException("Choose a valid editor font family.", "editorFamily");
+            if (uiFontSize == interfaceSize && codeFontSize == editorSize && codeFontFamily == editorFamily) return;
             uiFontSize = interfaceSize;
             codeFontSize = editorSize;
+            codeFontFamily = editorFamily;
             SetDpi(dpi);
             Layout();
         }
@@ -403,7 +413,7 @@ namespace Vokri
         {
             dpi = value > 0 ? value : 96;
             IntPtr next = Native.Require(Native.CreateFontW(-Scale(uiFontSize), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI"));
-            IntPtr mono = Native.CreateFontW(-Scale(codeFontSize), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Consolas");
+            IntPtr mono = Native.CreateFontW(-Scale(codeFontSize), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, codeFontFamily);
             if (mono == IntPtr.Zero) { Native.DeleteObject(next); throw new Win32Exception(); }
             IntPtr old = font, oldEditor = editorFont;
             font = next;
@@ -476,7 +486,9 @@ namespace Vokri
                     }
                     break;
                 case Native.StaticColor:
-                    if (appearance != Appearance.System && controls.TryGetValue(lParam, out control) && control is Label)
+                case Native.ListBoxColor:
+                    if (appearance != Appearance.System && controls.TryGetValue(lParam, out control) &&
+                        (control is Label || control is ListBox))
                     {
                         Native.SetTextColor(wParam, Colors.Text.Value);
                         Native.SetBkColor(wParam, Colors.Background.Value);

@@ -156,12 +156,13 @@
         "g3-native-foundation.md",
         "../../scripts/build-vokri-product.cjs",
         "../../vokri/hosts/cevra/product.manifest",
-        "../../qa/vokri-product.test.cjs"
+        "../../qa/vokri-product.test.cjs",
+        "../../qa/identity-desktop.test.cjs"
       ],
       "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43669421785/job/132675915280",
       "ownerSignoff": null,
       "openBlockers": [
-        "Migrate the existing product workflows, settings, profile continuity, and desktop tests to native equivalents.",
+        "Migrate the remaining product workflows, settings, window state, and desktop tests to native equivalents.",
         "Complete the production entry-point cutover and remove the Electron toolchain.",
         "Verify release artifacts and complete binary import and dependency scans."
       ],

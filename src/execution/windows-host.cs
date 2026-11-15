@@ -27,13 +27,50 @@ internal static partial class WindowsHost
                 throw new ArgumentException("An execution owner PID is required.");
             var owner = OpenProcess(Synchronize, false, ownerId);
             Require(owner != IntPtr.Zero, "Open execution owner");
-            try { return args[1] == "--terminal" ? RunTerminal(args, owner) : Run(args, owner); }
+            try
+            {
+                if (args[1] == "--profile-lease") return HoldProfile(args, owner);
+                return args[1] == "--terminal" ? RunTerminal(args, owner) : Run(args, owner);
+            }
             finally { CloseHandle(owner); }
         }
         catch (Exception error)
         {
             Console.Error.WriteLine("VOKRI Code process host: " + error.Message);
             return 125;
+        }
+    }
+
+    private static int HoldProfile(string[] args, IntPtr owner)
+    {
+        if (args.Length != 3 || !Path.IsPathRooted(args[2])) throw new ArgumentException("An absolute profile directory is required.");
+        string file = Path.Combine(args[2], ".vokri-profile.lock");
+        FileStream lease;
+        try { lease = new FileStream(file, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+        catch (IOException error)
+        {
+            int code = error.HResult & 0xffff;
+            if (code == 32 || code == 33) return 73; // Sharing or lock violation.
+            throw;
+        }
+        using (lease)
+        using (var stop = new ManualResetEvent(false))
+        {
+            var listener = new Thread(delegate()
+            {
+                try { Console.In.Read(); }
+                catch (IOException) {}
+                try { stop.Set(); }
+                catch (ObjectDisposedException) {}
+            });
+            listener.IsBackground = true;
+            listener.Start();
+            if (OwnerExited(owner)) return 1;
+            Console.Out.WriteLine("PROFILE READY");
+            Console.Out.Flush();
+            var handles = new[] { owner, stop.SafeWaitHandle.DangerousGetHandle() };
+            Require(WaitForMultipleObjects(2, handles, false, uint.MaxValue) <= 1, "Wait for profile owner");
+            return 0;
         }
     }
 
