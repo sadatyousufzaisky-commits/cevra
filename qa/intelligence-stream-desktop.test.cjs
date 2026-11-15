@@ -173,6 +173,7 @@ test('G8 workspace preserves separate test, send, diff and verification decision
     await capture(diff, 'edit-review');
     await diff.getByRole('button', { name: 'Apply as Drafts', exact: true }).press('Enter');
     await diff.waitFor({ state: 'hidden' });
+    await pane.locator('#coding-plan [aria-current="step"]').getByText('Review the diff, apply as drafts, and save the approved changes.', { exact: true }).waitFor();
     await pane.getByRole('button', { name: 'Dock', exact: true }).press('Enter');
     await page.waitForFunction(() => document.getElementById('workbench').dataset.intelligenceLayout === 'dock');
     assert.equal(await fs.readFile(path.join(project, 'helper.js'), 'utf8'), original);
@@ -184,6 +185,7 @@ test('G8 workspace preserves separate test, send, diff and verification decision
     const verify = stamp();
     await pane.getByRole('button', { name: 'Verify saved changes', exact: true }).press('Enter');
     await pane.getByText('Verification · 1 passed, 0 failed · Observed revision', { exact: true }).waitFor();
+    await pane.getByText('Automated actions started · 3 of 3', { exact: true }).waitFor();
     const result = await traffic();
     assert.deepEqual(result.testApprovals.map(item => item.title), ['Run baseline tests', 'Verify Intelligence change']);
     assert.equal(result.count, 1);

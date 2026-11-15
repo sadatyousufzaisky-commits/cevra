@@ -358,7 +358,7 @@ function renderAgent(state) {
   document.getElementById('coding-goal').textContent = state.goal ?? '';
   document.getElementById('coding-plan-model').textContent = state.goal && agentRoute ?
     `${agentRoute.providerId === 'ollama' ? 'Ollama' : 'OpenAI'} · ${agentRoute.label}` : '';
-  const currentStep = { plan: 0, baseline: 0, proposal: 1, generating: 1, review: 2, save: 3, verification: 3 }[state.stage];
+  const currentStep = { plan: 0, baseline: 0, proposal: 1, generating: 1, review: 2, save: 2, verification: 3 }[state.stage];
   const stageLabel = {
     plan: 'Baseline approval', baseline: 'Baseline tests', proposal: 'Provider review', generating: 'Proposal request',
     review: 'Edit review', save: 'Save and verify', verification: 'Verification tests',
@@ -373,7 +373,7 @@ function renderAgent(state) {
   }) : []));
   document.getElementById('coding-targets').textContent = state.targets?.length ?
     'Plan attachments · ' + state.targets.map(item => item.path + (item.kind === 'selection' ? ':' + item.line : '')).join(', ') : '';
-  document.getElementById('coding-steps').textContent = state.goal ? `${state.steps} of ${state.maxSteps} steps started` : '';
+  document.getElementById('coding-steps').textContent = state.goal ? `Automated actions started · ${state.steps} of ${state.maxSteps}` : '';
   document.getElementById('coding-baseline').textContent = testSummary('Baseline', state.baseline);
   document.getElementById('coding-verification').textContent = testSummary('Verification', state.verification);
   codingStatus.textContent = state.message ?? '';
