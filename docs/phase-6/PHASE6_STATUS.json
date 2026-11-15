@@ -151,20 +151,30 @@
       "dependsOn": [
         "G2"
       ],
-      "commit": null,
+      "commit": "1bd3beb6b9ff24a106fa921eddda054a0641ba9b",
       "evidence": [
         "g3-native-foundation.md",
         "../../scripts/build-vokri-product.cjs",
         "../../vokri/hosts/cevra/product.manifest",
         "../../qa/vokri-product.test.cjs"
       ],
-      "ci": null,
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43669421785/job/132675915280",
       "ownerSignoff": null,
       "openBlockers": [
         "Migrate the existing product workflows, settings, profile continuity, and desktop tests to native equivalents.",
         "Complete the production entry-point cutover and remove the Electron toolchain.",
         "Verify release artifacts and complete binary import and dependency scans."
-      ]
+      ],
+      "verification": {
+        "verifiedAt": "2026-11-15",
+        "local": "Windows 11 x64 build 26300",
+        "nativeProductIntegrationPassed": "Local and clean Windows Server 2025 checkout",
+        "nativeSdkTestsPassedPerConfiguration": 6,
+        "nativeSdkVerifiedOn": ["Windows 11 x64", "Windows Server 2022 x64", "Windows Server 2025 x64"],
+        "existingProductExecutionChecksPassedLocally": 3,
+        "stagedFileDigestAndLoadedModuleScan": "passed",
+        "serviceFailureAndDraftRecovery": "passed"
+      }
     },
     {
       "id": "G4",

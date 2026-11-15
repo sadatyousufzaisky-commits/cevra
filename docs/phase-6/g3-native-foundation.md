@@ -15,6 +15,8 @@ Supply a new output folder with `npm run build:vokri-product -- <folder>` for a 
 
 `npm run test:vokri-product` builds into a temporary directory and launches from an unrelated working directory with a system-only PATH. It verifies the file inventory, native process modules, the bundled Node.js child, nested source execution and navigation, project tests, service loss, and recovery of a backed-up draft after reopening.
 
+On `1bd3beb`, the staged integration test passed on Windows 11 and a clean Windows Server 2025 checkout. The hosted job ran without `node_modules` or Electron on PATH. The six SDK tests passed locally and on Windows Server 2022 and 2025. Three focused existing-product execution tests passed locally. The previous Server 2025 SDK run exposed a folder-dialog readiness race in the probe. The probe now waits for the titled dialog and an enabled action before sending the command. [Clean native product job](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43669421785/job/132675915280)
+
 ## Electron replacement inventory
 
 | Surface | Current dependency | G3 state |
