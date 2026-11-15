@@ -270,23 +270,41 @@
     {
       "id": "G6",
       "name": "Continuum tools in one workbench",
-      "status": "in_progress",
+      "status": "passed",
       "dependsOn": [
         "G4",
         "G5"
       ],
-      "commit": null,
+      "commit": "8959506a83dd842b1a9cfb0afdadcd65d1630460",
       "evidence": [
         "g6-continuum-workbench.md",
+        "evidence/g6/windows-continuum.json",
         "../../qa/continuum.test.cjs",
         "../../qa/workbench.test.cjs",
         "../../qa/core.test.cjs"
       ],
-      "ci": null,
-      "ownerSignoff": null,
-      "openBlockers": [
-        "Complete the full Windows desktop and hosted reliability runs."
-      ]
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43737234147",
+      "ownerSignoff": {
+        "date": "2026-11-15",
+        "authorization": "Project owner directed implementation of G6 on the Electron workbench."
+      },
+      "openBlockers": [],
+      "verification": {
+        "verifiedAt": "2026-11-15",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassed": 170,
+        "desktopPassed": 101,
+        "optionalNativePreviewSkipped": 1,
+        "extensionHostPassedCi": 18,
+        "credentialAccountIsolationCi": "passed",
+        "benchmarkPassedCi": 13,
+        "phase3WorkflowReview": "passed in clean, extension-enabled, and extension safe-start profiles",
+        "continuumFaultReplay": "Detached terminal, test, run and debugger process trees, draft recovery, and missing runtime checks passed.",
+        "sourceEvidence": "Exact source jumps, stale target refusal, and unverified skipped tests passed.",
+        "saveThenVerify": "Draft cleanup was complete at save confirmation and immediate Intelligence verification passed.",
+        "compactKeyboardSmoke": "passed at 160 percent Electron zoom"
+      }
     },
     {
       "id": "G7",

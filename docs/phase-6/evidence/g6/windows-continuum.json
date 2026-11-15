@@ -1,0 +1,168 @@
+{
+  "testedRevision": "8959506a83dd842b1a9cfb0afdadcd65d1630460",
+  "node": "v24.15.0",
+  "journeys": [
+    {
+      "schemaVersion": 1,
+      "os": "10.0.26300",
+      "arch": "x64",
+      "electron": "45.2.3",
+      "runtime": "24.22.2",
+      "extensionMode": "empty",
+      "actions": [
+        {
+          "action": "Launch and open fixture",
+          "ms": 847
+        },
+        {
+          "action": "Enable Flightpath and name Workstream",
+          "ms": 169
+        },
+        {
+          "action": "Review and run failing recipe with workspace consent",
+          "ms": 485
+        },
+        {
+          "action": "Open Failure Lens and navigate recorded source",
+          "ms": 126
+        },
+        {
+          "action": "Set breakpoint and inspect the live total",
+          "ms": 612
+        },
+        {
+          "action": "Fix source and observe historical evidence",
+          "ms": 380
+        },
+        {
+          "action": "Review working diff and stage the fix",
+          "ms": 1506
+        },
+        {
+          "action": "Verify dependency graph and run the full test suite",
+          "ms": 1503
+        },
+        {
+          "action": "Review staged proof and commit exact verified bytes",
+          "ms": 2680
+        },
+        {
+          "action": "End Workstream and retain its recorded result",
+          "ms": 65
+        }
+      ],
+      "measuredMs": 8373,
+      "revisionA": "3d71247b6498a38dcb79ae91717259b0beae34c40ad010d51cc0132043baa237",
+      "revisionB": "8339f744e43ba6035e9f76cc3e54e688a04af659da8ac4ac6acd17874da979f5",
+      "fixtureCommit": "39001e2757036006327025caab1349171da72f76"
+    },
+    {
+      "schemaVersion": 1,
+      "os": "10.0.26300",
+      "arch": "x64",
+      "electron": "45.2.3",
+      "runtime": "24.22.2",
+      "extensionMode": "enabled",
+      "actions": [
+        {
+          "action": "Launch and open fixture",
+          "ms": 790
+        },
+        {
+          "action": "Enable Flightpath and name Workstream",
+          "ms": 159
+        },
+        {
+          "action": "Review and run failing recipe with workspace consent",
+          "ms": 508
+        },
+        {
+          "action": "Open Failure Lens and navigate recorded source",
+          "ms": 138
+        },
+        {
+          "action": "Set breakpoint and inspect the live total",
+          "ms": 481
+        },
+        {
+          "action": "Fix source and observe historical evidence",
+          "ms": 391
+        },
+        {
+          "action": "Review working diff and stage the fix",
+          "ms": 2034
+        },
+        {
+          "action": "Verify dependency graph and run the full test suite",
+          "ms": 1495
+        },
+        {
+          "action": "Review staged proof and commit exact verified bytes",
+          "ms": 2638
+        },
+        {
+          "action": "End Workstream and retain its recorded result",
+          "ms": 59
+        }
+      ],
+      "measuredMs": 8693,
+      "revisionA": "3d71247b6498a38dcb79ae91717259b0beae34c40ad010d51cc0132043baa237",
+      "revisionB": "8339f744e43ba6035e9f76cc3e54e688a04af659da8ac4ac6acd17874da979f5",
+      "fixtureCommit": "0539d365a56b75f8f1bae8706fd5dd816d8b1e98"
+    },
+    {
+      "schemaVersion": 1,
+      "os": "10.0.26300",
+      "arch": "x64",
+      "electron": "45.2.3",
+      "runtime": "24.22.2",
+      "extensionMode": "safe-start",
+      "actions": [
+        {
+          "action": "Launch and open fixture",
+          "ms": 781
+        },
+        {
+          "action": "Enable Flightpath and name Workstream",
+          "ms": 174
+        },
+        {
+          "action": "Review and run failing recipe with workspace consent",
+          "ms": 483
+        },
+        {
+          "action": "Open Failure Lens and navigate recorded source",
+          "ms": 121
+        },
+        {
+          "action": "Set breakpoint and inspect the live total",
+          "ms": 576
+        },
+        {
+          "action": "Fix source and observe historical evidence",
+          "ms": 377
+        },
+        {
+          "action": "Review working diff and stage the fix",
+          "ms": 1645
+        },
+        {
+          "action": "Verify dependency graph and run the full test suite",
+          "ms": 1507
+        },
+        {
+          "action": "Review staged proof and commit exact verified bytes",
+          "ms": 2439
+        },
+        {
+          "action": "End Workstream and retain its recorded result",
+          "ms": 58
+        }
+      ],
+      "measuredMs": 8161,
+      "revisionA": "3d71247b6498a38dcb79ae91717259b0beae34c40ad010d51cc0132043baa237",
+      "revisionB": "8339f744e43ba6035e9f76cc3e54e688a04af659da8ac4ac6acd17874da979f5",
+      "fixtureCommit": "d8662cc463bb1cb83930ba2791555815de6562e5"
+    }
+  ]
+}

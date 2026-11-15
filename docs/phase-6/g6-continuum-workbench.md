@@ -4,6 +4,8 @@ VOKRI Code keeps run activity in the bottom-panel header while you use the termi
 
 The activity label identifies the operation and shows starting, running, paused, succeeded, failed, and canceled states. Test passes with changed or unverified inputs display their evidence status. A suite with only skipped or previously cached passes counts as unverified for that attempt, and Flightpath records that it produced no passing tests. Change Lens uses the independently verified full test result when checking staged bytes.
 
+A successful save waits for the matching draft backup to clear before announcing completion. This lets verification start immediately after the save confirmation. If the write succeeds and the backup update fails, the editor reports both outcomes.
+
 ## Phase 3 workflow review
 
 | Phase 3 workflow | Electron workbench and verification |
@@ -22,3 +24,11 @@ The activity label identifies the operation and shows starting, running, paused,
 Run `npm test` on Windows with Git and npm on PATH. The [Continuum replay](../../qa/continuum.test.cjs) reproduces an invoice failure, visits the recorded line, inspects a live breakpoint, fixes the source, marks the old evidence historical, verifies a task graph and passing tests, and commits the exact reviewed bytes. It repeats the workflow with no extensions, enabled contributions, and extension safe start. The fault replay covers a missing runtime, detached-process cancellation, and draft recovery.
 
 The [workbench regression suite](../../qa/workbench.test.cjs) adds stale error navigation, skipped-suite evidence, and terminal revocation and crash checks. The [core suite](../../qa/core.test.cjs) checks revision matching, bounded output, and process cancellation.
+
+A compact Windows smoke check at 160% Electron zoom kept execution activity inside the window, stacked Failure Lens details in one column, and used the keyboard to return to the exact failure line.
+
+The Windows 11 x64 run passed 170 core tests and 101 Electron desktop tests on implementation revision `8959506a83dd842b1a9cfb0afdadcd65d1630460`. The optional native profile-handoff test was skipped. The recorded journeys include timing samples, the two fixture source revisions, and the resulting fixture commits for all three extension modes. [Windows Continuum traces](evidence/g6/windows-continuum.json)
+
+## Gate decision
+
+G6 passed on Electron on 2026-11-15. The Windows Server 2025 reliability workflow passed the same core and desktop suites, Windows credential account separation, 18 extension-host tests, and 13 Intelligence benchmark checks. [Phase 6 status](PHASE6_STATUS.json) · [Windows reliability run](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43737234147)
