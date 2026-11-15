@@ -556,8 +556,15 @@ function switchTab(step) {
   showFile(open[(index + step + open.length) % open.length]);
 }
 
+function adjacentTab(step) {
+  if (!active || changingProject) return null;
+  const open = orderedTabs();
+  const target = open[open.indexOf(active) + step];
+  return target?.pinned === active.pinned ? target : null;
+}
+
 function moveTab(tab, target, after) {
-  if (!tab || tab === target || tab.pinned !== target.pinned || documents.get(tab.path) !== tab) return;
+  if (!tab || !target || tab === target || tab.pinned !== target.pinned || documents.get(tab.path) !== tab) return;
   const reordered = orderedTabs().filter(item => item !== tab);
   reordered.splice(reordered.indexOf(target) + Number(after), 0, tab);
   reordered.forEach((item, index) => { item.stripOrder = index; });
@@ -583,7 +590,8 @@ function renderTabs() {
       event.dataTransfer.effectAllowed = 'move';
     };
     item.ondragover = event => {
-      if (!draggedTab || draggedTab === tab || draggedTab.pinned !== tab.pinned) return;
+      if (!event.dataTransfer.types.includes('application/x-vokri-tab') ||
+          !draggedTab || draggedTab === tab || draggedTab.pinned !== tab.pinned) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
       item.dataset.drop = 'true';
@@ -593,8 +601,10 @@ function renderTabs() {
     item.ondrop = event => {
       event.preventDefault();
       delete item.dataset.drop;
-      const bounds = item.getBoundingClientRect();
-      moveTab(draggedTab, tab, event.clientX > bounds.x + bounds.width / 2);
+      if (event.dataTransfer.getData('application/x-vokri-tab') === String(draggedTab?.id)) {
+        const bounds = item.getBoundingClientRect();
+        moveTab(draggedTab, tab, event.clientX > bounds.x + bounds.width / 2);
+      }
       draggedTab = undefined;
     };
     const show = document.createElement('button');
@@ -1900,6 +1910,10 @@ const commands = createCommandRegistry([
   { id: 'close-tab', title: 'Close file tab', icon: 'close', key: 'Ctrl+W', enabled: () => Boolean(active && !changingProject), run: () => closeFile(active) },
   { id: 'pin-tab', title: 'Pin or unpin active file tab', icon: 'pin-view', enabled: () => Boolean(active && !changingProject),
     run: () => { active.pinned = !active.pinned; renderTabs(); } },
+  { id: 'move-tab-left', title: 'Move active file tab left', icon: 'back', enabled: () => Boolean(adjacentTab(-1)),
+    run: () => moveTab(active, adjacentTab(-1), false) },
+  { id: 'move-tab-right', title: 'Move active file tab right', icon: 'forward', enabled: () => Boolean(adjacentTab(1)),
+    run: () => moveTab(active, adjacentTab(1), true) },
   { id: 'reveal', title: 'Reveal active file in Explorer', icon: 'folder', enabled: canUse(byId('reveal-file')), run: revealActiveFile },
   { id: 'explorer', title: 'Toggle Explorer', icon: 'sidebar-layout', key: 'Ctrl+B', run: layout.toggleSidebar },
   { id: 'focus-explorer', title: 'Focus Explorer', icon: 'sidebar-layout', enabled: () => Boolean(project && !changingProject), run: () => revealFolder('') },

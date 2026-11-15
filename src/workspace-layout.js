@@ -189,15 +189,10 @@ export function createWorkspaceLayout({ persist, reveal, report }) {
     syncPins();
     changed();
   };
-  sidebarToggle.onclick = toggleSidebar;
-  dockToggle.onclick = dockRail.onclick = toggleDock;
-  inspectorToggle.onclick = toggleInspector;
   inspector.addEventListener('keydown', event => {
     if (event.key === 'Escape') setInspector(false);
   });
   byId('close-inspector').onclick = () => setInspector(false);
-  float.onclick = toggleFloating;
-  pin.onclick = pinView;
 
   function applyState() {
     sidebarVisible(state.explorer);

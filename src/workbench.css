@@ -37,13 +37,16 @@ button svg:where(:not(.file-type-icon)), .project-root svg {
 .project-title { max-width: 18vw; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .command-trigger { flex: 0 1 340px; min-width: 0; margin-inline: auto; justify-content: flex-start; app-region: no-drag; }
 .command-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.command-trigger-compact { display: none; }
 .command-trigger kbd { margin-left: auto; flex: none; }
 .title-actions { margin-left: auto; display: flex; align-items: center; gap: 7px; flex: none; app-region: no-drag; }
 .icon-button { padding-inline: 7px; }
 @media (max-width: 840px) {
   .titlebar { gap: 8px; }
   .title-actions { gap: 4px; }
-  #open-folder span, #run-tests span, #run-file kbd, #go-symbol, #format-document, .command-trigger kbd { display: none; }
+  #open-folder span, #run-tests span, #run-file kbd, #go-symbol, #format-document,
+  .command-trigger kbd, .command-trigger-full { display: none; }
+  .command-trigger-compact { display: inline; }
   .command-trigger { flex-basis: 160px; }
 }
 @media (max-width: 620px) {
@@ -328,7 +331,8 @@ button.test-result:hover { background: var(--raised); }
 #command-status { margin: 8px 0; font-size: 12px; }
 #command-results { margin: 0; max-height: min(390px, 52vh); }
 .command-option { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; min-height: 37px; padding: 5px 7px; border-radius: var(--radius-control); cursor: default; }
-.command-option[aria-selected="true"], .command-option:hover { color: var(--current-text); background: var(--selected); outline: 1px solid var(--focus-ring); outline-offset: -1px; }
+.command-option:hover { background: var(--raised); }
+.command-option[aria-selected="true"] { color: var(--current-text); background: var(--selected); outline: 1px solid var(--focus-ring); outline-offset: -1px; }
 .command-option svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 .command-option-text { min-width: 0; display: grid; gap: 2px; }
 .command-option-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

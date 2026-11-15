@@ -108,6 +108,10 @@ test('G4 restores split sizes, pinned tools and the floating panel without reduc
     const { page } = workbench;
     await workbench.open('main.js');
     await workbench.open('second.js');
+    await command(page, 'Move active file tab left');
+    assert.match(await page.locator('.tab').first().textContent(), /second\.js/);
+    await command(page, 'Move active file tab right');
+    assert.match(await page.locator('.tab').first().textContent(), /main\.js/);
     await workbench.editor.press('Control+Shift+Tab');
     await workbench.selected('main.js').waitFor();
     await command(page, 'Pin or unpin active file tab');
@@ -164,7 +168,12 @@ test('G4 restores split sizes, pinned tools and the floating panel without reduc
     await workbench.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(1));
     await reopened.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' });
     await reopened.keyboard.press('Control+Shift+P');
-    await reopened.getByRole('option', { name: /Open folder/ }).waitFor();
+    const results = reopened.getByRole('listbox', { name: 'Command center results' });
+    const openFolder = results.getByRole('option', { name: /Open folder/ });
+    await openFolder.hover();
+    const focusedOption = results.getByRole('option', { selected: true });
+    assert.equal(await focusedOption.evaluate(node => getComputedStyle(node).outlineStyle), 'solid');
+    assert.equal(await openFolder.evaluate(node => getComputedStyle(node).outlineStyle), 'none');
     await capture(reopened, 'g4-09-high-contrast');
     await reopened.keyboard.press('Escape');
   });

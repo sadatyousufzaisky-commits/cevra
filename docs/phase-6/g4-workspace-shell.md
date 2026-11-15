@@ -37,7 +37,7 @@ The Command Center, title bar, navigation rail, and shortcuts use the same actio
 | Resize a focused Explorer or bottom panel separator | Arrow keys, Home, End |
 | Settings | Ctrl+, |
 
-Use the Command Center for **Open recent project**, **Reveal active file in Explorer**, **Go to run error**, **Pin or unpin active file tab**, **Pin or unpin current panel view**, **Float or dock bottom panel**, and **Reset workspace layout**.
+Use the Command Center for **Open recent project**, **Reveal active file in Explorer**, **Go to run error**, **Pin or unpin active file tab**, **Move active file tab left/right**, **Pin or unpin current panel view**, **Float or dock bottom panel**, and **Reset workspace layout**.
 
 ## Evidence
 

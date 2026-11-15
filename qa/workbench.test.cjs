@@ -1490,8 +1490,11 @@ test('System theme follows native color changes and a failed theme save rolls ba
   const { app, page, profile, open } = await openWorkbench(t, { 'entry.js': 'const ready = true;' });
   const theme = page.getByRole('combobox', { name: 'Theme' });
   const preference = path.join(profile, 'preferences.json');
+  const backup = path.join(profile, 'preferences-before-theme-test.json');
   await open('entry.js');
   await waitForTheme(page, 'dark', 'dark');
+  const saved = JSON.parse(await fs.readFile(preference, 'utf8'));
+  await fs.rename(preference, backup);
   await fs.mkdir(preference);
   await theme.selectOption('light');
   await page.locator('#message[data-error="true"]').waitFor();
@@ -1499,6 +1502,7 @@ test('System theme follows native color changes and a failed theme save rolls ba
   assert.equal(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource), 'dark');
 
   await fs.rmdir(preference);
+  await fs.rename(backup, preference);
   await theme.selectOption('system');
   await page.locator('#message').getByText('Theme saved.', { exact: true }).waitFor();
   await page.waitForFunction(() => {
@@ -1508,7 +1512,7 @@ test('System theme follows native color changes and a failed theme save rolls ba
   const native = await app.evaluate(({ nativeTheme }) => ({ theme: nativeTheme.themeSource, dark: nativeTheme.shouldUseDarkColors }));
   assert.equal(native.theme, 'system');
   await waitForTheme(page, 'system', native.dark ? 'dark' : 'light');
-  assert.deepEqual(JSON.parse(await fs.readFile(preference, 'utf8')), { theme: 'system' });
+  assert.deepEqual(JSON.parse(await fs.readFile(preference, 'utf8')), { ...saved, theme: 'system' });
 
   const opposite = native.dark ? 'light' : 'dark';
   // Emit a native theme change within this Electron process without altering Windows settings.
@@ -2515,7 +2519,9 @@ test('Go to Symbol searches closed declarations, picks by keyboard, and reads un
   await selected('client.ts').waitFor();
   await page.locator('#cursor').getByText('Ln 2, Col 3', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.getSelection().toString()), 'dispatch');
-  await page.getByRole('group', { name: 'Current file path' }).getByText(`${folder} › client.ts`, { exact: true }).waitFor();
+  const breadcrumb = page.getByRole('navigation', { name: 'Current file path' });
+  await breadcrumb.getByRole('button', { name: folder, exact: true }).waitFor();
+  await breadcrumb.locator('[aria-current="page"]').getByText('client.ts', { exact: true }).waitFor();
 
   await open('first.ts');
   await replaceEditor(workbench, 'export type DraftDispatch = string;\n' + initial);
