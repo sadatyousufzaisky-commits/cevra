@@ -8,7 +8,7 @@ const windowsHost = path.resolve(__dirname, '..', '..', 'dist', 'vokri-process-h
 
 function startProcess(root, args, publish, reportPrefix, { executable = process.execPath, environment, stderrFilter } = {}) {
   const env = { ...process.env, ...environment };
-  if (executable === process.execPath) env.ELECTRON_RUN_AS_NODE = '1';
+  if (process.versions.electron && executable === process.execPath) env.ELECTRON_RUN_AS_NODE = '1';
   else delete env.ELECTRON_RUN_AS_NODE;
   if (reportPrefix) env.CEVRA_TEST_REPORT_PREFIX = reportPrefix;
   else delete env.CEVRA_TEST_REPORT_PREFIX;

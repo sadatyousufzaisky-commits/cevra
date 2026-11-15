@@ -147,15 +147,24 @@
     {
       "id": "G3",
       "name": "Electron-free product foundation",
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "G2"
       ],
       "commit": null,
-      "evidence": [],
+      "evidence": [
+        "g3-native-foundation.md",
+        "../../scripts/build-vokri-product.cjs",
+        "../../vokri/hosts/cevra/product.manifest",
+        "../../qa/vokri-product.test.cjs"
+      ],
       "ci": null,
       "ownerSignoff": null,
-      "openBlockers": []
+      "openBlockers": [
+        "Migrate the existing product workflows, settings, profile continuity, and desktop tests to native equivalents.",
+        "Complete the production entry-point cutover and remove the Electron toolchain.",
+        "Verify release artifacts and complete binary import and dependency scans."
+      ]
     },
     {
       "id": "G4",

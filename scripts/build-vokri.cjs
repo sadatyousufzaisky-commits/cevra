@@ -4,8 +4,8 @@ const path = require('node:path');
 
 if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('Building Vokri requires Windows x64.');
 const target = process.argv[2] ?? '--all';
-if (process.argv.length > 3 || !['--all', '--sdk-only', '--sample'].includes(target)) {
-  throw new Error('Usage: node scripts/build-vokri.cjs [--sdk-only | --sample]');
+if (process.argv.length > 3 || !['--all', '--sdk-only', '--sample', '--product'].includes(target)) {
+  throw new Error('Usage: node scripts/build-vokri.cjs [--sdk-only | --sample | --product]');
 }
 const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'vokri', 'src');
@@ -24,10 +24,16 @@ if (target === '--all') {
   compile(['/target:winexe', '/out:' + path.join(output, 'Vokri.Cevra.exe'), '/reference:' + sdk,
     '/win32manifest:' + path.join(host, 'vokri.manifest'), ...csFiles(host)]);
 }
-if (target !== '--sdk-only') {
+if (target === '--product') {
+  compile(['/target:winexe', '/define:VOKRI_PRODUCT', '/out:' + path.join(output, 'VokriCode.exe'), '/reference:' + sdk,
+    '/win32manifest:' + path.join(host, 'product.manifest'), '/win32icon:' + path.join(root, 'assets', 'brand', 'vc.ico'),
+    ...csFiles(host)]);
+}
+if (target === '--sample' || target === '--all') {
   compile(['/target:winexe', '/out:' + path.join(output, 'Vokri.Sample.exe'), '/reference:' + sdk,
     '/win32manifest:' + path.join(sample, 'app.manifest'), '/win32icon:' + path.join(root, 'assets', 'brand', 'vc.ico'),
     ...csFiles(sample)]);
 }
-console.log('Built Vokri.dll' + (target === '--all' ? ', Vokri.Cevra.exe' : '') +
-  (target === '--sdk-only' ? '' : ' and Vokri.Sample.exe'));
+const programs = { '--all': ', Vokri.Cevra.exe and Vokri.Sample.exe', '--sample': ' and Vokri.Sample.exe',
+  '--product': ' and VokriCode.exe' };
+console.log('Built Vokri.dll' + (programs[target] ?? ''));

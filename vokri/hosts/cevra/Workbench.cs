@@ -55,11 +55,11 @@ internal sealed class Workbench : IDisposable
     private int nextRun, activeRun;
     private bool busy, loading, allowClose, disconnected, canRetry;
 
-    internal Workbench(Application application, ServiceClient service)
+    internal Workbench(Application application, ServiceClient service, string title)
     {
         this.application = application;
         this.service = service;
-        window = new Window(application, "VOKRI Code · Native Preview", new Size(1240, 820), new Size(790, 565));
+        window = new Window(application, title, new Size(1240, 820), new Size(790, 565));
         var tools = Bar(openFolder, save, saveCopy, closeEditor, discard);
         var runner = Bar(run, tests, retry, stop, jump);
         var sidebar = new Grid(new[] { Track.Star() }, new[] {

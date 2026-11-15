@@ -59,6 +59,8 @@ node scripts/build-vokri.cjs --sample
 
 Run `npm run test:vokri` to verify the SDK, sample, and experimental VOKRI Code native preview. [VOKRI SDK guide](vokri/README.md)
 
+The Phase 6 G3 launcher builds a standalone Windows x64 app folder with `npm run build:vokri-product` using official Node.js v24.15.0. It opens directly from `dist/vokri-product/VokriCode.exe`. [Native product build and migration inventory](docs/phase-6/g3-native-foundation.md)
+
 ## Run TypeScript and Python
 
 **TypeScript** `.ts`, `.mts`, and `.cts` entry files run through the bundled Node.js runtime. The direct profile uses Node's TypeScript transform and source maps. Use **Problems** for type checking and **Tasks** for project-specific builds, including TSX and projects that need `tsconfig.json` compilation settings. TypeScript imports in direct runs use explicit file extensions. [Node.js TypeScript support](https://nodejs.org/docs/latest-v24.x/api/typescript.html)

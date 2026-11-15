@@ -31,6 +31,22 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run test:vokri
 
+  native-product:
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24.15.0'
+      - name: Build and verify the staged native product from a clean checkout
+        run: |
+          if (Test-Path -LiteralPath node_modules) { throw 'The native product job starts without npm dependencies.' }
+          if (Get-Command electron -ErrorAction SilentlyContinue) { throw 'Electron was found on PATH.' }
+          npm run test:vokri-product
+
   test:
     runs-on: windows-2025
     timeout-minutes: 12

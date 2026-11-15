@@ -5,16 +5,15 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { PassThrough, Readable } = require('node:stream');
 const { test } = require('node:test');
-const { setTimeout: delay } = require('node:timers/promises');
 const { promisify } = require('node:util');
 const { temporaryFolder } = require('./temp.cjs');
+const { compile, until, processExists } = require('./vokri-support.cjs');
 const { frame, maxFrameBytes, readFrames, serve } = require('../vokri/bridge/stdio.cjs');
 const { createCevraService } = require('../vokri/hosts/cevra/service.cjs');
 
 const execute = promisify(execFile);
 const root = path.resolve(__dirname, '..');
 const output = path.join(root, 'dist', 'vokri');
-const compiler = path.join(process.env.SystemRoot || 'C:\\Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
 const manifest = path.join(root, 'vokri', 'hosts', 'cevra', 'vokri.manifest');
 
 async function collect(source) {
@@ -85,13 +84,6 @@ test('Vokri workspace routes enforce containment, revision safety and recovery c
   }
 });
 
-async function compile(name, source, options) {
-  const file = path.join(output, name + '.exe');
-  await execute(compiler, ['/nologo', '/platform:x64', '/target:exe', '/warnaserror+', '/out:' + file,
-    ...options, path.join(__dirname, source)], { windowsHide: true, timeout: 15000 });
-  return file;
-}
-
 test('Vokri SDK runs native windows and owns an independent service connection', async t => {
   const checks = await compile('Vokri.FrameworkChecks', 'vokri-framework.cs', [
     '/reference:' + path.join(output, 'Vokri.dll'), '/reference:Accessibility.dll', '/win32manifest:' + manifest,
@@ -130,17 +122,6 @@ test('native controls preserve accessibility and resources during virtual scroll
   t.diagnostic(stdout.trim());
 });
 
-async function until(read, predicate, message) {
-  const deadline = Date.now() + 10000;
-  let value;
-  do {
-    value = await read();
-    if (predicate(value)) return value;
-    await delay(70);
-  } while (Date.now() < deadline);
-  assert.fail(message + ' Last value: ' + value);
-}
-
 test('the standalone sample opens with only Vokri.dll and navigates 100,000 documents', { timeout: 45000 }, async t => {
   const probe = await compile('Vokri.Probe', 'vokri-probe.cs', []);
   const temp = await temporaryFolder(t, 'vokri-standalone-');
@@ -166,11 +147,6 @@ test('the standalone sample opens with only Vokri.dll and navigates 100,000 docu
     await exited.catch(() => {});
   }
 });
-
-function processExists(pid) {
-  try { process.kill(pid, 0); return true; }
-  catch (error) { if (error.code === 'ESRCH') return false; throw error; }
-}
 
 test('the VOKRI Code native preview saves, runs and recovers nested files on Windows', { timeout: 85000 }, async t => {
   const temp = await temporaryFolder(t, 'cevra-vokri-desktop-');
