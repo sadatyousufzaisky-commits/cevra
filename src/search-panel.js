@@ -155,7 +155,7 @@ export function createSearchPanel({ api, getProject, getSnapshots, jump, preview
   });
 
   return {
-    show,
+    show, close,
     changed() { if (enabled) refresh(); },
     reset() {
       close();

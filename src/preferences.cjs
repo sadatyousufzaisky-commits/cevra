@@ -3,6 +3,7 @@ const path = require('node:path');
 const { writeAtomic } = require('./atomic-file.cjs');
 const { responsePreferences } = require('./intelligence/response-preferences.cjs');
 const { profile: modelProfile } = require('./intelligence/model-profiles.cjs');
+const { workbenchLayout } = require('./workbench-layout.cjs');
 
 const themes = new Set(['dark', 'light', 'system', 'midnight']);
 const defaultTheme = 'dark';
@@ -47,6 +48,12 @@ function directoryIdentity(workspace) {
   return [dev, ino, birthtimeNs].join(':');
 }
 
+function recentProjects(data) {
+  if (!Array.isArray(data.recentProjects)) return [];
+  return data.recentProjects.filter(entry => entry && typeof entry.root === 'string' && path.isAbsolute(entry.root) &&
+    typeof entry.name === 'string' && /^[a-f0-9-]{36}$/i.test(entry.id) && typeof entry.identity === 'string').slice(0, 12);
+}
+
 function createPreferences(directory) {
   const file = path.join(directory, 'preferences.json');
   let loaded;
@@ -79,6 +86,19 @@ function createPreferences(directory) {
   }
 
   return {
+    async getWorkbenchLayout() { return workbenchLayout((await current()).workbenchLayout); },
+    async setWorkbenchLayout(value) { await save(data => ({ ...data, workbenchLayout: workbenchLayout(value) })); },
+    async recentWorkspaces() {
+      return recentProjects(await current()).map(({ id, root, name }) => ({ id, root, name }));
+    },
+    async recentWorkspace(id) { return recentProjects(await current()).find(entry => entry.id === id); },
+    async rememberWorkspace(workspace) {
+      const { id, root, name } = workspace;
+      const entry = { id, root, name, identity: directoryIdentity(workspace) };
+      const key = workspaceKey(workspace);
+      await save(data => ({ ...data, recentProjects: [entry, ...recentProjects(data).filter(item => workspaceKey(item) !== key)].slice(0, 12) }));
+    },
+    matchesRecent(workspace, recent) { return workspaceKey(workspace) === workspaceKey(recent) && directoryIdentity(workspace) === recent.identity; },
     async getTheme() {
       const { theme } = await current();
       return themes.has(theme) ? theme : defaultTheme;

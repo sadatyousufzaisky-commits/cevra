@@ -188,15 +188,21 @@
     {
       "id": "G4",
       "name": "Unified workspace and navigation shell",
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "G1"
       ],
       "commit": null,
-      "evidence": [],
+      "evidence": [
+        "g4-workspace-shell.md",
+        "evidence/g4/",
+        "../../qa/workspace-shell.test.cjs"
+      ],
       "ci": null,
       "ownerSignoff": null,
-      "openBlockers": []
+      "openBlockers": [
+        "Record independent usability observation and a live screen-reader walkthrough of the Electron workbench."
+      ]
     },
     {
       "id": "G5",

@@ -29,6 +29,11 @@
     <symbol id="sidebar-layout" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 5v14"/></symbol>
     <symbol id="panel-layout" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/></symbol>
     <symbol id="find-symbol" viewBox="0 0 24 24"><path d="m10 3 7 7-7 7-7-7Z M15 15l5 5"/></symbol>
+    <symbol id="inspector-layout" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M15 5v14M17 9h2m-2 3h2"/></symbol>
+    <symbol id="float-panel" viewBox="0 0 24 24"><path d="M12 5H5v14h14v-7M15 5h4v4m0-4-7 7"/></symbol>
+    <symbol id="pin-view" viewBox="0 0 24 24"><path d="m9 4 7 0-1 6 3 3v2H6v-2l3-3-1-6m4 11v5"/></symbol>
+    <symbol id="settings-icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16M8 4v4m8 2v4m-6 2v4"/></symbol>
+    <symbol id="shield" viewBox="0 0 24 24"><path d="m12 3 7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3Z M9 12l2 2 4-4"/></symbol>
   </svg>
   <header class="titlebar">
     <div class="brand">
@@ -37,10 +42,10 @@
     </div>
     <span class="title-divider" aria-hidden="true"></span>
     <span id="project-title" class="project-title">Workbench</span>
+    <button id="open-commands" class="button command-trigger" aria-label="Open command center" aria-haspopup="dialog" title="Open command center (Ctrl+P)" disabled>
+      <svg aria-hidden="true"><use href="#search"></use></svg><span>Find files or run a command</span><kbd>Ctrl P</kbd>
+    </button>
     <div class="title-actions">
-      <button id="toggle-sidebar" class="button icon-button" aria-label="Hide Explorer" aria-controls="workspace-sidebar" aria-expanded="true" title="Hide Explorer (Ctrl+B)">
-        <svg aria-hidden="true"><use href="#sidebar-layout"></use></svg>
-      </button>
       <button id="go-symbol" class="button icon-button" aria-label="Go to Symbol" title="Go to Symbol (Ctrl+T)" disabled>
         <svg aria-hidden="true"><use href="#find-symbol"></use></svg>
       </button>
@@ -57,7 +62,7 @@
       <button id="run-tests" class="button" aria-label="Run tests" title="Save open files and run tests (Ctrl+Alt+T)" disabled>
         <svg aria-hidden="true"><use href="#flask"></use></svg> <span>Run tests</span>
       </button>
-      <button id="run-file" class="button primary" title="Run file (F5)" disabled>
+      <button id="run-file" class="button primary" aria-label="Run file" title="Run file (F5)" disabled>
         <svg aria-hidden="true"><use href="#play"></use></svg> <span>Run file</span><kbd>F5</kbd>
       </button>
       <button id="stop-run" class="button stop-button" aria-label="Stop run" title="Stop run" hidden>
@@ -67,12 +72,16 @@
   </header>
   <main id="workbench" class="workbench">
     <div class="workspace-body">
+      <nav class="workspace-rail" aria-label="Workbench navigation">
+        <button id="toggle-sidebar" class="rail-button" aria-label="Hide Explorer" aria-controls="workspace-sidebar" aria-expanded="true" title="Hide Explorer (Ctrl+B)"><svg aria-hidden="true"><use href="#sidebar-layout"></use></svg></button>
+        <button id="rail-dock" class="rail-button" aria-label="Toggle bottom panel" aria-controls="dock-content" aria-expanded="false" title="Toggle bottom panel (Ctrl+J)"><svg aria-hidden="true"><use href="#panel-layout"></use></svg></button>
+        <button id="toggle-inspector" class="rail-button" aria-label="Show workspace details" aria-controls="workspace-inspector" aria-expanded="false" title="Show workspace details"><svg aria-hidden="true"><use href="#inspector-layout"></use></svg></button>
+        <button id="editor-settings" class="rail-button rail-settings" aria-label="Settings" title="Settings (Ctrl+,)" disabled><svg aria-hidden="true"><use href="#settings-icon"></use></svg></button>
+      </nav>
       <aside id="workspace-sidebar" class="explorer" aria-label="Project explorer">
         <header class="sidebar-header">
           <h2 id="sidebar-heading" class="section-label">Explorer</h2>
           <div class="sidebar-actions">
-            <button id="nav-back" class="sidebar-action" aria-label="Go back" title="Go back (Alt+Left)" disabled><svg aria-hidden="true"><use href="#back"></use></svg></button>
-            <button id="nav-forward" class="sidebar-action" aria-label="Go forward" title="Go forward (Alt+Right)" disabled><svg aria-hidden="true"><use href="#forward"></use></svg></button>
             <button id="search-toggle" class="sidebar-action" aria-label="Search project" aria-pressed="false" title="Search project (Ctrl+Shift+F)" disabled><svg aria-hidden="true"><use href="#search"></use></svg></button>
           </div>
         </header>
@@ -96,24 +105,45 @@
           </div>
           <ul id="search-results" class="search-results" aria-label="Search matches"></ul>
         </section>
-        <div class="explorer-footer"><span class="status-dot"></span> Local workspace</div>
       </aside>
+      <div id="explorer-resizer" class="explorer-resizer" role="separator" aria-label="Resize Explorer" aria-controls="workspace-sidebar" aria-orientation="vertical" aria-valuemin="160" tabindex="0"></div>
       <section id="studio" class="studio" aria-label="Editor">
         <div id="tabs" class="tabs" aria-label="Open files" hidden></div>
-        <div id="file-breadcrumbs" class="file-breadcrumbs" role="group" aria-label="Current file path" hidden></div>
+        <div id="editor-pathbar" class="editor-pathbar" hidden>
+          <button id="nav-back" class="sidebar-action" aria-label="Go back" title="Go back (Alt+Left)" disabled><svg aria-hidden="true"><use href="#back"></use></svg></button>
+          <button id="nav-forward" class="sidebar-action" aria-label="Go forward" title="Go forward (Alt+Right)" disabled><svg aria-hidden="true"><use href="#forward"></use></svg></button>
+          <nav id="file-breadcrumbs" class="file-breadcrumbs" aria-label="Current file path"></nav>
+        </div>
         <div id="editor" class="editor" hidden></div>
         <section id="welcome" class="welcome">
           <div class="welcome-content">
-            <div class="eyebrow"><span></span> VOKRI CODE</div>
             <h1>Your project starts here.</h1>
             <p id="welcome-copy">Open a project folder, or try the built-in JavaScript example to see how editing and execution fit together.</p>
             <div class="welcome-actions">
               <button id="welcome-open" class="button primary" disabled><svg aria-hidden="true"><use href="#folder"></use></svg> Open folder</button>
               <button id="open-example" class="button" disabled><svg aria-hidden="true"><use href="#play"></use></svg> Open example</button>
             </div>
+            <section id="recent-projects" class="recent-projects" aria-label="Recent projects" hidden>
+              <h2 class="section-label">Recent projects</h2>
+              <ul id="recent-project-list"></ul>
+            </section>
           </div>
         </section>
       </section>
+      <aside id="workspace-inspector" class="workspace-inspector" aria-label="Workspace details" hidden>
+        <header class="sidebar-header"><h2 class="section-label">Workspace details</h2><button id="close-inspector" class="sidebar-action" aria-label="Hide workspace details"><svg aria-hidden="true"><use href="#close"></use></svg></button></header>
+        <div id="inspector-content" class="inspector-content">
+          <strong id="inspector-project"></strong>
+          <span id="inspector-root" class="detail-path"></span>
+          <p id="inspector-trust" class="inspector-trust"></p>
+          <div id="inspector-file" class="inspector-file" hidden>
+            <span class="section-label">Active file</span>
+            <strong id="inspector-file-name"></strong>
+            <span id="inspector-file-state" class="detail-path"></span>
+            <button id="reveal-file" class="button" disabled>Reveal in Explorer</button>
+          </div>
+        </div>
+      </aside>
     </div>
     <section id="run-panel" class="run-panel" aria-label="Workbench panel" data-collapsed="true" data-pane="output">
       <div id="dock-resizer" class="dock-resizer" role="separator" aria-label="Resize bottom panel" aria-controls="dock-content" aria-orientation="horizontal" aria-valuemin="126" tabindex="0" hidden></div>
@@ -135,6 +165,8 @@
         <button id="rerun-failures" class="button rerun-button" title="Save open files and rerun failures" hidden>Rerun failures</button>
         <span id="problems-status" class="run-target" role="status" hidden></span>
         <button id="problems-retry" class="button rerun-button" hidden>Retry checks</button>
+        <button id="pin-panel" class="sidebar-action dock-layout-action" aria-label="Pin current view" aria-pressed="false" title="Pin current view" disabled><svg aria-hidden="true"><use href="#pin-view"></use></svg></button>
+        <button id="float-dock" class="sidebar-action dock-layout-action" aria-label="Float bottom panel" aria-pressed="false" title="Float bottom panel"><svg aria-hidden="true"><use href="#float-panel"></use></svg></button>
         <button id="toggle-dock" class="sidebar-action dock-toggle" aria-label="Show bottom panel" aria-controls="dock-content" aria-expanded="false" title="Show bottom panel (Ctrl+J)"><svg aria-hidden="true"><use href="#panel-layout"></use></svg></button>
       </header>
       <div id="dock-content" class="dock-content" hidden>
@@ -323,11 +355,11 @@
     </section>
   </main>
   <footer class="statusbar">
+    <button id="workspace-trust-state" class="status-action workspace-trust" title="Workspace trust settings" hidden><svg aria-hidden="true"><use href="#shield"></use></svg><span>Restricted</span></button>
     <span id="message" class="message" role="status">Ready to open a project</span>
     <span id="draft-status" class="status-field" data-state="clear" hidden></span>
     <button id="inspect-symbol" class="status-action" title="Inspect symbol (Ctrl+Alt+I)" disabled>Inspect symbol</button>
     <button id="go-definition" class="status-action" title="Go to Definition (F12)" disabled>Go to Definition</button>
-    <button id="editor-settings" class="status-action" title="Editor settings (Ctrl+,)" disabled>Settings</button>
     <button id="extension-manager-open" class="status-action" disabled>Extensions</button>
     <button id="intelligence-mock-open" class="status-action" hidden disabled>VOKRI Intelligence</button>
     <button id="intelligence-attach-selection" class="status-action" hidden disabled>Attach selection to Intelligence</button>
@@ -345,6 +377,17 @@
     <span id="line-ending" class="status-field"></span>
     <span id="cursor" class="status-field"></span>
   </footer>
+  <dialog id="command-center" class="definition-dialog command-center" aria-labelledby="command-heading">
+    <header class="symbols-header"><h2 id="command-heading">Command center</h2><button id="close-commands" class="sidebar-action" aria-label="Close command center"><svg aria-hidden="true"><use href="#close"></use></svg></button></header>
+    <div class="command-modes" role="group" aria-label="Search mode">
+      <button class="button" type="button" data-mode="files" aria-pressed="true">Files</button>
+      <button class="button" type="button" data-mode="commands" aria-pressed="false">Commands</button>
+      <button class="button" type="button" data-mode="projects" aria-pressed="false">Projects</button>
+    </div>
+    <input id="command-query" type="search" role="combobox" aria-label="Find files, commands or projects" aria-autocomplete="list" aria-controls="command-results" aria-expanded="false" maxlength="120" autocomplete="off" spellcheck="false">
+    <p id="command-status" role="status"></p>
+    <ul id="command-results" class="definition-choices" role="listbox" aria-label="Command center results"></ul>
+  </dialog>
   <dialog id="definition-dialog" class="definition-dialog" aria-labelledby="definition-heading" aria-describedby="definition-summary">
     <h2 id="definition-heading">Choose a definition</h2>
     <p id="definition-summary"></p>

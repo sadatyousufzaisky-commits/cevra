@@ -32,6 +32,7 @@ import { createTestEvidence } from './test-evidence.js';
 import { createTerminalPanel } from './terminal-panel.js';
 import { createTypeProblems } from './type-problems.js';
 import { createWorkspaceLayout } from './workspace-layout.js';
+import { createCommandCenter, createCommandRegistry } from './workbench-commands.js';
 import { sourceLanguage } from './source-language.cjs';
 import { runtimeKind } from './runtime-kind.cjs';
 import { normalizeSource } from './source-text.cjs';
@@ -94,6 +95,7 @@ const documents = new Map();
 const expanded = new Map();
 const navigation = createNavigationHistory();
 let project;
+let recentProjects = [];
 let active;
 let changingProject = true;
 let changingGit = false;
@@ -116,11 +118,13 @@ let intelligenceTestActive = false;
 let closingWorkbench = false;
 let savingAll;
 let editorSettings;
+let draggedTab;
 
 const view = new EditorView({ parent: editor });
 const extensionContributions = createExtensionContributions({ api, editor, view, themeChoice,
   builtInTheme: () => selectedTheme, report });
-const layout = createWorkspaceLayout();
+for (const [name, button] of Object.entries(dockButtons)) button.dataset.view = name;
+const layout = createWorkspaceLayout({ persist: api.setWorkbenchLayout, reveal: revealFolder, report });
 const syntaxDecorations = [
   linter(null),
   lintGutter(),
@@ -222,6 +226,8 @@ function syncCommands() {
   terminalPanel.setBusy(changingProject);
   testEvidence.setBusy(Boolean(run || changingProject));
   openButton.disabled = welcomeOpen.disabled = exampleButton.disabled = Boolean(run || changingProject || changingGit || saving || discarding);
+  byId('open-commands').disabled = changingProject || closingWorkbench;
+  for (const button of byId('recent-project-list').querySelectorAll('button')) button.disabled = openButton.disabled;
   saveButton.disabled = !active?.dirty || Boolean(active.saving || active.discarding || changingProject || changingGit);
   saveButton.hidden = Boolean(active?.recoveryConflict);
   recoveryButton.hidden = !active?.recoveryConflict;
@@ -230,6 +236,8 @@ function syncCommands() {
   inspectButton.disabled = definitionButton.disabled = findReferencesButton.disabled = !active?.language || changingProject;
   renameButton.disabled = !active?.language || changingProject || Boolean(run || saving || discarding);
   settingsButton.disabled = Boolean(changingProject || run || saving || discarding);
+  byId('workspace-trust-state').disabled = settingsButton.disabled;
+  byId('reveal-file').disabled = !active || changingProject;
   symbolButton.disabled = !project || changingProject;
   runButton.disabled = !runtime || Boolean(changingProject || changingGit || run || discarding || savingAll || intelligenceTestActive);
   runButton.hidden = Boolean(run);
@@ -262,6 +270,8 @@ function syncCursor() {
 function syncDirty() {
   syncCommands();
   renderTabs();
+  selectTreeFile();
+  syncWorkspaceContext();
   syncDraftStatus();
 }
 
@@ -382,8 +392,32 @@ function selectTreeFile() {
   for (const button of tree.querySelectorAll('button[data-file]')) {
     if (active && documentKey(button.dataset.file) === documentKey(active.path)) button.setAttribute('aria-current', 'true');
     else button.removeAttribute('aria-current');
+    button.dataset.dirty = String(Boolean(project && findDocument(button.dataset.file)?.dirty));
   }
 }
+
+function syncWorkspaceContext() {
+  const trust = byId('workspace-trust-state');
+  trust.hidden = !project;
+  trust.dataset.trusted = String(project?.trusted === true);
+  trust.querySelector('span').textContent = project?.trusted ? 'Trusted' : 'Restricted';
+  trust.setAttribute('aria-label', project?.trusted ? 'Trusted workspace settings' : 'Restricted workspace settings');
+  byId('inspector-project').textContent = project?.name ?? 'No project open';
+  byId('inspector-root').textContent = project?.root ?? '';
+  byId('inspector-root').title = project?.root ?? '';
+  byId('inspector-trust').textContent = !project ? 'Open a folder to view its details.' :
+    project.trusted ? 'Execution trusted' : 'Execution requires permission';
+  byId('inspector-file').hidden = !active;
+  byId('inspector-file-name').textContent = active?.path ?? '';
+  byId('inspector-file-state').textContent = active?.recoveryConflict ? 'Original changed · Recovery copy available' :
+    active?.dirty ? 'Unsaved changes' : 'Saved';
+}
+
+api.onWorkspaceTrust(({ id, trusted }) => {
+  if (project?.id !== id) return;
+  project.trusted = trusted;
+  syncWorkspaceContext();
+});
 
 function treeList(entries, depth) {
   const list = document.createElement('ul');
@@ -405,7 +439,7 @@ function treeList(entries, depth) {
       const indent = label('');
       indent.className = 'file-indent';
       button.append(indent);
-      button.onclick = () => openFile(entry.path).catch(report);
+      button.onclick = () => openFromNavigation(entry.path).catch(report);
     }
     button.append(entry.directory ? icon('folder') : createFileIcon(entry.name), label(entry.name));
     item.append(button);
@@ -446,17 +480,129 @@ async function toggleFolder(path, button) {
   [...tree.querySelectorAll('button[data-folder]')].find(item => item.dataset.folder === path)?.focus();
 }
 
+async function revealFolder(path, focus = true) {
+  if (!project || changingProject) return;
+  const current = project;
+  const delimiter = current.caseInsensitivePaths ? '\\' : '/';
+  const parts = path ? path.split(current.caseInsensitivePaths ? /[\\/]/ : '/') : [];
+  const opened = [];
+  let listing = current.files;
+  for (const [index] of parts.entries()) {
+    const segment = parts.slice(0, index + 1).join(delimiter);
+    const entry = listing.find(item => item.directory && documentKey(item.path) === documentKey(segment));
+    if (!entry) throw new Error('This folder is no longer in the Explorer. Reopen the project to refresh it.');
+    const children = expanded.get(entry.path) ?? await api.list(current.id, entry.path);
+    if (project !== current || changingProject) return;
+    opened.push([entry.path, children]);
+    listing = children;
+  }
+  for (const [folder, children] of opened) expanded.set(folder, children);
+  layout.showSidebar();
+  searchPanel.close();
+  renderTree();
+  if (focus) {
+    const button = opened.length ? [...tree.querySelectorAll('button[data-folder]')].find(row => row.dataset.folder === opened.at(-1)[0]) :
+      tree.querySelector('button');
+    (button ?? searchToggle).focus();
+  }
+}
+
+async function revealActiveFile() {
+  const tab = active;
+  if (!tab || changingProject) return;
+  const separator = project.caseInsensitivePaths ? /[\\/]/ : /\//;
+  const folder = tab.path.split(separator).slice(0, -1).join(project.caseInsensitivePaths ? '\\' : '/');
+  await revealFolder(folder, false);
+  if (active !== tab || changingProject) return;
+  const row = [...tree.querySelectorAll('button[data-file]')].find(button => documentKey(button.dataset.file) === documentKey(tab.path));
+  (row ?? searchToggle).focus();
+}
+
+tree.addEventListener('keydown', event => {
+  const button = event.target.closest('button.file-item');
+  if (!button || event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
+  const rows = [...tree.querySelectorAll('button.file-item:not(:disabled)')];
+  const index = rows.indexOf(button);
+  const row = button.parentElement;
+  let target;
+  switch (event.key) {
+    case 'ArrowUp': target = rows[index - 1]; break;
+    case 'ArrowDown': target = rows[index + 1]; break;
+    case 'Home': target = rows[0]; break;
+    case 'End': target = rows.at(-1); break;
+    case 'ArrowRight':
+      if (button.getAttribute('aria-expanded') === 'false') button.click();
+      else target = row.querySelector(':scope > ul button');
+      break;
+    case 'ArrowLeft':
+      if (button.getAttribute('aria-expanded') === 'true') button.click();
+      else target = row.parentElement.parentElement.closest('li')?.querySelector('button');
+      break;
+    default: return;
+  }
+  event.preventDefault();
+  target?.focus();
+});
+
+function orderedTabs() {
+  return [...documents.values()].sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || a.stripOrder - b.stripOrder);
+}
+
+function switchTab(step) {
+  const open = orderedTabs();
+  const index = open.indexOf(active);
+  if (index === -1) return;
+  ++fileRequest;
+  showFile(open[(index + step + open.length) % open.length]);
+}
+
+function moveTab(tab, target, after) {
+  if (!tab || tab === target || tab.pinned !== target.pinned || documents.get(tab.path) !== tab) return;
+  const reordered = orderedTabs().filter(item => item !== tab);
+  reordered.splice(reordered.indexOf(target) + Number(after), 0, tab);
+  reordered.forEach((item, index) => { item.stripOrder = index; });
+  renderTabs();
+}
+
 function renderTabs() {
+  const focused = tabs.contains(document.activeElement) ? document.activeElement : null;
+  const previous = focused?.closest('.tab')?.dataset.tabId;
+  const focusClass = focused?.classList.contains('tab-close') ? '.tab-close' : '.tab-open';
+  const oldScroll = tabs.scrollLeft;
   tabs.replaceChildren();
   tabs.hidden = !documents.size;
-  for (const tab of documents.values()) {
+  for (const tab of orderedTabs()) {
     const item = document.createElement('div');
     item.className = tab === active ? 'tab active' : 'tab';
+    item.dataset.tabId = String(tab.id);
+    item.dataset.pinned = String(tab.pinned);
+    item.draggable = true;
+    item.ondragstart = event => {
+      draggedTab = tab;
+      event.dataTransfer.setData('application/x-vokri-tab', String(tab.id));
+      event.dataTransfer.effectAllowed = 'move';
+    };
+    item.ondragover = event => {
+      if (!draggedTab || draggedTab === tab || draggedTab.pinned !== tab.pinned) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      item.dataset.drop = 'true';
+    };
+    item.ondragleave = () => delete item.dataset.drop;
+    item.ondragend = () => { draggedTab = undefined; };
+    item.ondrop = event => {
+      event.preventDefault();
+      delete item.dataset.drop;
+      const bounds = item.getBoundingClientRect();
+      moveTab(draggedTab, tab, event.clientX > bounds.x + bounds.width / 2);
+      draggedTab = undefined;
+    };
     const show = document.createElement('button');
     show.className = 'tab-open';
     show.title = tab.path;
     if (tab === active) show.setAttribute('aria-current', 'true');
     show.append(createFileIcon(tab.name), label(tab.name));
+    if (tab.pinned) show.append(icon('pin-view'));
     if (tab.dirty) {
       const marker = label('');
       marker.className = 'dirty';
@@ -474,7 +620,22 @@ function renderTabs() {
     item.append(show, close);
     tabs.append(item);
   }
+  tabs.scrollLeft = oldScroll;
+  if (previous) (tabs.querySelector(`[data-tab-id="${previous}"] ${focusClass}`) ??
+    tabs.querySelector('.tab.active .tab-open'))?.focus({ preventScroll: true });
 }
+
+tabs.addEventListener('keydown', event => {
+  const target = event.target.closest('.tab-open');
+  if (!target || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const options = [...tabs.querySelectorAll('.tab-open')];
+  const index = options.indexOf(target);
+  const step = event.key === 'ArrowRight' ? 1 : -1;
+  const next = event.key === 'Home' ? options[0] : event.key === 'End' ? options.at(-1) :
+    options[(index + step + options.length) % options.length];
+  next?.focus();
+});
 
 function showFile(tab) {
   const changed = active !== tab;
@@ -488,7 +649,7 @@ function showFile(tab) {
   }
   active = tab;
   if (changed) typeProblems.refresh();
-  layout.filePath(tab?.path);
+  layout.filePath(project, tab?.path);
   editor.hidden = !tab;
   byId('welcome').hidden = Boolean(tab);
   if (tab) {
@@ -497,9 +658,13 @@ function showFile(tab) {
       if (tab.scroll) view.dispatch({ effects: tab.scroll });
     }
     view.focus();
+    if (changed) notify(tab.recoveryConflict ? 'The original changed or is unavailable. Save a recovery copy.' : tab.path,
+      tab.recoveryConflict);
   }
   renderTabs();
+  if (tab) tabs.querySelector('.tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   selectTreeFile();
+  syncWorkspaceContext();
   syncCommands();
   syncCursor();
   refreshIntelligenceSuggestion();
@@ -519,6 +684,8 @@ function findDocument(path) {
 function createTab(path, text, revision) {
   const tab = {
     id: ++documentSequence,
+    stripOrder: documentSequence,
+    pinned: false,
     version: 0,
     path,
     projectId: project.id,
@@ -567,9 +734,16 @@ async function openFile(path, expected) {
   }
   if (expected?.validate && !expected.validate(tab.state.doc)) throw stale();
   showFile(tab);
-  notify(tab.recoveryConflict ? 'The original changed or is unavailable. Save a recovery copy.' : tab.path,
-    tab.recoveryConflict);
   return tab;
+}
+
+async function openFromNavigation(path) {
+  const origin = captureLocation();
+  const tab = await openFile(path);
+  if (origin && tab && origin.documentId !== tab.id) {
+    navigation.record(origin);
+    syncCommands();
+  }
 }
 
 async function removeTab(tab) {
@@ -612,6 +786,7 @@ async function closeFile(tab) {
 
 async function adoptProject(next) {
   ++fileRequest;
+  commandCenter.close();
   navigation.clear();
   searchPanel.reset();
   problemsPanel.reset();
@@ -633,12 +808,14 @@ async function adoptProject(next) {
   showFile(undefined);
   applyEditorSettings(next.settings.effective);
   renderTree();
+  renderRecentProjects();
   byId('project-title').textContent = project.name;
   byId('project-title').title = project.root;
   byId('welcome').querySelector('h1').textContent = 'Choose a file to edit.';
   byId('welcome-copy').textContent = 'The Explorer shows the files in this project.';
   retryAvailable = false;
   resetOutput();
+  restoreDock();
   flightpathPanel.refresh();
   notify(project.root);
   let restored;
@@ -669,21 +846,52 @@ async function adoptProject(next) {
 async function openProject(picker) {
   if (openButton.disabled) return;
   changingProject = true;
+  ++fileRequest;
   syncCommands();
-  editor.inert = true;
+  editor.inert = tree.inert = tabs.inert = true;
+  byId('workbench').setAttribute('aria-busy', 'true');
   try {
     const open = [...documents.values()];
-    const discard = open.some(tab => tab.dirty);
-    if (discard && !await api.confirmDiscard(project.name)) return;
-    await Promise.all(open.map(tab => tab.draftTask));
-    const next = await picker(discard);
-    if (next) await adoptProject(next);
+    const choice = open.some(tab => tab.dirty) ? await api.workspaceSwitchChoice(project.id) : 'keep';
+    if (choice === 'cancel') return;
+    await Promise.all(open.map(tab => choice === 'keep' && tab.draftError ? queueDraft(tab) : tab.draftTask));
+    if (choice === 'keep' && open.some(tab => tab.dirty && tab.draftError)) throw new Error('A draft backup failed. Save the file or retry before switching.');
+    const next = await picker(choice === 'discard');
+    if (next) {
+      await adoptProject(next);
+      await refreshRecentProjects();
+    }
   } finally {
-    editor.inert = false;
+    editor.inert = tree.inert = tabs.inert = false;
+    byId('workbench').removeAttribute('aria-busy');
     if (active) view.focus();
     changingProject = false;
     syncCommands();
   }
+}
+
+const openRecent = id => openProject(discard => api.openRecent(id, discard)).catch(report);
+
+function renderRecentProjects() {
+  const list = byId('recent-project-list');
+  const entries = recentProjects.filter(entry => entry.root !== project?.root).slice(0, 4);
+  byId('recent-projects').hidden = entries.length === 0;
+  list.replaceChildren(...entries.map(entry => {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.className = 'recent-project';
+    button.title = entry.root;
+    button.disabled = openButton.disabled;
+    button.append(icon('folder'), label(entry.name), label(entry.root));
+    button.onclick = () => openRecent(entry.id);
+    item.append(button);
+    return item;
+  }));
+}
+
+async function refreshRecentProjects() {
+  recentProjects = await api.recentWorkspaces();
+  renderRecentProjects();
 }
 
 function setDiskBaseline(tab, disk) {
@@ -848,12 +1056,11 @@ function renderTestPass(evidence, checking) {
   else setRunState((evidence.retry ? 'Passed · retry only · ' : 'Passed · ') + testPass.elapsed, 'ok');
 }
 
-function showDock(name, focus = false) {
-  dock.dataset.pane = name;
+function showDock(name, focus = false, { expand = true, remember = true } = {}) {
+  layout.view(name, { open: expand, remember });
   for (const [pane, button] of Object.entries(dockButtons)) button.setAttribute('aria-pressed', String(pane === name));
   byId('problems-panel').hidden = byId('problems-status').hidden = name !== 'problems';
   byId('references-panel').hidden = name !== 'references';
-  layout.expandDock();
   terminalPanel.show(name === 'terminal', focus);
   flightpathPanel.show(name === 'flightpath');
   taskPanel.show(name === 'tasks');
@@ -863,6 +1070,12 @@ function showDock(name, focus = false) {
   problemsPanel.render();
   if (name === 'problems') void extensionManager.refresh();
   if (focus && name !== 'terminal') dockButtons[name].focus();
+}
+
+function restoreDock() {
+  const pane = layout.pane;
+  const available = project && (pane !== 'terminal' || project.terminalLimit);
+  showDock(available ? pane : 'output', false, { expand: false, remember: false });
 }
 
 async function applyGitAction(action, details) {
@@ -1629,12 +1842,95 @@ function renameSymbol() {
   });
 }
 
-for (const [pane, button] of Object.entries(dockButtons)) button.onclick = () => showDock(pane, pane === 'terminal');
-backButton.onclick = () => travel('back').catch(report);
-forwardButton.onclick = () => travel('forward').catch(report);
-openButton.onclick = welcomeOpen.onclick = () => openProject(api.chooseFolder).catch(report);
-exampleButton.onclick = () => openProject(api.openExample).catch(report);
-byId('intelligence-mock-open').onclick = () => api.openIntelligenceMock().catch(report);
+function jumpToRunError() {
+  const target = diagnostic;
+  if (target?.revision) return jumpToRecordedSource(target, () => diagnostic === target,
+    'The recorded runtime source changed or is unavailable. Run the file again to refresh this location.');
+  if (target) return jumpToLocation(target);
+}
+
+const dockNames = { output: 'Run output', problems: 'Problems', references: 'References', terminal: 'Terminal',
+  flightpath: 'Flightpath', tasks: 'Tasks', recipes: 'Recipes', failure: 'Failure Lens', changes: 'Change Lens' };
+const canUse = button => () => !button.disabled && !button.hidden;
+const editorFocused = () => view.hasFocus;
+const canDebugFile = () => Boolean(active && runtimeKind(active.path) === 'javascript');
+const commands = createCommandRegistry([
+  { id: 'find', title: 'Find files', detail: 'Search by file name or path', icon: 'search', key: 'Ctrl+P',
+    enabled: canUse(byId('open-commands')), run: () => commandCenter.open() },
+  { id: 'commands', title: 'Show commands', icon: 'search', key: 'Ctrl+Shift+P', alternate: 'F1', hidden: true,
+    enabled: canUse(byId('open-commands')), run: () => commandCenter.open('commands') },
+  { id: 'open', title: 'Open folder', detail: 'Choose a project on this device', icon: 'folder', key: 'Ctrl+O',
+    enabled: canUse(openButton), run: () => openProject(api.chooseFolder) },
+  { id: 'recent', title: 'Open recent project', icon: 'folder', enabled: canUse(openButton), run: () => commandCenter.open('projects') },
+  { id: 'example', title: 'Open example', detail: 'Try editing and running a JavaScript project', icon: 'play',
+    enabled: canUse(exampleButton), run: () => openProject(api.openExample) },
+  { id: 'save', title: 'Save file', icon: 'save', key: 'Ctrl+S', enabled: canUse(saveButton), run: () => saveFile(active) },
+  { id: 'save-all', title: 'Save all files', icon: 'save', key: 'Ctrl+Shift+S',
+    enabled: () => !changingProject && !changingGit && [...documents.values()].some(tab => tab.dirty), run: saveAll },
+  { id: 'recover', title: 'Save recovery copy', icon: 'save', enabled: canUse(recoveryButton), run: () => saveRecoveredCopy(active) },
+  { id: 'resume', title: 'Continue debugging', icon: 'play', key: 'F5',
+    context: () => run?.mode === 'debug' && failureLens.phase === 'paused',
+    enabled: () => run?.mode === 'debug' && failureLens.phase === 'paused', run: () => failureLens.action('resume') },
+  { id: 'run', title: 'Run file', icon: 'play', key: 'F5', enabled: canUse(runButton), run: runFile },
+  { id: 'run-tests', title: 'Run tests', icon: 'flask', key: 'Ctrl+Alt+T', enabled: canUse(testButton), run: () => runTests() },
+  { id: 'retry', title: 'Rerun failures', icon: 'flask', enabled: canUse(retryButton), run: () => runTests(true) },
+  { id: 'stop', title: 'Stop run', icon: 'stop', enabled: canUse(stopButton), run: stopRun },
+  { id: 'error', title: 'Go to run error', words: 'fix diagnostic', enabled: () => Boolean(diagnostic), run: jumpToRunError },
+  { id: 'debug', title: 'Debug file', icon: 'play', key: 'F6', context: editorFocused,
+    enabled: canDebugFile, run: runDebug },
+  { id: 'breakpoint', title: 'Toggle breakpoint', key: 'F9', context: editorFocused, enabled: canDebugFile,
+    run: () => failureLens.toggle(active.path, view.state.doc.lineAt(view.state.selection.main.head).number) },
+  { id: 'search', title: 'Search project', detail: 'Find text across files and drafts', icon: 'search', key: 'Ctrl+Shift+F',
+    enabled: canUse(searchToggle), run: () => { layout.showSidebar(); searchPanel.show(); } },
+  { id: 'format', title: 'Format document', icon: 'format', key: 'Alt+Shift+F', enabled: canUse(formatButton), run: formatDocument },
+  { id: 'definition', title: 'Go to Definition', key: 'F12', context: editorFocused, enabled: canUse(definitionButton),
+    run: () => { view.focus(); return definitionNavigation.go(view); } },
+  { id: 'references', title: 'Find References', key: 'Shift+F12', context: editorFocused, enabled: canUse(findReferencesButton),
+    run: () => { view.focus(); return referencesPanel.find(view); } },
+  { id: 'inspect', title: 'Inspect symbol', key: 'Ctrl+Alt+I', enabled: canUse(inspectButton),
+    run: () => { view.focus(); return symbolInfo.inspect(view); } },
+  { id: 'symbol', title: 'Go to Symbol', detail: 'Find declarations in the current project', icon: 'find-symbol', key: 'Ctrl+T',
+    enabled: canUse(symbolButton), run: symbolPicker.open },
+  { id: 'rename', title: 'Rename Symbol', key: () => editorSettings?.renameShortcut === 'ctrl-alt-r' ? 'Ctrl+Alt+R' : 'F2',
+    context: editorFocused, enabled: canUse(renameButton), run: renameSymbol },
+  { id: 'back', title: 'Go back', icon: 'back', key: 'Alt+ArrowLeft', enabled: canUse(backButton), run: () => travel('back') },
+  { id: 'forward', title: 'Go forward', icon: 'forward', key: 'Alt+ArrowRight', enabled: canUse(forwardButton), run: () => travel('forward') },
+  { id: 'next-tab', title: 'Next file tab', key: 'Ctrl+Tab', enabled: () => documents.size > 1 && !changingProject, run: () => switchTab(1) },
+  { id: 'previous-tab', title: 'Previous file tab', key: 'Ctrl+Shift+Tab', enabled: () => documents.size > 1 && !changingProject, run: () => switchTab(-1) },
+  { id: 'close-tab', title: 'Close file tab', icon: 'close', key: 'Ctrl+W', enabled: () => Boolean(active && !changingProject), run: () => closeFile(active) },
+  { id: 'pin-tab', title: 'Pin or unpin active file tab', icon: 'pin-view', enabled: () => Boolean(active && !changingProject),
+    run: () => { active.pinned = !active.pinned; renderTabs(); } },
+  { id: 'reveal', title: 'Reveal active file in Explorer', icon: 'folder', enabled: canUse(byId('reveal-file')), run: revealActiveFile },
+  { id: 'explorer', title: 'Toggle Explorer', icon: 'sidebar-layout', key: 'Ctrl+B', run: layout.toggleSidebar },
+  { id: 'focus-explorer', title: 'Focus Explorer', icon: 'sidebar-layout', enabled: () => Boolean(project && !changingProject), run: () => revealFolder('') },
+  { id: 'panel', title: 'Toggle bottom panel', icon: 'panel-layout', key: 'Ctrl+J', run: layout.toggleDock },
+  { id: 'details', title: 'Toggle workspace details', icon: 'inspector-layout', run: layout.toggleInspector },
+  { id: 'float', title: 'Float or dock bottom panel', icon: 'float-panel', run: layout.toggleFloating },
+  { id: 'pin-view', title: 'Pin or unpin current panel view', icon: 'pin-view', enabled: canUse(byId('pin-panel')), run: layout.pinView },
+  { id: 'reset-layout', title: 'Reset workspace layout', icon: 'panel-layout', run: () => { layout.reset(); restoreDock(); } },
+  ...Object.entries(dockButtons).map(([pane, button]) => ({ id: 'view-' + pane, title: 'Show ' + dockNames[pane],
+    icon: 'panel-layout', key: pane === 'problems' ? 'Ctrl+Shift+M' : pane === 'terminal' ? 'Ctrl+`' : undefined,
+    enabled: canUse(button), run: () => showDock(pane, true) })),
+  { id: 'settings', title: 'Settings', icon: 'settings-icon', key: 'Ctrl+,', enabled: canUse(settingsButton), run: openSettings },
+  { id: 'extensions', title: 'Extensions', enabled: canUse(byId('extension-manager-open')), run: () => byId('extension-manager-open').click() },
+  { id: 'intelligence', title: 'VOKRI Intelligence', enabled: canUse(byId('intelligence-mock-open')), run: () => api.openIntelligenceMock() },
+], report);
+
+const commandCenter = createCommandCenter({ api, registry: commands, workspace: () => project, recent: () => recentProjects,
+  openFiles: () => [active, ...orderedTabs().filter(tab => tab !== active)].filter(Boolean),
+  openFile: file => openFromNavigation(file).catch(report), openRecent, icon, fileIcon: createFileIcon, errorText });
+
+for (const [pane, button] of Object.entries(dockButtons)) commands.bind(button, 'view-' + pane);
+for (const [button, command] of [
+  [byId('open-commands'), 'find'], [backButton, 'back'], [forwardButton, 'forward'],
+  [openButton, 'open'], [welcomeOpen, 'open'], [exampleButton, 'example'], [saveButton, 'save'],
+  [recoveryButton, 'recover'], [formatButton, 'format'], [inspectButton, 'inspect'], [definitionButton, 'definition'],
+  [symbolButton, 'symbol'], [findReferencesButton, 'references'], [renameButton, 'rename'], [settingsButton, 'settings'],
+  [byId('workspace-trust-state'), 'settings'], [byId('reveal-file'), 'reveal'], [runButton, 'run'], [testButton, 'run-tests'],
+  [retryButton, 'retry'], [stopButton, 'stop'], [diagnosticButton, 'error'], [byId('intelligence-mock-open'), 'intelligence'],
+  [byId('toggle-sidebar'), 'explorer'], [byId('toggle-inspector'), 'details'], [byId('toggle-dock'), 'panel'],
+  [byId('rail-dock'), 'panel'], [byId('float-dock'), 'float'], [byId('pin-panel'), 'pin-view'],
+]) commands.bind(button, command);
 byId('about-product').onclick = () => api.about().catch(report);
 byId('intelligence-attach-selection').onclick = () => {
   if (!active || changingProject) return;
@@ -1642,39 +1938,12 @@ byId('intelligence-attach-selection').onclick = () => {
   if (to > from) void api.openIntelligenceMock({ path: active.path.replaceAll('\\', '/'),
     documentId: active.id, version: active.version, from, to }).catch(report);
 };
-saveButton.onclick = () => saveFile(active).catch(report);
-formatButton.onclick = formatDocument;
-inspectButton.onclick = () => {
-  view.focus();
-  void symbolInfo.inspect(view);
-};
-definitionButton.onclick = () => {
-  view.focus();
-  void definitionNavigation.go(view);
-};
-symbolButton.onclick = symbolPicker.open;
-findReferencesButton.onclick = () => {
-  view.focus();
-  void referencesPanel.find(view);
-};
-renameButton.onclick = renameSymbol;
-settingsButton.onclick = openSettings;
-recoveryButton.onclick = () => saveRecoveredCopy(active).catch(report);
-runButton.onclick = runFile;
-testButton.onclick = () => runTests();
-retryButton.onclick = () => runTests(true);
-stopButton.onclick = () => stopRun().catch(report);
-diagnosticButton.onclick = () => {
-  const target = diagnostic;
-  if (target?.revision) jumpToRecordedSource(target, () => diagnostic === target,
-    'The recorded runtime source changed or is unavailable. Run the file again to refresh this location.');
-  else if (target) void jumpToLocation(target).catch(report);
-};
 
 api.beforeClose(async () => {
   closingWorkbench = true;
   document.body.inert = true;
   try {
+    await layout.flush();
     await stagingEdits?.catch(() => {});
     await savingAll;
     const open = [...documents.values()];
@@ -1700,12 +1969,18 @@ async function initialize() {
     const appearance = await api.appearance();
     themeChoice.value = selectedTheme = appearance.theme;
     applyAppearance(appearance);
+    const [preferences] = await Promise.all([api.workbenchLayout(), refreshRecentProjects()]);
+    layout.restore(preferences);
+    syncWorkspaceContext();
     await extensionContributions.refresh();
     const initial = await api.initial();
     byId('intelligence-mock-open').hidden = initial.intelligenceMock !== true;
     byId('intelligence-attach-selection').hidden = initial.intelligenceContext !== true;
     if (initial.project) await adoptProject(initial.project);
-    else applyEditorSettings((await api.editorSettings()).effective);
+    else {
+      applyEditorSettings((await api.editorSettings()).effective);
+      restoreDock();
+    }
     if (initial.unavailable) notify('A draft workspace is unavailable. Reopen it when it is accessible.', true);
     else if (initial.unreadable) notify('Some draft backups could not be read. The backups are still on disk.', true);
   } catch (error) {
@@ -1719,80 +1994,10 @@ async function initialize() {
 }
 
 document.addEventListener('keydown', event => {
-  if (document.querySelector('dialog[open]')) return;
-  const command = event.ctrlKey || event.metaKey;
-  const key = event.key.toLowerCase();
-  if (command && !event.shiftKey && !event.altKey && event.code === 'Backquote' && !dockButtons.terminal.disabled) {
-    event.preventDefault();
-    if (!event.repeat) showDock('terminal', true);
-    return;
-  }
-  if (terminalPanel.handles(event)) return;
-  if (event.key === 'F6' && view.hasFocus && runtimeKind(active?.path) === 'javascript') {
-    event.preventDefault();
-    if (!event.repeat) void runDebug();
-  } else if (event.key === 'F9' && view.hasFocus && runtimeKind(active?.path) === 'javascript') {
-    event.preventDefault();
-    if (!event.repeat) failureLens.toggle(active.path, view.state.doc.lineAt(view.state.selection.main.head).number);
-  } else if (event.key === 'F5') {
-    event.preventDefault();
-    if (run?.mode === 'debug' && failureLens.phase === 'paused') void failureLens.action('resume');
-    else void runFile();
-  } else if (view.hasFocus && (editorSettings?.renameShortcut === 'ctrl-alt-r' ?
-    command && event.altKey && !event.shiftKey && key === 'r' : event.key === 'F2' && !command && !event.altKey && !event.shiftKey)) {
-    event.preventDefault();
-    if (!event.repeat) renameSymbol();
-  } else if (event.key === 'F12' && view.hasFocus) {
-    event.preventDefault();
-    if (!event.repeat) {
-      if (event.shiftKey) void referencesPanel.find(view);
-      else void definitionNavigation.go(view);
-    }
-  } else if (command && event.altKey && key === 'i') {
-    event.preventDefault();
-    void symbolInfo.inspect(view);
-  } else if (event.key === 'Escape' && view.hasFocus && symbolInfo.dismiss(view)) {
-    event.preventDefault();
-  } else if (!command && event.altKey && event.shiftKey && key === 'f') {
-    event.preventDefault();
-    void formatDocument();
-  } else if (command && event.shiftKey && key === 'f') {
-    event.preventDefault();
-    layout.showSidebar();
-    searchPanel.show();
-  } else if (command && event.shiftKey && key === 'm') {
-    event.preventDefault();
-    showDock('problems', true);
-  } else if (!command && event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-    event.preventDefault();
-    travel(event.key === 'ArrowLeft' ? 'back' : 'forward').catch(report);
-  } else if (command && event.altKey && key === 't') {
-    event.preventDefault();
-    void runTests();
-  } else if (command && !event.altKey && !event.shiftKey && key === 't') {
-    event.preventDefault();
-    if (!event.repeat) symbolPicker.open();
-  } else if (command && !event.altKey && !event.shiftKey && key === 'b') {
-    event.preventDefault();
-    if (!event.repeat) layout.toggleSidebar();
-  } else if (command && !event.altKey && !event.shiftKey && key === 'j') {
-    event.preventDefault();
-    if (!event.repeat) layout.toggleDock();
-  } else if (command && !event.altKey && !event.shiftKey && key === ',') {
-    event.preventDefault();
-    if (!event.repeat) openSettings();
-  } else if (command && key === 'o') {
-    event.preventDefault();
-    openProject(api.chooseFolder).catch(report);
-  } else if (command && key === 's') {
-    event.preventDefault();
-    if (changingGit) return;
-    if (event.shiftKey) saveAll();
-    else if (!changingProject) saveFile(active).catch(report);
-  } else if (command && key === 'w' && active) {
-    event.preventDefault();
-    closeFile(active).catch(report);
-  }
+  if (document.querySelector('dialog[open]') || closingWorkbench) return;
+  if (terminalPanel.handles(event) && event.key !== 'F1' && event.code !== 'Backquote') return;
+  if (event.key === 'Escape' && view.hasFocus && symbolInfo.dismiss(view)) event.preventDefault();
+  commands.keydown(event);
 }, { capture: true });
 
 void initialize();

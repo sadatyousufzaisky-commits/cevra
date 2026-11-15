@@ -12,6 +12,7 @@ const { startNodeRun, startNodeTests } = require('../src/runner.cjs');
 const { createDraftStore } = require('../src/drafts.cjs');
 const { writeAtomic } = require('../src/atomic-file.cjs');
 const { searchProject } = require('../src/project-search.cjs');
+const { findWorkspaceFiles } = require('../src/workspace-files.cjs');
 const { createSyntaxService } = require('../src/syntax-service.cjs');
 const { createFormatService } = require('../src/format-service.cjs');
 const { createSemanticService } = require('../src/semantic-service.cjs');
@@ -39,6 +40,51 @@ async function fixture(t) {
   await fs.mkdir(root);
   return { folder, root, workspace: await createWorkspace(root) };
 }
+
+test('workspace filename search ranks names and paths, skips linked or dependency folders and can be canceled', async t => {
+  const { folder, root, workspace } = await fixture(t);
+  const outside = path.join(folder, 'outside');
+  await fs.mkdir(outside);
+  await fs.mkdir(path.join(root, 'src'));
+  await fs.mkdir(path.join(root, 'node_modules'));
+  await Promise.all([
+    fs.writeFile(path.join(root, 'render.cjs'), ''),
+    fs.writeFile(path.join(root, 'src', 'render test.cjs'), ''),
+    fs.writeFile(path.join(root, 'src', 'other.cjs'), ''),
+    fs.writeFile(path.join(root, 'node_modules', 'render private.cjs'), ''),
+    fs.writeFile(path.join(outside, 'render external.cjs'), ''),
+    fs.symlink(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir'),
+  ]);
+  const controller = new AbortController();
+  const results = await findWorkspaceFiles(workspace, 'render', controller.signal);
+  assert.deepEqual(results.files.map(file => file.path), ['render.cjs', path.join('src', 'render test.cjs')]);
+  assert.deepEqual((await findWorkspaceFiles(workspace, 'src/render', controller.signal)).files.map(file => file.name), ['render test.cjs']);
+  await assert.rejects(findWorkspaceFiles(workspace, 'x'.repeat(121), controller.signal), /120 characters/);
+  controller.abort();
+  await assert.rejects(findWorkspaceFiles(workspace, 'render', controller.signal), { name: 'AbortError' });
+});
+
+test('workbench layout preferences validate sizes and preserve the selected theme and workspace identity', async t => {
+  const { folder, workspace } = await fixture(t);
+  const profile = path.join(folder, 'profile');
+  const preferences = createPreferences(profile);
+  await Promise.all([
+    preferences.setTheme('midnight'),
+    preferences.setWorkbenchLayout({ explorerWidth: 999999, dockSize: 290, pane: 'unsafe', pinned: ['tasks', 'output', 'tasks'] }),
+    preferences.rememberWorkspace(workspace),
+  ]);
+  const restored = createPreferences(profile);
+  assert.equal(await restored.getTheme(), 'midnight');
+  const layout = await restored.getWorkbenchLayout();
+  assert.equal(layout.explorerWidth, 240);
+  assert.equal(layout.dockSize, 290);
+  assert.equal(layout.pane, 'output');
+  assert.deepEqual(layout.pinned, ['tasks']);
+  assert.deepEqual(await restored.recentWorkspaces(), [{ id: workspace.id, root: workspace.root, name: workspace.name }]);
+  const recent = await restored.recentWorkspace(workspace.id);
+  assert.equal(restored.matchesRecent(workspace, recent), true);
+  assert.equal(restored.matchesRecent({ ...workspace, identity: { ...workspace.identity, ino: -1n } }, recent), false);
+});
 
 test('recipe files are opt-in, validate their schema, and migrate only the reviewed version', async t => {
   const { root, workspace } = await fixture(t);

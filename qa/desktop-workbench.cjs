@@ -25,15 +25,20 @@ async function assertWindowsProcessStopped(pid) {
   assert.fail('Windows process ' + pid + ' was still running after cleanup.');
 }
 
-async function openWorkbench(t, files, prepare, { appRoot = repo, projectPath, args: initialArgs = [] } = {}) {
+async function openWorkbench(t, files, prepare, { appRoot = repo, projectPath, args: initialArgs = [], openOnStart = true, videoPath } = {}) {
   const temp = await fs.realpath(os.tmpdir());
   const sandbox = await fs.mkdtemp(path.join(temp, 'cevra-workbench-'));
   const project = projectPath ?? path.join(sandbox, 'project (QA) & café [#%]');
   const profile = path.join(sandbox, 'profile');
   let app;
+  let video;
   t.after(async () => {
     try {
       await app?.close();
+      if (video) {
+        await video.saveAs(videoPath);
+        await video.delete();
+      }
     } finally {
       const resolved = await fs.realpath(sandbox);
       assert.equal(resolved, sandbox);
@@ -60,6 +65,7 @@ async function openWorkbench(t, files, prepare, { appRoot = repo, projectPath, a
       cwd: appRoot,
       env,
       chromiumSandbox: true,
+      ...(videoPath ? { recordVideo: { dir: path.dirname(videoPath), size: { width: 1366, height: 720 } } } : {}),
       timeout: 20_000,
     });
     await app.evaluate(({ dialog }, folder) => {
@@ -68,6 +74,7 @@ async function openWorkbench(t, files, prepare, { appRoot = repo, projectPath, a
       dialog.showMessageBoxSync = () => 1;
     }, project);
     const page = await app.firstWindow();
+    if (videoPath) video = page.video();
     page.setDefaultTimeout(8_000);
     const explorer = page.getByRole('navigation', { name: 'Project files' });
     const file = name => explorer.getByRole('button', { name, exact: true });
@@ -117,10 +124,12 @@ async function openWorkbench(t, files, prepare, { appRoot = repo, projectPath, a
   }
   const started = performance.now();
   const result = await launch(initialArgs);
-  await result.page.locator('#open-folder').click();
-  await result.page.getByRole('heading', { name: 'Choose a file to edit.' }).waitFor().catch(async error => {
-    throw new Error('Could not open the fixture. ' + await result.page.locator('#message').textContent(), { cause: error });
-  });
+  if (openOnStart) {
+    await result.page.locator('#open-folder').click();
+    await result.page.getByRole('heading', { name: 'Choose a file to edit.' }).waitFor().catch(async error => {
+      throw new Error('Could not open the fixture. ' + await result.page.locator('#message').textContent(), { cause: error });
+    });
+  }
   return { ...result, openMs: Math.round(performance.now() - started) };
 }
 

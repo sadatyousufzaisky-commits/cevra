@@ -2600,7 +2600,9 @@ test('the compact workbench gives the editor space and keeps layout controls and
   assert.ok(searchToggle.x + searchToggle.width <= sidebar.x + sidebar.width);
   await page.getByRole('button', { name: 'Show bottom panel', exact: true }).waitFor();
   await output.waitFor({ state: 'hidden' });
-  await page.getByRole('group', { name: 'Current file path' }).getByText(`${folder} › ${name}`, { exact: true }).waitFor();
+  const breadcrumb = page.getByRole('navigation', { name: 'Current file path' });
+  await breadcrumb.getByRole('button', { name: folder, exact: true }).waitFor();
+  await breadcrumb.getByText(name, { exact: true }).waitFor();
   assert.equal(await editor.locator('.cm-indent-guides').filter({ hasText: 'return' }).evaluate(element =>
     element.style.getPropertyValue('--guide-width')), '4ch');
 

@@ -14,6 +14,7 @@ const { startSourceRun } = require('./runner.cjs');
 const { createTestSession } = require('./project-tests.cjs');
 const { createDraftStore } = require('./drafts.cjs');
 const { searchProject } = require('./project-search.cjs');
+const { findWorkspaceFiles } = require('./workspace-files.cjs');
 const { createSyntaxService } = require('./syntax-service.cjs');
 const { createFormatService } = require('./format-service.cjs');
 const { createSemanticService } = require('./semantic-service.cjs');
@@ -86,6 +87,7 @@ let authorizingRun = false;
 let intelligenceTest;
 let intelligenceRunSequence = 0;
 let activeSearch;
+let activeFileSearch;
 let rendererReady = false;
 let closePending = false;
 let allowClose = false;
@@ -205,6 +207,13 @@ function handle(channel, action) {
 function currentWorkspace(id) {
   if (!workspace || workspace.id !== id) throw new Error('This workspace has closed.');
   return workspace;
+}
+
+async function changeWorkspaceTrust(project, trusted) {
+  await preferences.setTrusted(project, trusted);
+  if (workspace === project && rendererReady && window && !window.isDestroyed()) {
+    window.webContents.send('cevra:workspace-trust-changed', { id: project.id, trusted });
+  }
 }
 
 function intelligenceWorkspace() {
@@ -355,15 +364,16 @@ function ensureWorkspaceAvailable(recovering = false) {
   if (gitWrite && !recovering) throw new Error('Wait for the Git action to finish.');
 }
 
-async function openWorkspace(folder, { entry, discard, recovering = false } = {}) {
+async function openWorkspace(folder, { entry, discard, recent, recovering = false } = {}) {
   ensureWorkspaceAvailable(recovering);
   changingWorkspace = true;
   runGrant = undefined;
   try {
     if (recovering) await Promise.all([sessions.cancel(), gitWrite?.catch(() => {})]);
     const next = await createWorkspace(folder);
+    if (recent && !preferences.matchesRecent(next, recent)) throw new Error('This recent folder changed. Use Open folder to review it again.');
     const files = await listFolder(next);
-    const settings = await preferences.getEditor(next);
+    const [settings, trusted] = await Promise.all([preferences.getEditor(next), preferences.isTrusted(next)]);
     if (!recovering && terminals.liveCount) {
       const { response } = await dialog.showMessageBox(window, {
         type: 'warning', title: 'Switch workspace',
@@ -381,6 +391,7 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
     await terminals.closeAll();
     await extensionBroker.suspend().catch(() => {});
     activeSearch?.controller.abort();
+    activeFileSearch?.controller.abort();
     syntax.stop();
     formatter.stop();
     semantics.stop();
@@ -390,8 +401,9 @@ async function openWorkspace(folder, { entry, discard, recovering = false } = {}
     changeLens = createChangeLens(next, flightpath, workstream.latestFull);
     taskRunner = createTaskRunner(next, flightpath);
     pythonProfiles = createPythonProfiles(next);
+    if (!recovering) await preferences.rememberWorkspace(next).catch(() => {});
     return {
-      id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable, settings,
+      id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable, settings, trusted,
       caseInsensitivePaths: process.platform === 'win32',
       terminalLimit: process.platform === 'win32' ? terminals.maxSessions : 0,
     };
@@ -498,7 +510,7 @@ handle('activate-extension', async (id, extensionId, digest) => {
       });
       checkOwner();
       if (response !== 1) return false;
-      await preferences.setTrusted(project, true);
+      await changeWorkspaceTrust(project, true);
     }
     checkOwner();
     return await extensionBroker.activate(extensionId, digest);
@@ -525,7 +537,7 @@ handle('revoke-trust', async id => {
   runGrant = undefined;
   intelligenceMock?.close();
   void sessions.cancel();
-  await Promise.all([extensionBroker.suspend().catch(() => {}), preferences.setTrusted(project, false)]);
+  await Promise.all([extensionBroker.suspend().catch(() => {}), changeWorkspaceTrust(project, false)]);
 });
 
 async function authorizeExecution(project, prompt, start) {
@@ -567,7 +579,7 @@ async function authorizeExecution(project, prompt, start) {
     }
     const root = await resolveEntry(project, '');
     checkConsent();
-    if (trust) await preferences.setTrusted(project, true);
+    if (trust) await changeWorkspaceTrust(project, true);
     checkConsent();
     return start(root);
   } finally {
@@ -627,6 +639,16 @@ handle('choose-folder', async discard => {
   return openWorkspace(choice.filePaths[0], { discard: discard === true });
 });
 
+handle('workbench-layout', () => preferences.getWorkbenchLayout());
+handle('set-workbench-layout', value => preferences.setWorkbenchLayout(value));
+handle('recent-workspaces', () => preferences.recentWorkspaces());
+handle('open-recent', async (id, discard) => {
+  ensureWorkspaceAvailable();
+  const recent = await preferences.recentWorkspace(id);
+  if (!recent) throw new Error('This recent folder is no longer available.');
+  return openWorkspace(recent.root, { recent, discard: discard === true });
+});
+
 handle('open-example', async discard => {
   ensureWorkspaceAvailable();
   const folder = path.join(app.getPath('userData'), 'examples', 'first-run');
@@ -657,7 +679,30 @@ handle('discard', async name => {
   return response === 1;
 });
 
+handle('switch-workspace-choice', async id => {
+  const project = currentWorkspace(id);
+  const { response } = await dialog.showMessageBox(window, {
+    type: 'warning', title: 'Switch workspace', message: `Keep the unsaved files in ${project.name}?`,
+    detail: 'Kept drafts will be restored when you reopen this project.',
+    buttons: ['Stay Here', 'Keep Drafts and Switch', 'Discard and Switch'], defaultId: 0, cancelId: 0, noLink: true,
+  });
+  currentWorkspace(id);
+  return response === 1 ? 'keep' : response === 2 ? 'discard' : 'cancel';
+});
+
 handle('list', (id, folder) => listFolder(currentWorkspace(id), folder));
+handle('find-files', async (id, requestId, query) => {
+  const project = currentWorkspace(id);
+  if (!Number.isSafeInteger(requestId) || requestId < 1 || changingWorkspace) throw new Error('File search is unavailable.');
+  activeFileSearch?.controller.abort();
+  const request = { id, requestId, controller: new AbortController() };
+  activeFileSearch = request;
+  try { return await findWorkspaceFiles(project, query, request.controller.signal); }
+  finally { if (activeFileSearch === request) activeFileSearch = undefined; }
+});
+handle('cancel-file-search', (id, requestId) => {
+  if (activeFileSearch?.id === id && activeFileSearch.requestId === requestId) activeFileSearch.controller.abort();
+});
 handle('read', (id, file) => readSource(currentWorkspace(id), file));
 handle('syntax', (id, file, text) => {
   const project = currentWorkspace(id);
@@ -1059,6 +1104,7 @@ async function launch() {
     runGrant = undefined;
     closePending = false;
     activeSearch?.controller.abort();
+    activeFileSearch?.controller.abort();
     syntax.stop();
     formatter.stop();
     semantics.stop();
@@ -1080,6 +1126,7 @@ async function launch() {
     if (allowClose || !rendererReady) {
       void extensionBroker.suspend().catch(() => {});
       activeSearch?.controller.abort();
+      activeFileSearch?.controller.abort();
       void sessions.cancel();
       void terminals.closeAll();
       return;
