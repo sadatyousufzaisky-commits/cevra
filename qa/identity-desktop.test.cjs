@@ -57,7 +57,7 @@ async function start(appData, args = [], appRoot = root) {
 }
 
 test('Windows hands an existing profile and its drafts between the native and Electron workbenches',
-  { skip: !windows, timeout: 75_000 }, async t => {
+  { skip: !windows || process.env.VOKRI_TEST_PROFILE_HANDOFF !== '1', timeout: 75_000 }, async t => {
     const appData = await temporaryFolder(t, 'vokri-profile-handoff-');
     const profile = path.join(appData, 'CEVRA');
     const alias = path.join(appData, 'Profile alias');

@@ -97,6 +97,6 @@ The experimental native host uses the VOKRI SDK and Node.js 24 for workspace and
 - Run a JavaScript or TypeScript file with F5. Run Node.js project tests, retry failures, and stop a running process tree. Jump to the reported file and line while its recorded revision still matches.
 - Recover an unsaved edit after a restart once the workbench has reported **Draft backed up**. Use **Save Copy** if the original file changed externally.
 
-The production workbench remains the entry point for language services, Python, the integrated terminal, debugging, Git, extensions, and Intelligence. The production migration is G3 and later Phase 6 gates.
+The Electron workbench remains the entry point for language services, Python, the integrated terminal, debugging, Git, extensions, and Intelligence. Phase 6 continues on Electron. [G3 native preview record](../docs/phase-6/g3-native-foundation.md)
 
 The automated Windows suite exercises real windows, drawing, accessibility, file dialogs, saving, JavaScript and TypeScript execution, syntax and runtime navigation, test retries, stale-source detection, process termination, and crash recovery. It also verifies the transport and workspace boundaries with isolated fixtures.

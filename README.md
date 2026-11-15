@@ -48,18 +48,9 @@ Open **OpenAI usage and daily estimate limit** to track estimated usage and set 
 
 The Phase 5 acceptance guide records the Windows integration checks, benchmark method, and supported provider scope. [Integration and benchmarking](docs/phase-5/g9-integration-and-benchmarking.md)
 
-## VOKRI native SDK
+## VOKRI native preview
 
-VOKRI is the Windows desktop SDK for VOKRI Code. Build the standalone sample on Windows x64 with Node.js 24 and the .NET Framework compiler. The sample opens a native window with themed controls and a virtualized list of 100,000 documents.
-
-```powershell
-node scripts/build-vokri.cjs --sample
-& .\dist\vokri\Vokri.Sample.exe
-```
-
-Run `npm run test:vokri` to verify the SDK, sample, and experimental VOKRI Code native preview. [VOKRI SDK guide](vokri/README.md)
-
-The Phase 6 G3 launcher builds a standalone Windows x64 app folder with `npm run build:vokri-product` using official Node.js v24.15.0. It opens directly from `dist/vokri-product/VokriCode.exe`. [Native product build and migration inventory](docs/phase-6/g3-native-foundation.md)
+Phase 6 continues on the Electron workbench launched by `npm start`. The G3 native migration is deferred, with the SDK and standalone preview retained for reference. [Native preview record](docs/phase-6/g3-native-foundation.md)
 
 ## Run TypeScript and Python
 

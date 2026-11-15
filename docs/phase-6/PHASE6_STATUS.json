@@ -4,6 +4,7 @@
   "phase": 6,
   "phaseName": "Design Unification",
   "status": "in_progress",
+  "desktopRuntime": "Electron",
   "isImplementationComplete": false,
   "gateCount": 16,
   "baseline": {
@@ -147,11 +148,11 @@
     {
       "id": "G3",
       "name": "Electron-free product foundation",
-      "status": "in_progress",
+      "status": "deferred",
       "dependsOn": [
         "G2"
       ],
-      "commit": "1bd3beb6b9ff24a106fa921eddda054a0641ba9b",
+      "commit": "6d23daaba199729e48de1938f1437dd0aed69e04",
       "evidence": [
         "g3-native-foundation.md",
         "../../scripts/build-vokri-product.cjs",
@@ -159,8 +160,12 @@
         "../../qa/vokri-product.test.cjs",
         "../../qa/identity-desktop.test.cjs"
       ],
-      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43669421785/job/132675915280",
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43670679772",
       "ownerSignoff": null,
+      "deferral": {
+        "date": "2026-11-15",
+        "authorization": "Project owner directed Phase 6 to continue on Electron and end work on the native migration. The remaining gates apply to the Electron workbench."
+      },
       "openBlockers": [
         "Migrate the remaining product workflows, settings, window state, and desktop tests to native equivalents.",
         "Complete the production entry-point cutover and remove the Electron toolchain.",
@@ -172,9 +177,12 @@
         "nativeProductIntegrationPassed": "Local and clean Windows Server 2025 checkout",
         "nativeSdkTestsPassedPerConfiguration": 6,
         "nativeSdkVerifiedOn": ["Windows 11 x64", "Windows Server 2022 x64", "Windows Server 2025 x64"],
-        "existingProductExecutionChecksPassedLocally": 3,
+        "coreTestsPassedLocally": 167,
+        "desktopTestsPassedLocally": 90,
         "stagedFileDigestAndLoadedModuleScan": "passed",
-        "serviceFailureAndDraftRecovery": "passed"
+        "serviceFailureAndDraftRecovery": "passed",
+        "sharedProfileSelection": "Fresh, legacy, branded, and explicit profiles passed",
+        "crossHostProfileHandoff": "Windows 11 and Windows Server 2025 passed both lock directions, junction alias exclusion, and draft recovery after a crash"
       }
     },
     {
@@ -182,8 +190,7 @@
       "name": "Unified workspace and navigation shell",
       "status": "planned",
       "dependsOn": [
-        "G1",
-        "G3"
+        "G1"
       ],
       "commit": null,
       "evidence": [],
@@ -193,10 +200,9 @@
     },
     {
       "id": "G5",
-      "name": "Professional native editor parity",
+      "name": "Professional editor experience",
       "status": "planned",
       "dependsOn": [
-        "G3",
         "G4"
       ],
       "commit": null,
@@ -207,10 +213,9 @@
     },
     {
       "id": "G6",
-      "name": "Continuum tools in one native surface",
+      "name": "Continuum tools in one workbench",
       "status": "planned",
       "dependsOn": [
-        "G3",
         "G4",
         "G5"
       ],
@@ -225,7 +230,6 @@
       "name": "VOKRI Extension Store and manager",
       "status": "planned",
       "dependsOn": [
-        "G3",
         "G4"
       ],
       "commit": null,
@@ -239,7 +243,6 @@
       "name": "VOKRI Intelligence experience",
       "status": "planned",
       "dependsOn": [
-        "G3",
         "G4",
         "G5",
         "G6"
@@ -271,7 +274,6 @@
       "status": "planned",
       "dependsOn": [
         "G0",
-        "G3",
         "G5",
         "G9"
       ],
@@ -287,7 +289,6 @@
       "status": "planned",
       "dependsOn": [
         "G0",
-        "G3",
         "G10"
       ],
       "commit": null,
@@ -320,7 +321,6 @@
       "name": "Security, data migration and resilience audit",
       "status": "planned",
       "dependsOn": [
-        "G3",
         "G5",
         "G6",
         "G7",
@@ -365,7 +365,6 @@
         "G0",
         "G1",
         "G2",
-        "G3",
         "G4",
         "G5",
         "G6",

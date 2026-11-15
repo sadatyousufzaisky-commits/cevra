@@ -1,5 +1,7 @@
 # G3 Electron-free product foundation
 
+G3 is deferred at the project owner's direction. Phase 6 continues with the Electron workbench and its approved Iris Ink design. Open it from the repository with `npm start`. The commands and verification below describe the retained native preview. [Phase 6 ledger](PHASE6_STATUS.json)
+
 The first G3 build stages a native VOKRI Code launcher and its workspace service in a standalone app folder. `VokriCode.exe` locates the bundled Node.js executable and service relative to its own folder. The launcher starts the service over private pipes in a Windows Job Object. The staged build includes the project test reporter and process supervisor.
 
 ## Build and run
@@ -25,7 +27,9 @@ The native workbench reads saved theme, editor font size, font family, and wrap 
 
 `npm run test:vokri-product` builds into a temporary directory and launches from an unrelated working directory with a system-only PATH. It verifies the file inventory, native process modules, the bundled Node.js child, nested source execution and navigation, project tests, service loss, and recovery of a backed-up draft after reopening.
 
-The staged product test also verifies branded, legacy, and explicit profile selection and applies the saved workspace wrap setting in a real Windows editor. The Windows identity suite verifies that Electron and the native workbench guard a shared profile in both directions, including through a junction alias. It reopens a legacy profile in the native workbench, creates a draft, terminates the native process, and recovers the unsaved content in Electron. It compares the original source and preferences byte for byte after the handoff.
+The staged product test also verifies branded, legacy, and explicit profile selection and applies the saved workspace wrap setting in a real Windows editor. With `VOKRI_TEST_PROFILE_HANDOFF=1`, the Windows identity suite verifies that Electron and the native workbench guard a shared profile in both directions, including through a junction alias. It reopens a legacy profile in the native workbench, creates a draft, terminates the native process, and recovers the unsaved content in Electron. It compares the original source and preferences byte for byte after the handoff.
+
+On `6d23daa`, all 167 core tests, 90 desktop tests, six native SDK tests, and the staged product test passed on Windows 11 x64. The staged build and hosted desktop suite passed on Windows Server 2025. The native SDK suite passed on Server 2022 and 2025. [Profile continuity verification](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43670679772)
 
 On `1bd3beb`, the staged integration test passed on Windows 11 and a clean Windows Server 2025 checkout. The hosted job ran without `node_modules` or Electron on PATH. The six SDK tests passed locally and on Windows Server 2022 and 2025. Three focused existing-product execution tests passed locally. The previous Server 2025 SDK run exposed a folder-dialog readiness race in the probe. The probe now waits for the titled dialog and an enabled action before sending the command. [Clean native product job](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43669421785/job/132675915280)
 
@@ -40,4 +44,4 @@ On `1bd3beb`, the staged integration test passed on Windows 11 and a clean Windo
 | Extension and Intelligence surfaces | Electron preload and window lifecycle | Existing brokers and services are migration inputs. Native surfaces and consent parity remain open |
 | Product build, desktop QA and packaging | Repository Electron main entry, Electron and Playwright dependencies, renderer builds | Staged native app and independent clean-checkout QA available. Repository-wide replacement, release package scans and the production cutover remain open |
 
-Keep the production Electron entry point available until its required workflows have native equivalents. The staged executable contains no browser fallback. G3 remains in progress.
+Routine pushes and pull requests run the Electron reliability suite. The native preview checks are available through the explicit `verify_native_preview` input on the Windows reliability workflow.

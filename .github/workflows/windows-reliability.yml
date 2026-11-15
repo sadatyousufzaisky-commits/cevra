@@ -3,12 +3,19 @@ name: Windows reliability
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      verify_native_preview:
+        description: Run the deferred native preview checks
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   vokri:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_native_preview }}
     strategy:
       fail-fast: false
       matrix:
@@ -32,6 +39,7 @@ jobs:
           npm run test:vokri
 
   native-product:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_native_preview }}
     runs-on: windows-2025
     timeout-minutes: 5
     steps:
@@ -76,6 +84,8 @@ jobs:
           }
           exit 1
       - run: npm test
+        env:
+          VOKRI_TEST_PROFILE_HANDOFF: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_native_preview && '1' || '0' }}
       - name: Verify Windows credential account separation
         run: pwsh -NoProfile -File qa/test-credential-account.ps1
       - name: Verify extension host isolation
