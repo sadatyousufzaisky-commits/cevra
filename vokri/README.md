@@ -17,7 +17,7 @@ node scripts/build-vokri.cjs --sample
 & .\dist\vokri\Vokri.Sample.exe
 ```
 
-The sample uses no project directory, package installation, or background service. Press **F6** to focus the source editor, **F7** to focus the document list, and use the arrow keys to navigate. **Last document** selects row 100,000. **Switch appearance** cycles Iris Ink Dark, Iris Ink Light, and Midnight Atelier. **Text size** changes the application and editor fonts. [Sample source](samples/workbench/Program.cs)
+The sample uses no project directory, package installation, or background service. Press **F6** to focus the source editor, **F7** to focus the document list, and use the arrow keys to navigate. **Previous page** and **Next page** move between groups of 64 rows. **Last document** selects row 100,000. **Switch appearance** cycles Iris Ink Dark, Iris Ink Light, and Midnight Atelier. **Text size** changes the application and editor fonts. [Sample source](samples/workbench/Program.cs)
 
 Reference the DLL from a .NET Framework 4.8 x64 application and place it beside the executable. Use an STA entry point. Copy the workbench manifest and give the assembly identity your application's name. The manifest opts into per-monitor DPI awareness and Windows visual styles. [Workbench manifest](hosts/cevra/vokri.manifest), [Windows DPI changes](https://learn.microsoft.com/en-us/windows/win32/hidpi/wm-dpichanged)
 
@@ -61,7 +61,7 @@ Save the example as `Notes.cs` and a copy of the manifest as `Notes.manifest` at
 | `Window` | Multiple windows, optional ownership, minimum sizing, per-monitor DPI scaling, keyboard shortcuts, and cancellable close. `Appearance`, `SetFontSizes`, and `DisplayChanged` support visual changes. |
 | `Grid` | Nested fixed, automatic, and proportional tracks with gaps, padding, and spans |
 | `Label`, `Button`, `TextField`, `TextEditor`, `ListBox` | Native controls with focus, keyboard navigation, and Windows accessibility for standard control roles. The `Button` overload with a primary/secondary argument applies the VOKRI palette. |
-| `VirtualList` | Single-selection report list backed by `SetRows(count, labelAt)`. Win32 requests visible and accessibility labels on demand. `Select(index)` selects and scrolls to the row. Supply labels quickly on the UI thread and keep the data stable until the next `SetRows`. |
+| `VirtualList` | Single-selection report list backed by `SetRows(count, labelAt)`. Win32 requests labels on demand and exposes up to 64 rows at once. `Select(index)` reveals a logical row and `MovePage(direction)` moves to the previous or next page. Supply labels quickly on the UI thread and keep the data stable until the next `SetRows`. |
 | `Canvas`, `DrawingContext` | Native paint callback for text, lines, and fills in logical coordinates, plus pointer presses |
 | `Palette`, `Window.Animate` | Iris Ink and Midnight Atelier colors, Windows contrast color fallback, and UI-thread frame callbacks. Dispose an animation on the UI thread. The SDK ends it on window close or callback failure and emits a static frame when Windows animations are disabled. |
 | `Dialogs`, `Clipboard` | Native file, folder, save, and confirmation dialogs, and bounded Unicode clipboard access |

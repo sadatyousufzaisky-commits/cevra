@@ -103,7 +103,8 @@ internal static class VokriProbe
 
     private static void Select(IntPtr root, string name)
     {
-        IntPtr list = Children(root, "LISTBOX").First();
+        IntPtr list = WaitFor(() => Children(root, "LISTBOX").FirstOrDefault(IsWindowEnabled),
+            () => "The project list did not become enabled.");
         int count = Send(list, 0x018b).ToInt32();
         for (int index = 0; index < count; index++)
         {

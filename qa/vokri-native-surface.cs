@@ -80,8 +80,9 @@ internal static class NativeSurfaceChecks
                 Require(list.SelectedIndex == 99999 && list.Count == 100000, "Virtual selection failed.");
                 Inspect(list, acc =>
                 {
-                    Require(acc.accChildCount >= 100000, "The system list provider hid virtual rows.");
-                    Require(acc.get_accName(100000) == "Document 100000", "The final row lacked its accessible label.");
+                    Require(acc.accChildCount <= VirtualList.PageSize + 1, "Accessibility enumeration exposed the unbounded data source.");
+                    int lastVisibleChild = 100000 - list.FirstPageIndex;
+                    Require(acc.get_accName(lastVisibleChild) == "Document 100000", "The final row lacked its accessible label.");
                 });
                 Inspect(action, acc =>
                 {
@@ -91,6 +92,13 @@ internal static class NativeSurfaceChecks
                 });
                 SendMessageW(list.Handle, 0x0100, new IntPtr(0x26), new IntPtr(1));
                 Require(list.SelectedIndex == 99998, "The virtual list did not handle the Up key.");
+                list.Select(VirtualList.PageSize - 1);
+                SendMessageW(list.Handle, 0x0100, new IntPtr(0x28), new IntPtr(1));
+                Require(list.SelectedIndex == VirtualList.PageSize, "Down did not cross the virtual page boundary.");
+                SendMessageW(list.Handle, 0x0100, new IntPtr(0x26), new IntPtr(1));
+                Require(list.SelectedIndex == VirtualList.PageSize - 1, "Up did not cross the virtual page boundary.");
+                list.MovePage(1);
+                Require(list.SelectedIndex == VirtualList.PageSize, "Page navigation did not select the next page.");
                 Require(text.Text == "café　かな 😀", "The native editor altered Unicode.");
 
                 var baseline = GetGuiResources(process.Handle, 0);

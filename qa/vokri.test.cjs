@@ -151,6 +151,8 @@ test('the standalone sample opens with only Vokri.dll and navigates 100,000 docu
   try {
     const query = async (...args) => (await execute(probe, [child.pid, ...args], { timeout: 15000, windowsHide: true })).stdout;
     await query('wait', 'Field notes 000001 opened');
+    await query('click', 'Next page');
+    await query('wait', 'Field notes 000065 opened');
     await query('click', 'Last document');
     await query('wait', 'Field notes 100000 opened');
     assert.match(await query('editor'), /Field notes 100000/);

@@ -15,7 +15,7 @@ The sample uses a Windows manifest with PerMonitorV2 DPI awareness and version 6
 ## Native behavior
 
 - Native button windows preserve keyboard and Windows Accessibility behavior while VOKRI renders Iris Ink and Midnight Atelier states. Windows contrast settings supply the palette when active.
-- The native report list serves row labels on demand. The test reads the final row through Windows Accessibility and moves selection with an Up key message.
+- The native report list serves row labels on demand and exposes at most 64 rows at once. A live accessibility-tree scan stalled when the Windows provider enumerated the original 100,000-row list. The bounded list passed the same inspection. The native tests read the final row through Windows Accessibility and verify that arrow keys cross page boundaries. In a separate desktop smoke check, F7 and End opened row 100,000 and the accessibility tree showed its title and editor text.
 - RichEdit retains the Unicode edit surface and receives IME input from Windows. The shortcut dispatcher leaves active IME composition with the control.
 - The window handles DPI messages and rebuilds logical bounds and fonts. Animation runs on the UI thread and stops when disposed, when the window closes, or when a frame callback fails.
 - Native tests cover owned-window closing, 180 resize and paint iterations, GDI resource stability after warm-up, and service request deadlines and disposal. Frame timings measure resize and application paint work in the test process. They do not measure desktop compositor presentation.

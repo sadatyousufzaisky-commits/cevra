@@ -6,8 +6,10 @@ namespace Vokri
     public sealed class VirtualList : Control
     {
         private const int MaxRows = 100000000;
+        public const int PageSize = 64;
         private readonly string heading;
-        private int count, selected = -1;
+        private readonly Native.SubclassProcedure keyboard;
+        private int count, pageStart, selected = -1;
         private Func<int, string> row;
         private bool changing;
 
@@ -43,6 +45,7 @@ namespace Vokri
             if (string.IsNullOrWhiteSpace(heading) || heading.IndexOf('\0') >= 0)
                 throw new ArgumentException("Give the list a column heading.", "heading");
             this.heading = heading;
+            keyboard = KeyboardMessage;
         }
 
         internal override string ClassName { get { return "SysListView32"; } }
@@ -62,12 +65,15 @@ namespace Vokri
                     throw new InvalidOperationException("Could not create the virtual list column.");
             }
             finally { Marshal.FreeHGlobal(title); }
+            if (!Native.SetWindowSubclass(Handle, keyboard, UIntPtr.Zero, UIntPtr.Zero))
+                throw new InvalidOperationException("Could not register virtual-list input.");
             AppearanceChanged();
-            UpdateCount();
+            LoadPage(0);
         }
 
         public event Action SelectionChanged;
         public int Count { get { return count; } }
+        public int FirstPageIndex { get { return pageStart; } }
         public int SelectedIndex { get { VerifyAccess(); return selected; } }
 
         public void SetRows(int count, Func<int, string> row)
@@ -79,20 +85,27 @@ namespace Vokri
             this.count = count;
             this.row = row;
             selected = -1;
-            if (Handle != IntPtr.Zero) UpdateCount();
+            if (Handle != IntPtr.Zero) LoadPage(0);
         }
 
-        private void UpdateCount()
+        private void LoadPage(int first)
         {
+            bool wasChanging = changing;
             changing = true;
             try
             {
-                SendData(0x102b, new IntPtr(-1), new Item { StateMask = 3 });
-                if (Native.Send(Handle, 0x102f, new IntPtr(count), IntPtr.Zero) == IntPtr.Zero)
-                    throw new InvalidOperationException("Could not set the virtual list row count.");
+                pageStart = first;
+                SetNativeCount(0); // Drops selection, cached rows, and scroll position.
+                SetNativeCount(Math.Min(PageSize, count - first));
                 Native.InvalidateRect(Handle, IntPtr.Zero, false);
             }
-            finally { changing = false; }
+            finally { changing = wasChanging; }
+        }
+
+        private void SetNativeCount(int visibleCount)
+        {
+            if (Native.Send(Handle, 0x102f, new IntPtr(visibleCount), IntPtr.Zero) == IntPtr.Zero)
+                throw new InvalidOperationException("Could not set the virtual list row count.");
         }
 
         public void Select(int index)
@@ -103,8 +116,12 @@ namespace Vokri
             changing = true;
             try
             {
-                SendData(0x102b, new IntPtr(index), new Item { State = 3, StateMask = 3 });
-                Native.Send(Handle, 0x1013, new IntPtr(index), IntPtr.Zero); // LVM_ENSUREVISIBLE
+                int first = index / PageSize * PageSize;
+                if (first != pageStart) LoadPage(first);
+                var localIndex = new IntPtr(index - pageStart);
+                if (SendData(0x102b, localIndex, new Item { State = 3, StateMask = 3 }) == IntPtr.Zero)
+                    throw new InvalidOperationException("Could not select the virtual list row.");
+                Native.Send(Handle, 0x1013, localIndex, IntPtr.Zero); // LVM_ENSUREVISIBLE
             }
             finally { changing = false; }
             ReadSelection();
@@ -113,10 +130,42 @@ namespace Vokri
         private void ReadSelection()
         {
             if (changing) return;
-            int index = Native.Send(Handle, 0x100c, new IntPtr(-1), new IntPtr(2)).ToInt32(); // LVNI_SELECTED
+            int local = Native.Send(Handle, 0x100c, new IntPtr(-1), new IntPtr(2)).ToInt32(); // LVNI_SELECTED
+            int index = local < 0 ? -1 : pageStart + local;
             if (index == selected) return;
             selected = index;
             if (SelectionChanged != null) SelectionChanged();
+        }
+
+        public void MovePage(int direction)
+        {
+            VerifyAccess();
+            if (direction != -1 && direction != 1) throw new ArgumentOutOfRangeException("direction");
+            int next = pageStart + direction * PageSize;
+            if (next >= 0 && next < count) Select(next);
+        }
+
+        private IntPtr KeyboardMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data)
+        {
+            if (message == Native.KeyDown && count > 0)
+            {
+                int key = wParam.ToInt32();
+                int lastInPage = Math.Min(count, pageStart + PageSize) - 1;
+                int destination = -1;
+                if (key == 0x24) destination = 0; // Home
+                else if (key == 0x23) destination = count - 1; // End
+                else if (key == 0x28 && selected == lastInPage && selected < count - 1) destination = selected + 1;
+                else if (key == 0x26 && selected == pageStart && pageStart > 0) destination = selected - 1;
+                else if (key == 0x22 && selected == lastInPage && lastInPage + 1 < count) destination = lastInPage + 1;
+                else if (key == 0x21 && selected == pageStart && pageStart > 0) destination = pageStart - 1;
+                if (destination >= 0)
+                {
+                    try { Select(destination); } catch (Exception error) { Host.Application.Report(error); }
+                    return IntPtr.Zero;
+                }
+            }
+            else if (message == 0x0082) Native.RemoveWindowSubclass(window, keyboard, id);
+            return Native.DefSubclassProc(window, message, wParam, lParam);
         }
 
         internal override IntPtr Notify(int code, IntPtr data)
@@ -130,7 +179,8 @@ namespace Vokri
                 if ((item.Mask & 1) != 0 && item.Text != IntPtr.Zero && item.Capacity > 0)
                 {
                     Marshal.WriteInt16(item.Text, 0);
-                    string text = item.Index >= 0 && item.Index < count && row != null ? row(item.Index) ?? "" : "";
+                    int index = pageStart + item.Index;
+                    string text = item.Index >= 0 && item.Index < PageSize && index < count && row != null ? row(index) ?? "" : "";
                     int length = Math.Min(text.Length, item.Capacity - 1);
                     if (length > 0 && char.IsHighSurrogate(text[length - 1])) length--;
                     for (int i = 0; i < length; i++) Marshal.WriteInt16(item.Text, i * 2, unchecked((short)text[i]));
