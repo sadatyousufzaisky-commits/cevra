@@ -955,11 +955,13 @@ async function saveFile(tab) {
     tab.savedEndings = before.field(lineEndings);
     tab.savedBom = tab.bom;
     tab.dirty = isDirty(tab, tab.state);
-    queueDraft(tab);
+    await queueDraft(tab);
     searchPanel.changed();
     semantic.changed();
     if (/\.json$/i.test(tab.path)) referencesPanel.changed();
-    notify('Saved ' + tab.path);
+    const saved = 'Saved ' + tab.path;
+    if (tab.draftError) notify(saved + '. The draft backup could not be updated.', true);
+    else notify(saved);
     return true;
   } catch (error) {
     if (/^This file changed on disk\./.test(errorText(error))) {

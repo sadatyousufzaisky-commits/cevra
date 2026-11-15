@@ -552,6 +552,7 @@ test('Windows integrates native key capture, a reviewed coding repair, and AI-of
   assert.equal((await traffic()).testApprovals.length, 1);
   await editor.press('Control+s');
   await page.locator('#message').getByText('Saved helper.js', { exact: true }).waitFor();
+  assert.equal(await page.locator('#draft-status').getAttribute('data-state'), 'clear');
   await coding.getByRole('button', { name: 'Verify saved changes', exact: true }).press('Enter');
   await codingStatus('The approved change passed the project tests.');
   await coding.getByText('Verification · 1 passed, 0 failed · Observed revision', { exact: true }).waitFor();
