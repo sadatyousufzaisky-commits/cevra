@@ -172,6 +172,40 @@ test('Windows terminal honors trust and cleans up a detached tree before switchi
     assert.equal(await page.locator('.terminal-surface').count(), 0);
   });
 
+test('G6 Windows shows live shell activity and closes terminal trees on trust revocation and main-process crash',
+  { timeout: 45_000, skip: process.platform !== 'win32' }, async t => {
+    const workbench = await openWorkbench(t, { 'terminal-tree.cjs': terminalTree });
+    const { page, app } = workbench;
+    const activity = page.getByRole('group', { name: 'Execution activity' });
+    const shell = activity.getByRole('button', { name: /Show Terminal/ });
+    const newTerminal = page.getByRole('button', { name: 'New terminal', exact: true });
+    await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+    await page.locator('#terminal-trust').getByText('Permission required to open a shell').waitFor();
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 2 }); });
+    await newTerminal.press('Enter');
+    await page.locator('#terminal-trust').getByText('Trusted workspace', { exact: true }).waitFor();
+    const revoked = await startTerminalTree(page);
+
+    await page.getByRole('button', { name: 'Run output', exact: true }).click();
+    await shell.getByText('1 shell', { exact: true }).waitFor();
+    await shell.press('Enter');
+    await page.getByRole('region', { name: 'Workspace terminal' }).waitFor();
+    await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'PowerShell terminal input');
+    await page.getByRole('button', { name: 'Trusted workspace settings', exact: true }).click();
+    await page.locator('#trust-revoke').press('Enter');
+    await page.getByRole('button', { name: 'Restricted workspace settings', exact: true }).waitFor();
+    await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+    await shell.waitFor({ state: 'hidden' });
+    await page.getByText('Terminal sessions stopped after workspace trust was revoked.', { exact: true }).waitFor();
+    await Promise.all(revoked.map(assertWindowsProcessStopped));
+
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
+    await newTerminal.press('Enter');
+    const crashed = await startTerminalTree(page);
+    await workbench.terminateMain();
+    await Promise.all(crashed.map(assertWindowsProcessStopped));
+  });
+
 test('saves a nested UTF-8 file with BOM and CRLF and preserves external changes', async t => {
   const folder = 'notes (draft)';
   const name = 'café [#%].txt';
@@ -490,6 +524,62 @@ test('jumps to runtime and syntax errors in nested files at unusual paths', asyn
   await page.getByRole('button', { name: path.join(folder, syntax) + ':2:16' }).click();
   await page.locator('#cursor').getByText('Ln 2, Col 16', { exact: true }).waitFor();
   assert.match(await output.textContent(), /SyntaxError/);
+});
+
+test('G6 rejects stale runtime jump targets and explains failures whose source changed during execution',
+  { timeout: 35_000 }, async t => {
+    const folder = 'nested (source) & café [#%]';
+    const filename = 'failure # %.cjs';
+    const relative = path.join(folder, filename);
+    const request = JSON.stringify('./' + folder + '/' + filename);
+    const original = 'module.exports = () => {\n  throw new Error("retained failure");\n};\n';
+    const updated = '// Changed revision\n' + original;
+    const { page, editor, open, selected, project, state } = await openWorkbench(t, {
+      [relative]: original,
+      'entry.cjs': 'require(' + request + ')();\n',
+      'rewrite.cjs': 'const fail = require(' + request + ');\n' +
+        'require("node:fs").writeFileSync(require.resolve(' + request + '), ' + JSON.stringify(updated) + ');\nfail();\n',
+    });
+    await open('entry.cjs');
+    await editor.press('F5');
+    await state.getByText(/^Failed/).waitFor();
+    await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+    await state.getByText(/^Failed/).waitFor();
+    await page.getByRole('button', { name: /Run · Failed.*Open details/ }).press('Enter');
+    await page.locator('#jump-to-error').waitFor();
+
+    await fs.writeFile(path.join(project, relative), updated);
+    await page.keyboard.press('Control+Shift+P');
+    const center = page.getByRole('dialog', { name: 'Command center' });
+    await center.getByRole('combobox').fill('Go to run error');
+    await center.getByRole('option', { name: 'Go to run error', exact: true }).press('Enter');
+    await page.locator('#run-source-note').getByText(/Source changed or is unavailable/).waitFor();
+    await selected('entry.cjs').waitFor();
+
+    await fs.writeFile(path.join(project, relative), original);
+    await open('rewrite.cjs');
+    await editor.press('F5');
+    await state.getByText(/^Failed/).waitFor();
+    await page.locator('#run-source-note').getByText(/Source revision unavailable/).waitFor();
+    await page.locator('#jump-to-error').waitFor({ state: 'hidden' });
+    await selected('rewrite.cjs').waitFor();
+    assert.equal(await fs.readFile(path.join(project, relative), 'utf8'), updated);
+  });
+
+test('G6 reports an all-skipped suite as unverified in execution activity and Flightpath', async t => {
+  const { page, state } = await openWorkbench(t, {
+    'skipped.test.cjs': 'require("node:test").skip("pending work", () => { throw new Error("never run"); });\n',
+  });
+  const flightpath = page.getByRole('button', { name: 'Flightpath', exact: true });
+  await flightpath.click();
+  await page.getByRole('button', { name: 'Enable local history' }).click();
+  await page.locator('#flightpath-status').getByText(/^Local history is on/).waitFor();
+  await page.keyboard.press('Control+Alt+t');
+  await state.getByText('No tests passed', { exact: true }).waitFor();
+  assert.equal(await state.getAttribute('data-state'), 'unverified');
+  await flightpath.click();
+  await state.getByText('No tests passed', { exact: true }).waitFor();
+  await page.locator('#flightpath-capsules').getByText('Project tests · No tests passed', { exact: true }).waitFor();
 });
 
 test('jumps to a test assertion and retries only the failed case after saving a fix', async t => {

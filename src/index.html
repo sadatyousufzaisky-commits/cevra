@@ -159,12 +159,20 @@
           <button id="show-failure" class="dock-view" aria-pressed="false" disabled>Failure Lens</button>
           <button id="show-changes" class="dock-view" aria-pressed="false" disabled>Change Lens</button>
         </div>
-        <span id="run-state" class="run-state" role="status">Ready</span>
         <span id="run-target" class="run-target"></span>
         <span id="test-totals" class="run-target" hidden></span>
         <button id="rerun-failures" class="button rerun-button" title="Save open files and rerun failures" hidden>Rerun failures</button>
         <span id="problems-status" class="run-target" role="status" hidden></span>
         <button id="problems-retry" class="button rerun-button" hidden>Retry checks</button>
+        <div class="execution-activity" role="group" aria-label="Execution activity">
+          <button id="run-details" class="activity-button" aria-label="Open execution details" disabled>
+            <span id="run-kind" class="activity-kind" aria-hidden="true" hidden></span>
+            <span id="run-state" class="run-state" role="status">Ready</span>
+          </button>
+          <button id="terminal-activity" class="activity-button" aria-label="Open active terminals" hidden>
+            <span id="terminal-count" role="status"></span>
+          </button>
+        </div>
         <button id="pin-panel" class="sidebar-action dock-layout-action" aria-label="Pin current view" aria-pressed="false" title="Pin current view" disabled><svg aria-hidden="true"><use href="#pin-view"></use></svg></button>
         <button id="float-dock" class="sidebar-action dock-layout-action" aria-label="Float bottom panel" aria-pressed="false" title="Float bottom panel"><svg aria-hidden="true"><use href="#float-panel"></use></svg></button>
         <button id="toggle-dock" class="sidebar-action dock-toggle" aria-label="Show bottom panel" aria-controls="dock-content" aria-expanded="false" title="Show bottom panel (Ctrl+J)"><svg aria-hidden="true"><use href="#panel-layout"></use></svg></button>
@@ -190,10 +198,11 @@
           <button id="test-recheck" class="button" hidden>Check inputs</button>
         </section>
         <div id="run-diagnostic" class="run-diagnostic" hidden>
-          <span>Source location</span>
+          <span id="run-source-label">Source location</span>
           <button id="jump-to-error" class="diagnostic-link">
             <span></span><svg aria-hidden="true"><use href="#return"></use></svg>
           </button>
+          <span id="run-source-note" class="run-source-note" role="status" hidden></span>
           <span id="run-error-summary" class="run-error-summary"></span>
         </div>
         <p id="output-truncated" class="output-notice" role="status" hidden>Earlier output was truncated.</p>
@@ -268,13 +277,14 @@
               <option value="powershell">PowerShell</option>
               <option value="cmd">Command Prompt</option>
             </select>
-            <button id="terminal-new" class="button" disabled>New terminal</button>
+            <button id="terminal-new" class="button" aria-describedby="terminal-trust" disabled>New terminal</button>
             <div id="terminal-tabs" class="terminal-tabs" role="group" aria-label="Terminal sessions"></div>
             <button id="terminal-copy" class="button" title="Copy selection (Ctrl+Shift+C)" disabled>Copy</button>
             <button id="terminal-paste" class="button" title="Paste (Ctrl+Shift+V)" disabled>Paste</button>
             <button id="terminal-close" class="button" disabled>Close terminal</button>
           </div>
           <div class="terminal-details">
+            <span id="terminal-trust"></span>
             <span id="terminal-status" role="status">Choose a shell and open a terminal.</span>
             <span id="terminal-root" hidden></span>
           </div>

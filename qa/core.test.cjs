@@ -1041,11 +1041,13 @@ test('JavaScript runner keeps syntax and cross-file runtime diagnostics after la
   await fs.writeFile(path.join(root, 'syntax.mjs'), 'const invalid = ;\n');
   const runtime = await run(t, workspace, 'run.cjs');
   assert.equal(runtime.exit.code, 1);
-  assert.deepEqual(runtime.exit.location, { path: target, line: 2, column: 9 });
+  assert.deepEqual(runtime.exit.location, { path: target, line: 2, column: 9,
+    revision: (await readSource(workspace, target)).revision });
   assert.equal(runtime.exit.summary, 'Error: cross-file');
   const syntax = await run(t, workspace, 'syntax.mjs');
   assert.equal(syntax.exit.code, 1);
-  assert.deepEqual(syntax.exit.location, { path: 'syntax.mjs', line: 1, column: 17 });
+  assert.deepEqual(syntax.exit.location, { path: 'syntax.mjs', line: 1, column: 17,
+    revision: (await readSource(workspace, 'syntax.mjs')).revision });
   assert.match(syntax.exit.summary, /SyntaxError/);
 });
 

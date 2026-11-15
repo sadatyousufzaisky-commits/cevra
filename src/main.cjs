@@ -537,7 +537,7 @@ handle('revoke-trust', async id => {
   runGrant = undefined;
   intelligenceMock?.close();
   void sessions.cancel();
-  await Promise.all([extensionBroker.suspend().catch(() => {}), changeWorkspaceTrust(project, false)]);
+  await Promise.all([terminals.closeAll(), extensionBroker.suspend().catch(() => {}), changeWorkspaceTrust(project, false)]);
 });
 
 async function authorizeExecution(project, prompt, start) {

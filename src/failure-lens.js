@@ -269,7 +269,7 @@ export function createFailureLens({ start, stop, restart, command, jump, redraw,
         event.code === 0 ? (debugging ? 'Debug session completed' : 'Run completed') : 'Run failed';
       phase = 'ended'; debugging = false; paused = undefined; selected = undefined;
       if (!event.stopped && event.code !== 0 && !failure) {
-        const location = event.location;
+        const location = event.location ?? event.unverifiedLocation;
         failure = { summary: event.summary ?? event.error, frames: location ?
           [{ index: 0, name: 'Recorded failure', location, anchor: location.revision ? location : null }] : [] };
       }

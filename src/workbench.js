@@ -51,7 +51,7 @@ const testEvidence = createTestEvidence(api, (evidence, checking) => {
   renderTestPass(evidence, checking);
 });
 const byId = id => document.getElementById(id);
-const terminalPanel = createTerminalPanel({ api, errorText });
+const terminalPanel = createTerminalPanel({ api, errorText, onActivity: renderTerminalActivity });
 const runtimePanel = createRuntimePanel({ api, errorText });
 const taskPanel = createTaskPanel({ api, errorText, runTask, jump: jumpToTaskSource });
 const recipeFile = '.cevra-recipes.json';
@@ -84,6 +84,8 @@ const testButton = byId('run-tests');
 const retryButton = byId('rerun-failures');
 const stopButton = byId('stop-run');
 const diagnosticButton = byId('jump-to-error');
+const runDetails = byId('run-details');
+const terminalActivity = byId('terminal-activity');
 const lineEndingButton = byId('line-ending');
 const lineEndingNames = { '\n': 'LF', '\r\n': 'CRLF', '\r': 'CR' };
 const failureList = byId('test-failures');
@@ -429,6 +431,7 @@ api.onWorkspaceTrust(({ id, trusted }) => {
   if (project?.id !== id) return;
   project.trusted = trusted;
   syncWorkspaceContext();
+  terminalPanel.trustChanged(trusted);
 });
 
 function treeList(entries, depth) {
@@ -1075,18 +1078,32 @@ function convertLineEndings(ending) {
   notify('Using ' + lineEndingNames[ending] + ' line endings.');
 }
 
-function setRunState(text, state = '') {
+function renderTerminalActivity(count, busy) {
+  const text = count === 1 ? '1 shell' : count + ' shells';
+  const label = byId('terminal-count');
+  if (count && label.textContent !== text) label.textContent = text;
+  terminalActivity.hidden = count === 0;
+  terminalActivity.disabled = busy;
+  terminalActivity.title = count ? 'Show Terminal · ' + text + ' open' : '';
+  terminalActivity.setAttribute('aria-label', terminalActivity.title || 'Open active terminals');
+}
+
+function setRunState(text, state = 'ready') {
   const badge = byId('run-state');
   badge.textContent = text;
   badge.dataset.state = state;
+  runDetails.dataset.state = state;
   badge.classList.toggle('feedback-busy', state === 'running');
+  const kind = byId('run-kind').textContent;
+  runDetails.title = kind ? kind + ' · ' + text + ' · Open details' : text;
+  runDetails.setAttribute('aria-label', kind ? kind + ' · ' + text + ' · Open details' : 'Open execution details');
 }
 
 function renderTestPass(evidence, checking) {
   if (!evidence || !testPass || evidence.id !== testPass.id) return;
-  if (checking) setRunState('Pass · checking inputs');
-  else if (evidence.freshness === 'historical') setRunState('Historical pass · ' + testPass.elapsed);
-  else if (evidence.freshness === 'unavailable') setRunState('Pass · revision unavailable');
+  if (checking) setRunState('Pass · checking inputs', 'unverified');
+  else if (evidence.freshness === 'historical') setRunState('Historical pass · ' + testPass.elapsed, 'unverified');
+  else if (evidence.freshness === 'unavailable') setRunState('Pass · revision unavailable', 'unverified');
   else setRunState((evidence.retry ? 'Passed · retry only · ' : 'Passed · ') + testPass.elapsed, 'ok');
 }
 
@@ -1172,9 +1189,12 @@ function resetOutput(target = '', mode = 'file', plan = []) {
   byId('test-empty').textContent = 'Waiting for test results…';
   byId('test-totals').hidden = true;
   failureList.replaceChildren();
-  diagnostic = undefined;
-  byId('run-diagnostic').hidden = true;
+  renderRunLocation();
   byId('run-target').textContent = target;
+  const kind = byId('run-kind');
+  kind.textContent = target ? { file: 'Run', tests: 'Tests', tasks: 'Task', recipe: 'Recipe', debug: 'Debug' }[mode] : '';
+  kind.hidden = !target;
+  runDetails.disabled = !target;
   outputText = '';
   outputNotice.hidden = true;
   failureLens.begin(debug);
@@ -1221,7 +1241,7 @@ function watchOutput(attempt) {
 
 function cancelBeforeStart(attempt) {
   run = undefined;
-  setRunState('Canceled');
+  setRunState('Canceled', 'interrupted');
   output.textContent = 'Execution canceled.';
   if (attempt.mode === 'tests') byId('test-empty').textContent = 'Execution canceled.';
   if (attempt.mode === 'tasks' || attempt.mode === 'recipe') taskPanel.blockWaiting('Run canceled');
@@ -1249,7 +1269,7 @@ async function launchRun(mode, target, prepare, start, plan, authorize = attempt
     await admission;
     if (run === attempt && attempt.stage !== 'stopping') {
       attempt.stage = 'running';
-      setRunState('Running', 'running');
+      if (mode !== 'debug' || failureLens.phase !== 'paused') setRunState('Running', 'running');
       syncCommands();
     }
   } catch (error) {
@@ -1375,7 +1395,7 @@ async function stopRun() {
   if (!attempt || attempt.stage === 'stopping') return;
   attempt.stage = 'stopping';
   if (attempt.mode === 'debug') failureLens.stopping();
-  setRunState('Stopping');
+  setRunState('Stopping', 'running');
   syncCommands();
   if (attempt.sessionId) await api.stop(attempt.workspaceId, attempt.id, attempt.sessionId);
 }
@@ -1388,11 +1408,33 @@ function jumpToTaskSource(anchor, isCurrent) {
   jumpToRecordedSource(anchor, isCurrent, 'The recorded task source changed or is unavailable. Run the task again to refresh this location.');
 }
 
-function jumpToRecordedSource(anchor, isCurrent, staleMessage) {
-  void jumpToLocation(anchor, {
+function jumpToRecordedSource(anchor, isCurrent, staleMessage, onStale) {
+  return jumpToLocation(anchor, {
     revision: anchor.revision, isCurrent, staleMessage, changedMessage: staleMessage,
     validate: doc => anchor.line <= doc.lines && anchor.column <= doc.line(anchor.line).length + 1,
-  }).catch(error => { if (isCurrent()) report(error); });
+  }).catch(error => {
+    if (!isCurrent()) return;
+    report(error);
+    onStale?.();
+  });
+}
+
+function runSourceNote(text) {
+  const note = byId('run-source-note');
+  note.textContent = note.title = text;
+  note.hidden = !text;
+}
+
+function renderRunLocation({ location, unverifiedLocation, summary } = {}) {
+  diagnostic = location?.revision ? location : undefined;
+  diagnosticButton.hidden = !diagnostic;
+  diagnosticButton.querySelector('span').textContent = diagnostic ? locationLabel(diagnostic) : '';
+  const reported = unverifiedLocation ?? (!diagnostic && location);
+  runSourceNote(reported ? 'Source revision unavailable · ' + locationLabel(reported) : '');
+  byId('run-source-label').hidden = !diagnostic;
+  const detail = byId('run-error-summary');
+  detail.textContent = detail.title = summary ?? '';
+  byId('run-diagnostic').hidden = !diagnostic && !reported && !summary;
 }
 
 function appendFailure({ name, message, location, anchor }, evidenceId) {
@@ -1414,15 +1456,7 @@ function appendFailure({ name, message, location, anchor }, evidenceId) {
   if (anchor) {
     const isCurrent = () => testEvidence.isCurrent(evidenceId);
     const staleMessage = 'The recorded test source changed or is unavailable. Run tests again to refresh this location.';
-    row.onclick = () => jumpToLocation(anchor, {
-      revision: anchor.revision, isCurrent, staleMessage, changedMessage: staleMessage,
-      validate: doc => anchor.line <= doc.lines && anchor.column <= doc.line(anchor.line).length + 1,
-    }).catch(error => {
-      if (isCurrent()) {
-        report(error);
-        void testEvidence.recheck();
-      }
-    });
+    row.onclick = () => jumpToRecordedSource(anchor, isCurrent, staleMessage, () => void testEvidence.recheck());
   }
   item.append(row);
   failureList.append(item);
@@ -1452,17 +1486,20 @@ function finishTests(event, elapsed) {
   }
 
   if (event.stopped) {
-    setRunState('Canceled');
+    setRunState('Canceled', 'interrupted');
     empty.textContent = 'The test run was canceled.';
   } else if (event.code === 0 && counts?.tests === 0) {
-    setRunState('No tests');
+    setRunState('No tests', 'unverified');
     empty.textContent = 'No JavaScript tests were discovered in this project.';
+  } else if (event.code === 0 && counts && counts.passed === counts.cached) {
+    setRunState('No tests passed', 'unverified');
+    empty.textContent = 'This run produced no new passing tests.';
   } else if (event.code === 0 && counts) {
     const evidence = testEvidence.latest;
     if (evidence) {
       testPass = { id: evidence.id, elapsed };
       renderTestPass(evidence);
-    } else setRunState('Pass · revision unavailable');
+    } else setRunState('Pass · revision unavailable', 'unverified');
     empty.textContent = 'No test failures.';
   } else {
     setRunState('Failed · ' + (counts ? elapsed : event.code ?? 'launch'), 'error');
@@ -1476,7 +1513,11 @@ api.onRun(event => {
   if (event.workspaceId !== project?.id || event.runId !== run?.id ||
       event.sessionId !== run?.sessionId) return;
   if (event.type === 'task-progress' && (run.mode === 'tasks' || run.mode === 'recipe')) taskPanel.progress(event);
-  if (event.type === 'debug-state' && run.mode === 'debug') failureLens.state(event);
+  if (event.type === 'debug-state' && run.mode === 'debug' && run.stage !== 'stopping') {
+    failureLens.state(event);
+    if (event.state === 'paused') setRunState('Paused · ' + event.reason, 'paused');
+    else setRunState('Running', 'running');
+  }
   if (event.type === 'debug-breakpoint' && run.mode === 'debug') failureLens.verified(event);
   if (event.type !== 'exit') return;
   const { mode, sourceVersion, restart } = run;
@@ -1493,17 +1534,11 @@ api.onRun(event => {
     syncCommands();
     return;
   }
-  if (event.location) {
-    diagnostic = event.location;
-    diagnosticButton.querySelector('span').textContent = locationLabel(diagnostic);
-    const summary = byId('run-error-summary');
-    summary.textContent = summary.title = event.summary ?? '';
-    byId('run-diagnostic').hidden = false;
-  }
+  if (!event.stopped) renderRunLocation(event);
   if (mode === 'tasks' || mode === 'recipe') {
     testEvidence.finish(event.evidence, sourceVersion);
-    if (event.stopped) setRunState('Canceled');
-    else if (event.code === 0) setRunState('Completed · ' + elapsed);
+    if (event.stopped) setRunState('Canceled', 'interrupted');
+    else if (event.code === 0) setRunState('Completed · ' + elapsed, 'ok');
     else setRunState(event.completedWithFailures && mode === 'tasks' ? 'Completed with failures' :
       mode === 'recipe' ? 'Recipe failed' : 'Task failed', 'error');
     if (event.error) appendOutput(event.error);
@@ -1513,7 +1548,7 @@ api.onRun(event => {
     syncCommands();
     return;
   }
-  if (event.stopped) setRunState('Canceled');
+  if (event.stopped) setRunState('Canceled', 'interrupted');
   else if (event.code === 0) setRunState('Passed · ' + elapsed, 'ok');
   else setRunState(`Failed · ${event.code ?? event.signal ?? 'launch'}`, 'error');
   if (event.error) appendOutput(event.error);
@@ -1871,12 +1906,17 @@ function renameSymbol() {
   });
 }
 
-function jumpToRunError() {
+async function jumpToRunError() {
   const target = diagnostic;
-  if (target?.revision) return jumpToRecordedSource(target, () => diagnostic === target,
-    'The recorded runtime source changed or is unavailable. Run the file again to refresh this location.');
-  if (target) return jumpToLocation(target);
+  if (!target) return;
+  const jumped = await jumpToRecordedSource(target, () => diagnostic === target,
+    'The recorded runtime source changed or is unavailable. Run the file again to refresh this location.',
+    () => runSourceNote('Source changed or is unavailable. Rerun to refresh the recorded location.'));
+  if (jumped && diagnostic === target) runSourceNote('');
 }
+
+runDetails.onclick = () => showDock(dock.dataset.mode === 'debug' ? 'failure' : 'output', true);
+terminalActivity.onclick = () => showDock('terminal', true);
 
 const dockNames = { output: 'Run output', problems: 'Problems', references: 'References', terminal: 'Terminal',
   flightpath: 'Flightpath', tasks: 'Tasks', recipes: 'Recipes', failure: 'Failure Lens', changes: 'Change Lens' };

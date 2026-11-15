@@ -1,4 +1,4 @@
-const outcomes = { passed: 'Passed', failed: 'Failed', cancelled: 'Canceled', empty: 'No tests', blocked: 'Blocked' };
+const outcomes = { passed: 'Passed', failed: 'Failed', cancelled: 'Canceled', empty: 'No tests passed', blocked: 'Blocked' };
 
 export function createFlightpathPanel({ api, errorText, checkInputs }) {
   const byId = id => document.getElementById(id);
@@ -26,6 +26,7 @@ export function createFlightpathPanel({ api, errorText, checkInputs }) {
     const label = capsule.kind === 'task' ? 'Task ' + capsule.taskId : capsule.retry ? 'Test retry' : 'Project tests';
     outcome.textContent = label + ' · ' + outcomes[capsule.outcome];
     const revision = document.createElement('span');
+    revision.className = 'flightpath-revision';
     revision.textContent = live && checking ? 'Checking inputs…' : {
       observed: 'Workspace inputs observed', historical: 'Historical', unavailable: 'Revision unavailable',
     }[freshness];

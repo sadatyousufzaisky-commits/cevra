@@ -270,16 +270,23 @@
     {
       "id": "G6",
       "name": "Continuum tools in one workbench",
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "G4",
         "G5"
       ],
       "commit": null,
-      "evidence": [],
+      "evidence": [
+        "g6-continuum-workbench.md",
+        "../../qa/continuum.test.cjs",
+        "../../qa/workbench.test.cjs",
+        "../../qa/core.test.cjs"
+      ],
       "ci": null,
       "ownerSignoff": null,
-      "openBlockers": []
+      "openBlockers": [
+        "Complete the full Windows desktop and hosted reliability runs."
+      ]
     },
     {
       "id": "G7",

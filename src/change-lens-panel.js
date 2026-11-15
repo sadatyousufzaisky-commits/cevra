@@ -67,6 +67,10 @@ export function createChangeLensPanel({ api, mutate, errorText, getDirty }) {
   }
 
   function render() {
+    const focused = document.activeElement;
+    const focusedSide = focused?.dataset.changeSide;
+    const focusedPath = focused?.dataset.changePath;
+    let nextFocus;
     const oldBranch = branch.value;
     branch.replaceChildren(new Option('Choose a branch', ''));
     for (const name of snapshot?.branches ?? []) branch.append(new Option(name, name));
@@ -83,9 +87,12 @@ export function createChangeLensPanel({ api, mutate, errorText, getDirty }) {
         button.type = 'button';
         button.textContent = row.path + ' · ' + mark;
         button.className = 'diagnostic-link';
+        button.dataset.changeSide = side;
+        button.dataset.changePath = row.path;
         button.disabled = row.conflict;
         button.setAttribute('aria-pressed', String(selected?.file === row.path && selected.side === side));
         button.onclick = () => void showDiff(row, side);
+        if (side === focusedSide && row.path === focusedPath) nextFocus = button;
         li.append(button);
         list.append(li);
       }
@@ -101,9 +108,35 @@ export function createChangeLensPanel({ api, mutate, errorText, getDirty }) {
     status.title = snapshot?.root ?? '';
     title.textContent = review ? `Commit review · ${review.branch} · ${review.files.length} staged path(s)` : selected ?
       (selected.side === 'staged' ? 'Staged · ' : 'Working · ') + selected.file : 'Select a changed file to review its diff.';
-    diff.textContent = review ? review.files.join('\n') + '\n\n' + review.text : patch ?
-      (patch.text || 'Git returned no textual diff.') + (patch.clipped ? '\n\nDiff clipped at the review limit.' : '') : '';
+    renderDiff();
     sync();
+    nextFocus?.focus({ preventScroll: true });
+  }
+
+  function renderDiff() {
+    const prefix = review ? review.files.join('\n') + '\n\n' : '';
+    const suffix = patch?.clipped ? '\n\nDiff clipped at the review limit.' : '';
+    const text = review?.text ?? (patch ? patch.text || 'Git returned no textual diff.' : '');
+    const lines = text.split('\n');
+    if (lines.length > 2000) {
+      diff.textContent = prefix + text + suffix;
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    if (prefix) fragment.append(prefix);
+    for (const [index, line] of lines.entries()) {
+      const type = line.startsWith('@@') ? 'range' :
+        line.startsWith('+') ? 'add' : line.startsWith('-') ? 'remove' : '';
+      if (type) {
+        const marked = document.createElement('span');
+        marked.className = 'git-diff-' + type;
+        marked.textContent = line;
+        fragment.append(marked);
+      } else if (line) fragment.append(line);
+      if (index < lines.length - 1) fragment.append('\n');
+    }
+    if (suffix) fragment.append(suffix);
+    diff.replaceChildren(fragment);
   }
 
   async function load() {

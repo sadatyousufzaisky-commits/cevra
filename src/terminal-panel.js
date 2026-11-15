@@ -4,7 +4,7 @@ import '@xterm/xterm/css/xterm.css';
 
 const maxInput = 16 * 1024;
 
-export function createTerminalPanel({ api, errorText }) {
+export function createTerminalPanel({ api, errorText, onActivity }) {
   const byId = id => document.getElementById(id);
   const panel = byId('terminal-panel');
   const tabs = byId('terminal-tabs');
@@ -15,6 +15,7 @@ export function createTerminalPanel({ api, errorText }) {
   const paste = byId('terminal-paste');
   const close = byId('terminal-close');
   const status = byId('terminal-status');
+  const trust = byId('terminal-trust');
   const location = byId('terminal-root');
   const sessions = new Map();
   const encoder = new TextEncoder();
@@ -23,6 +24,7 @@ export function createTerminalPanel({ api, errorText }) {
   let opening = false;
   let changing = false;
   let number = 0;
+  let generation = 0;
   let fitFrame;
 
   function theme() {
@@ -53,6 +55,11 @@ export function createTerminalPanel({ api, errorText }) {
     close.disabled = !active || active.closing || changing;
     location.hidden = !active;
     location.textContent = location.title = active ? 'Started in ' + active.root : '';
+    onActivity([...sessions.values()].filter(session => !session.exit).length, changing);
+  }
+
+  function syncTrust() {
+    trust.textContent = !project?.terminalLimit ? '' : project.trusted ? 'Trusted workspace' : 'Permission required to open a shell';
   }
 
   function requestFit() {
@@ -210,15 +217,16 @@ export function createTerminalPanel({ api, errorText }) {
   create.onclick = async () => {
     if (create.disabled) return;
     const workspace = project;
+    const request = generation;
     opening = true;
     sync();
     try {
       const info = await api.terminalNew(workspace.id, profile.value, 80, 24);
-      if (project !== workspace) return;
+      if (request !== generation) return;
       if (info) attach(info, workspace.id);
       else showStatus('Terminal launch canceled.');
     } catch (error) {
-      if (project === workspace) showStatus(errorText(error));
+      if (request === generation) showStatus(errorText(error));
     } finally {
       opening = false;
       sync();
@@ -251,12 +259,23 @@ export function createTerminalPanel({ api, errorText }) {
     void action(pasteClipboard);
   };
 
+  function reset(next) {
+    generation++;
+    for (const session of sessions.values()) remove(session);
+    project = next;
+    number = 0;
+    select(undefined);
+    syncTrust();
+  }
+
   return {
-    reset(next) {
-      for (const session of sessions.values()) remove(session);
-      project = next;
-      number = 0;
-      select(undefined);
+    reset,
+    trustChanged(trusted) {
+      if (!trusted) {
+        const hadSessions = sessions.size > 0;
+        reset(project);
+        if (hadSessions) showStatus('Terminal sessions stopped after workspace trust was revoked.');
+      } else syncTrust();
     },
     setBusy(value) { changing = value; sync(); },
     show(visible, focus) {

@@ -23,15 +23,15 @@ function createTestWorkstream(workspace, startTests, history) {
       const after = event.stopped || isStopping() ? { files: new Map() } : await captureInputs(workspace);
       const stopped = Boolean(event.stopped || isStopping());
       const freshness = stopped ? 'unavailable' : inputFreshness(before, after);
-      const outcome = stopped ? 'cancelled' : event.code !== 0 || !event.counts ? 'failed' :
-        event.counts.tests === 0 ? 'empty' : 'passed';
+      const hasPasses = event.counts && event.counts.passed > (event.counts.cached ?? 0);
+      const outcome = stopped ? 'cancelled' : event.code !== 0 || !event.counts ? 'failed' : hasPasses ? 'passed' : 'empty';
       const evidence = {
         schemaVersion: 1, id, workstreamId, workspaceId: workspace.id, goal: label,
         revision: before.revision, fileCount: before.files.size, freshness, outcome, retry,
         exitCode: event.code, durationMs: event.elapsed,
       };
       observed.remember(evidence, before);
-      if (!retry) latestFull = { ...evidence, hasPasses: event.counts?.passed > 0 && event.counts.cached === 0 };
+      if (!retry) latestFull = { ...evidence, hasPasses: Boolean(hasPasses && event.counts.cached === 0) };
       history?.record(retention, evidence);
       publish({
         ...event, stopped, evidence,

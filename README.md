@@ -19,6 +19,7 @@ Choose **Open example** to try the built-in JavaScript project, or choose **Open
 - **Ctrl+S** saves the active file. The editor accepts UTF-8 text files up to 2 MiB and preserves a BOM and surviving line endings. Select the line-ending indicator to convert the document, or run **Review Unsaved Changes** from the Command Center to compare the buffer with its last verified disk revision.
 - **Ctrl+Shift+S** saves all open drafts. VOKRI Code reports where the save stopped if a file fails its revision check.
 - **F5** saves the active file and runs it from the project root. VOKRI Code supports JavaScript, TypeScript, and Python entry files. Other files on disk are read as saved.
+- **Execution activity** stays visible as you switch bottom-panel tools. Select the run result to return to its output or debugger, or select the shell count to return to the active terminal. [Continuum workflows](docs/phase-6/g6-continuum-workbench.md)
 - **Stop** cancels a run during preparation or execution. Its recent output remains visible in the run panel, with a notice when earlier output was truncated.
 - **Source location** takes you to the first project location VOKRI Code finds in a failed run's error output.
 
@@ -73,7 +74,7 @@ Failure Lens pauses on uncaught JavaScript exceptions and keeps their stack and 
 
 Choose **Terminal** in the bottom panel or press **Ctrl+Backtick**. Select **PowerShell** or **Command Prompt**, then choose **New terminal**. Each shell starts in the workspace folder and has its own environment and output. You can keep up to four sessions open and switch between them while commands run. The shell resizes with the panel. Use **Copy** and **Paste** or **Ctrl+Shift+C** and **Ctrl+Shift+V**.
 
-Opening a shell uses the same workspace trust prompt as running code. **Close terminal** ends its process tree. VOKRI Code asks before closing active terminals on a workspace switch and also closes them if the renderer crashes. Scrollback holds up to 2,000 lines in memory per session. The built-in PowerShell profile starts without loading user profiles and disables PSReadLine history saves for the session. The terminal requires the Windows pseudoconsole API available from Windows 10 version 1809. Command Prompt starts in local folders. Use PowerShell for UNC paths. [Windows pseudoconsole sessions](https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session)
+Opening a shell uses the same workspace trust prompt as running code. **Close terminal** ends its process tree. VOKRI Code asks before closing active terminals on a workspace switch, and stops the terminals when workspace trust is revoked or the app crashes. Scrollback holds up to 2,000 lines in memory per session. The built-in PowerShell profile starts without loading user profiles and disables PSReadLine history saves for the session. The terminal requires the Windows pseudoconsole API available from Windows 10 version 1809. Command Prompt starts in local folders. Use PowerShell for UNC paths. [Windows pseudoconsole sessions](https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session)
 
 ## Run project tests
 

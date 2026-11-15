@@ -105,6 +105,14 @@ function sourceAnchor(workspace, location, before, after) {
   return null;
 }
 
+async function currentSourceAnchor(workspace, location, before) {
+  if (!location) return null;
+  const key = sourceFileKey(location.path);
+  if (!before.files.has(key)) return null;
+  const current = await readInputRevision(workspace, location.path).catch(() => null);
+  return sourceAnchor(workspace, location, before, { files: new Map([[key, current]]) });
+}
+
 function createRunEvidence(workspace) {
   let latest;
   return {
@@ -124,4 +132,4 @@ function createRunEvidence(workspace) {
   };
 }
 
-module.exports = { captureInputs, createRunEvidence, inputFreshness, revisionDigest, sourceAnchor };
+module.exports = { captureInputs, createRunEvidence, currentSourceAnchor, inputFreshness, revisionDigest, sourceAnchor };

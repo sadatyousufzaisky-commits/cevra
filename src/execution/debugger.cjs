@@ -1,11 +1,11 @@
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { stripVTControlCharacters } = require('node:util');
-const { captureInputs, sourceAnchor } = require('../continuum/revisions.cjs');
+const { captureInputs, currentSourceAnchor } = require('../continuum/revisions.cjs');
 const { nodeFile } = require('../runtime-kind.cjs');
 const { sourceFileKey } = require('../source-files.cjs');
 const { projectLocation, sourceLocation } = require('../source-location.cjs');
-const { inputStamp, readInputRevision, verifyRevision, workspacePath } = require('../workspace.cjs');
+const { inputStamp, verifyRevision, workspacePath } = require('../workspace.cjs');
 const { connectInspector } = require('./inspector-client.cjs');
 const { startProcess } = require('./process-host.cjs');
 
@@ -199,19 +199,20 @@ async function startDebugger(workspace, relative, revision, requested, publish, 
     clearTimeout(timeout);
     client?.close();
     const { stderr, ...exit } = event;
-    const stopped = isStopping() || (exit.stopped && !failure);
+    let stopped = isStopping() || (exit.stopped && !failure);
+    let target;
     let location;
     let summary;
     if (!stopped && exit.code !== 0) {
       const detail = stripVTControlCharacters(stderr);
-      const target = sourceLocation(workspace.root, detail);
+      target = sourceLocation(workspace.root, detail);
       summary = /^[A-Za-z]*Error(?: \[[^\]]+\])?: [^\r\n]+/m.exec(detail)?.[0];
-      if (target) {
-        const current = await readInputRevision(workspace, target.path).catch(() => null);
-        if (current) location = sourceAnchor(workspace, target, before, { files: new Map([[sourceFileKey(target.path), current]]) });
-      }
+      location = await currentSourceAnchor(workspace, target, before);
+      stopped = isStopping();
     }
-    publish({ ...exit, code: failure ? null : exit.code, stopped, location, summary, error: failure || exit.error });
+    publish({ ...exit, code: failure ? null : exit.code, stopped, location: stopped ? undefined : location,
+      unverifiedLocation: stopped || location ? undefined : target ?? undefined,
+      summary: stopped ? undefined : summary, error: failure || exit.error });
   }
 
   const processRun = startProcess(workspace.root, ['--inspect-brk=127.0.0.1:0', file], event => {

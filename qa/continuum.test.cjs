@@ -130,6 +130,7 @@ function verifyContinuum(extensionMode) {
       await page.locator('#recipe-preview').getByText('Full JavaScript test suite', { exact: true }).waitFor();
       await run.click();
       await state.getByText('Recipe failed', { exact: true }).waitFor();
+      assert.equal(await state.getAttribute('data-state'), 'error');
       await testEvidence.getByText(/^Workspace inputs observed/).waitFor();
       revisionA = await titleRevision(testEvidence);
       assert.match(revisionA, /^[a-f0-9]{64}$/);
@@ -154,11 +155,13 @@ function verifyContinuum(extensionMode) {
       await debugStatus.getByText('Paused · Entry', { exact: true }).waitFor();
       await page.keyboard.press('F5');
       await debugStatus.getByText('Paused · Breakpoint', { exact: true }).waitFor();
+      await state.getByText('Paused · Breakpoint', { exact: true }).waitFor();
       const variables = page.locator('#debug-variables');
       await variables.getByText('total', { exact: true }).waitFor();
       await variables.getByText('80', { exact: true }).waitFor();
       await button(failureLens, 'Stop debugging').click();
       await debugStatus.getByText('Debug session stopped', { exact: true }).waitFor();
+      assert.equal(await state.getAttribute('data-state'), 'interrupted');
     });
 
     await measure('Fix source and observe historical evidence', async () => {
