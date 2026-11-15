@@ -62,13 +62,15 @@ test('the public identity and Windows icon directory match the brand contract', 
 test('current UI keeps the old name only in allowlisted compatibility strings', async () => {
   const source = path.resolve(__dirname, '../src');
   const compatibility = /\bcevra(?:\/Intelligence\/v1\/|[-._:]|\/source)|['"](?:\/)?cevra['"]|(?:window|engines)\.cevra\b|\.cevra\/ai-instructions\.md/gi;
+  const catalogTransport = 'https://raw.githubusercontent.com/sadatyousufzaisky-commits/cevra/refs/heads/cevra/extension-catalog/v1/';
   const entries = await fs.readdir(source, { recursive: true, withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isFile() || !/\.(?:cjs|js|html|css|cs)$/.test(entry.name)) continue;
     const filename = path.join(entry.parentPath, entry.name);
     const text = await fs.readFile(filename, 'utf8');
     if (entry.name === 'profile-location.cjs') continue;
-    assert.ok(!/\bCEVRA\b/i.test(text.replace(compatibility, '')), path.relative(source, filename));
+    const checked = entry.name === 'online-catalog.cjs' ? text.replace(catalogTransport, '') : text;
+    assert.ok(!/\bCEVRA\b/i.test(checked.replace(compatibility, '')), path.relative(source, filename));
   }
   const examples = path.resolve(__dirname, '../examples');
   for (const name of ['hello.js', 'extensions/starter-tools/extension.json']) {
