@@ -192,17 +192,28 @@
       "dependsOn": [
         "G1"
       ],
-      "commit": null,
+      "commit": "43422d731bb6a521b69083ee5110cbf730d22fa3",
       "evidence": [
         "g4-workspace-shell.md",
         "evidence/g4/",
         "../../qa/workspace-shell.test.cjs"
       ],
-      "ci": null,
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43689226530",
       "ownerSignoff": null,
       "openBlockers": [
         "Record independent usability observation and a live screen-reader walkthrough of the Electron workbench."
-      ]
+      ],
+      "verification": {
+        "verifiedAt": "2026-11-15",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "corePassed": 169,
+        "desktopPassed": 92,
+        "optionalNativePreviewSkipped": 1,
+        "hostedWindowsReliability": "passed on Windows Server 2025",
+        "keyboardAndPointerTabReorder": "passed",
+        "layoutChecks": "Iris Ink dark and light, compact 740 × 560, 200% Electron zoom, and emulated forced colors",
+        "workspaceFaultReplay": "Draft survived a canceled switch, a kept-draft switch, and a replaced recent folder"
+      }
     },
     {
       "id": "G5",

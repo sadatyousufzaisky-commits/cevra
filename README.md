@@ -15,6 +15,7 @@ npm start
 
 Choose **Open example** to try the built-in JavaScript project, or choose **Open folder** to browse an existing project. The example includes a commented-out error you can enable to try source navigation.
 
+- **Ctrl+P** opens the Command Center for files, commands, and recent projects. **Ctrl+B** and **Ctrl+J** toggle the Explorer and bottom panel. [Workspace and keyboard guide](docs/phase-6/g4-workspace-shell.md)
 - **Ctrl+S** saves the active file. The editor accepts UTF-8 text files up to 2 MiB.
 - **Ctrl+Shift+S** saves all open drafts. VOKRI Code reports where the save stopped if a file fails its revision check.
 - **F5** saves the active file and runs it from the project root. VOKRI Code supports JavaScript, TypeScript, and Python entry files. Other files on disk are read as saved.

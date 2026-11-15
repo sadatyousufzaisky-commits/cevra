@@ -48,6 +48,8 @@ Use the Command Center for **Open recent project**, **Reveal active file in Expl
 
 `npm run test:desktop` runs the Windows Electron journeys for first-run editing and error navigation, compact and restored layouts, trust updates, and failed workspace switching with drafts intact. The keyboard journey checks the Command Center's accessibility tree, including the expanded input and selected result. The compact checks use an actual 740 × 560 window and 200% Electron zoom. High contrast uses Chromium's forced-colors emulation.
 
+On `43422d7`, the local Windows run passed 169 core and 92 desktop tests. A separate pointer-drag check passed for file tab order. The Windows Server 2025 reliability workflow passed, including credential separation, extension isolation, and the Intelligence benchmark. The native preview checks were skipped. [Windows reliability run](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43689226530)
+
 For a focused run, use `node --test --test-concurrency=1 qa/workspace-shell.test.cjs` after `npm run build`. Set `VOKRI_G4_EVIDENCE` to an existing output directory for screenshots. To record the journey, install Playwright's FFmpeg with `npx playwright install ffmpeg` and set `VOKRI_G4_RECORD=1` for that run.
 
 The recording and automated journeys cover the first-use and experienced workflows on Windows. Independent usability observation and live screen-reader walkthroughs remain to be recorded.
