@@ -94,11 +94,27 @@ function spacingEdits(source, options) {
   let previous;
   let length = text.length;
 
-  function change(from, to, insert) {
+  function edit(from, to, insert) {
     if (text.slice(from, to) === insert) return;
     length += insert.length - (to - from);
     if (length > maxFileBytes || edits.length >= 100_000) throw new Error('The formatted document exceeds the size limit.');
     edits.push({ from, to, insert });
+  }
+
+  function change(from, to, insert) {
+    const before = text.slice(from, to);
+    if (before === insert) return;
+    let left = 0;
+    let right = 0;
+    for (;;) {
+      const fromBreak = before.indexOf('\n', left);
+      const toBreak = insert.indexOf('\n', right);
+      if (fromBreak === -1 || toBreak === -1) break;
+      edit(from + left, from + fromBreak, insert.slice(right, toBreak));
+      left = fromBreak + 1;
+      right = toBreak + 1;
+    }
+    edit(from + left, to, insert.slice(right));
   }
 
   for (const token of tokens) {

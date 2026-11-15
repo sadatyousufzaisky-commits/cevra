@@ -190,10 +190,10 @@ export function createCommandCenter({ api, registry, workspace, recent, openFile
   };
 
   return {
-    open(next = 'files') {
+    open(next = 'files', query = '') {
       if (document.querySelector('dialog[open]')) return;
       dialog.showModal();
-      setMode(next);
+      setMode(next, query);
     },
     close,
   };

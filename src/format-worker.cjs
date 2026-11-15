@@ -7,7 +7,8 @@ parentPort.on('message', async ({ id, workspace, file, text, eol, bom, extension
     const options = await readFormatOptions(workspace, file);
     const ending = lineEndings[options.lineEnding] ?? eol;
     const changes = formatSource(extension, text, options, ending, bom);
-    parentPort.postMessage({ id, result: { changes, eol: ending } });
+    const normalizeEndings = options.lineEnding !== 'preserve';
+    parentPort.postMessage({ id, result: { changes, eol: ending, ...(normalizeEndings ? { normalizeEndings } : {}) } });
   } catch (error) {
     const detail = error.message.split(/\r?\n/, 1)[0].slice(0, 280);
     parentPort.postMessage({ id, error: 'Could not format this document. ' + detail });

@@ -208,7 +208,7 @@ function validateText(text) {
   if (typeof text !== 'string' || Buffer.byteLength(text) > maxFileBytes) {
     throw new Error('The editor supports files up to 2 MB.');
   }
-  if (text.includes('\0')) throw new Error('The editor supports UTF-8 text files.');
+  if (text.includes('\0') || !text.isWellFormed()) throw new Error('The editor supports UTF-8 text files.');
 }
 
 async function saveSource(workspace, relative, text, revision) {

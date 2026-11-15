@@ -41,6 +41,72 @@ async function fixture(t) {
   return { folder, root, workspace: await createWorkspace(root) };
 }
 
+test('mixed line endings round-trip through seeded edits and CodeMirror undo and redo', async () => {
+  const { EditorState, Text, Transaction } = await import('@codemirror/state');
+  const { history, isolateHistory, undo, redo, undoDepth } = await import('@codemirror/commands');
+  const { changeLineEnding, formatLineEndings, lineEndings, lineEndingHistory, parseLineEndings } =
+    await import('../src/line-endings.mjs');
+  const { normalizeSource } = require('../src/source-text.cjs');
+  const endings = ['\r\n', '\n', '\r'];
+  let seed = 0xe017ead;
+  const next = limit => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) % limit;
+
+  function bytes(units) {
+    let previous;
+    return units.map(unit => {
+      const chunk = previous === '\r' && unit === '\n' ? '\r\n' : unit;
+      previous = chunk;
+      return chunk;
+    }).join('');
+  }
+
+  for (let sample = 0; sample < 32; sample++) {
+    const source = '\uFEFF' + Array.from({ length: 14 }, (_, index) => ['café', 'سلام', '東'][index % 3] + endings[next(3)]).join('') + '👩‍💻';
+    const layout = parseLineEndings(source);
+    let state = EditorState.create({ doc: normalizeSource(source), extensions: [lineEndings.init(() => layout), lineEndingHistory, history()] });
+    const snapshot = () => formatLineEndings(state.doc, state.field(lineEndings));
+    const dispatch = transaction => { state = transaction.state; };
+    let model = source.slice(1).match(/\r\n|[\s\S]/g);
+    assert.equal(snapshot(), source.slice(1));
+    const steps = [snapshot()];
+    for (let index = 0; index < 14; index++) {
+      const from = next(model.length + 1);
+      const to = Math.min(model.length, from + 1 + next(7));
+      const insert = ['Ω', '\n⏎', from === to ? 'u' : '', '東\n'][next(4)];
+      model.splice(from, to - from, ...insert.split('').map(unit => unit === '\n' ? layout.preferred : unit));
+      dispatch(state.update({ changes: { from, to, insert }, annotations: isolateHistory.of('full') }));
+      assert.equal(snapshot(), bytes(model), `sample ${sample}, edit ${index}`);
+      assert.equal(normalizeSource(snapshot()), state.doc.toString());
+      steps.push(snapshot());
+    }
+    dispatch(state.update({ effects: changeLineEnding.of('\n'), annotations: isolateHistory.of('full') }));
+    steps.push(snapshot());
+    assert.equal(snapshot(), state.doc.toString());
+    for (const expected of steps.slice(0, -1).reverse()) {
+      assert.ok(undo({ state, dispatch }));
+      assert.equal(snapshot(), expected);
+    }
+    for (const expected of steps.slice(1)) {
+      assert.ok(redo({ state, dispatch }));
+      assert.equal(snapshot(), expected);
+    }
+  }
+
+  const ambiguous = EditorState.create({ doc: Text.of(['a', 'b', 'c', 'd']),
+    extensions: lineEndings.init(() => parseLineEndings('a\rb\nc\r\nd')) });
+  const joined = ambiguous.update({ changes: { from: 2, to: 3 } }).state;
+  assert.equal(formatLineEndings(joined.doc, joined.field(lineEndings)), 'a\r\r\nc\r\nd');
+
+  const grouped = 'a\rx\nb\r\nend';
+  let state = EditorState.create({ doc: normalizeSource(grouped),
+    extensions: [lineEndings.init(() => parseLineEndings(grouped)), lineEndingHistory, history()] });
+  state = state.update({ changes: { from: 2, to: 4 }, userEvent: 'delete.backward', annotations: Transaction.time.of(1000) }).state;
+  state = state.update({ changes: { from: 1, to: 2 }, userEvent: 'delete.backward', annotations: Transaction.time.of(1010) }).state;
+  assert.equal(undoDepth(state), 1);
+  assert.ok(undo({ state, dispatch: transaction => { state = transaction.state; } }));
+  assert.equal(formatLineEndings(state.doc, state.field(lineEndings)), grouped);
+});
+
 test('workspace filename search ranks names and paths, skips linked or dependency folders and can be canceled', async t => {
   const { folder, root, workspace } = await fixture(t);
   const outside = path.join(folder, 'outside');
@@ -925,6 +991,8 @@ test('rejects directories, invalid UTF-8, binary text, and oversized files witho
   await assert.rejects(readSource(workspace, 'large.txt'), /2 MB/);
   const { revision } = await readSource(workspace, 'normal.txt');
   await assert.rejects(saveSource(workspace, 'normal.txt', '\0', revision), /UTF-8/);
+  await assert.rejects(saveSource(workspace, 'normal.txt', '\uD800', revision), /UTF-8/);
+  await assert.rejects(saveRecoveryCopy(workspace, 'normal.txt', '\uDC00'), /UTF-8/);
   await assert.rejects(saveSource(workspace, 'normal.txt', 'a'.repeat(2 * 1024 * 1024 + 1), revision), /2 MB/);
   assert.equal(await fs.readFile(path.join(root, 'normal.txt'), 'utf8'), 'original');
 });

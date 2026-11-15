@@ -36,7 +36,8 @@ import { createCommandCenter, createCommandRegistry } from './workbench-commands
 import { sourceLanguage } from './source-language.cjs';
 import { runtimeKind } from './runtime-kind.cjs';
 import { normalizeSource } from './source-text.cjs';
-import { changeLineEnding, detectLineEnding, lineEnding, lineEndingHistory } from './line-endings.js';
+import { changeLineEnding, detectLineEnding, formatLineEndings, lineEndings, lineEndingHistory,
+  parseLineEndings, sameLineEndings } from './line-endings.mjs';
 import { intelligenceSuggestion, showIntelligenceSuggestion } from './intelligence/inline-suggestion.js';
 
 const api = window.cevra;
@@ -79,6 +80,8 @@ const testButton = byId('run-tests');
 const retryButton = byId('rerun-failures');
 const stopButton = byId('stop-run');
 const diagnosticButton = byId('jump-to-error');
+const lineEndingButton = byId('line-ending');
+const lineEndingNames = { '\n': 'LF', '\r\n': 'CRLF', '\r': 'CR' };
 const failureList = byId('test-failures');
 const searchToggle = byId('search-toggle');
 const backButton = byId('nav-back');
@@ -236,6 +239,7 @@ function syncCommands() {
   inspectButton.disabled = definitionButton.disabled = findReferencesButton.disabled = !active?.language || changingProject;
   renameButton.disabled = !active?.language || changingProject || Boolean(run || saving || discarding);
   settingsButton.disabled = Boolean(changingProject || run || saving || discarding);
+  lineEndingButton.disabled = !active || Boolean(changingProject || active.saving || active.discarding || active.formatting);
   byId('workspace-trust-state').disabled = settingsButton.disabled;
   byId('reveal-file').disabled = !active || changingProject;
   symbolButton.disabled = !project || changingProject;
@@ -255,15 +259,20 @@ function syncCursor() {
   byId('intelligence-attach-selection').disabled = changingProject || !active || active.state.selection.main.empty;
   if (!active) {
     byId('language').textContent = '';
-    byId('line-ending').textContent = '';
+    lineEndingButton.hidden = true;
     byId('cursor').textContent = '';
     return;
   }
   const position = view.state.selection.main.head;
   const line = view.state.doc.lineAt(position);
   byId('language').textContent = active.language?.name ?? (runtimeKind(active.path) === 'python' ? 'Python' : 'Plain text');
-  const ending = view.state.field(lineEnding);
-  byId('line-ending').textContent = ending === '\r\n' ? 'CRLF' : ending === '\r' ? 'CR' : 'LF';
+  const { preferred, exceptions } = view.state.field(lineEndings);
+  const ending = lineEndingNames[preferred];
+  lineEndingButton.hidden = false;
+  lineEndingButton.textContent = exceptions.size ? 'Mixed EOL' : ending;
+  lineEndingButton.title = exceptions.size ? 'Mixed line endings. New lines use ' + ending + '. Change line endings.' :
+    'Change line endings. Current format ' + ending + '.';
+  lineEndingButton.setAttribute('aria-label', lineEndingButton.title);
   byId('cursor').textContent = `Ln ${line.number}, Col ${position - line.from + 1}`;
 }
 
@@ -288,12 +297,12 @@ function syncDraftStatus() {
 }
 
 function serialize(tab, state = tab.state) {
-  return tab.bom + state.doc.toString().replaceAll('\n', state.field(lineEnding));
+  return tab.bom + formatLineEndings(state.doc, state.field(lineEndings));
 }
 
 function isDirty(tab, state) {
-  return !tab.savedDoc || !state.doc.eq(tab.savedDoc) ||
-    (state.doc.lines > 1 && state.field(lineEnding) !== tab.savedEol);
+  return !tab.savedDoc || tab.bom !== tab.savedBom || !state.doc.eq(tab.savedDoc) ||
+    !sameLineEndings(state.doc, state.field(lineEndings), tab.savedEndings);
 }
 
 function queueDraft(tab) {
@@ -321,14 +330,14 @@ function queueDraft(tab) {
 
 function updateDocument(tab, before, state, changes, docChanged) {
   tab.state = state;
-  const endingChanged = before.field(lineEnding, false) !== state.field(lineEnding);
+  const endingChanged = before.field(lineEndings) !== state.field(lineEndings);
   if (docChanged) {
     tab.syntaxIssues = tab.typeIssues = tab.extensionIssues = undefined;
-    tab.version++;
     navigation.map(tab.id, changes, state.doc);
     failureLens.mapBreakpoints(tab.path, before.doc, state.doc, changes);
   }
   if (docChanged || endingChanged) {
+    tab.version++;
     api.extensionDocumentChanged(tab.projectId, tab.path);
     testEvidence.changed();
     const dirty = isDirty(tab, state);
@@ -360,7 +369,7 @@ function editorState(tab, text, ending) {
     doc: text,
     extensions: [
       basicSetup,
-      lineEnding.init(() => ending),
+      lineEndings.init(() => ending),
       lineEndingHistory,
       intelligenceSuggestion,
       editorTheme,
@@ -703,10 +712,11 @@ function createTab(path, text, revision) {
     language: sourceLanguage(path),
     revision,
     bom: text.startsWith('\uFEFF') ? '\uFEFF' : '',
-    savedEol: detectLineEnding(text),
+    savedEndings: parseLineEndings(text),
     dirty: false,
   };
-  tab.state = editorState(tab, normalizeSource(text), tab.savedEol);
+  tab.savedBom = tab.bom;
+  tab.state = editorState(tab, normalizeSource(text), tab.savedEndings);
   tab.savedDoc = tab.state.doc;
   documents.set(path, tab);
   problemsPanel.track(tab);
@@ -906,7 +916,8 @@ async function refreshRecentProjects() {
 
 function setDiskBaseline(tab, disk) {
   tab.savedDoc = disk ? Text.of(normalizeSource(disk.text).split('\n')) : null;
-  tab.savedEol = disk ? detectLineEnding(disk.text) : undefined;
+  tab.savedEndings = disk ? parseLineEndings(disk.text) : undefined;
+  tab.savedBom = disk?.text.startsWith('\uFEFF') ? '\uFEFF' : '';
   tab.diskRevision = disk?.revision;
 }
 
@@ -917,9 +928,9 @@ async function saveFile(tab) {
   const task = async () => {
     if (tab.language && editorSettings?.formatOnSave) {
       const { doc } = tab.state;
-      const ending = tab.state.field(lineEnding);
-      const result = await api.format(tab.projectId, tab.path, doc.toString(), ending, Boolean(tab.bom));
-      if (tab.state.doc !== doc || tab.state.field(lineEnding) !== ending) {
+      const ending = tab.state.field(lineEndings);
+      const result = await api.format(tab.projectId, tab.path, doc.toString(), ending.preferred, Boolean(tab.bom));
+      if (tab.state.doc !== doc || tab.state.field(lineEndings) !== ending) {
         throw new Error('The document changed while preparing the save. Save again to include the latest edits.');
       }
       applyFormatResult(tab, ending, result);
@@ -935,7 +946,8 @@ async function saveFile(tab) {
     tab.revision = revision;
     api.extensionDocumentChanged(tab.projectId, tab.path);
     tab.savedDoc = before.doc;
-    tab.savedEol = before.field(lineEnding);
+    tab.savedEndings = before.field(lineEndings);
+    tab.savedBom = tab.bom;
     tab.dirty = isDirty(tab, tab.state);
     queueDraft(tab);
     searchPanel.changed();
@@ -987,7 +999,7 @@ async function saveRecoveredCopy(tab) {
     const name = await tab.saving;
     project.files = await api.list(project.id, '');
     renderTree();
-    if (before.doc.eq(tab.state.doc) && before.field(lineEnding) === tab.state.field(lineEnding)) {
+    if (before.doc.eq(tab.state.doc) && sameLineEndings(before.doc, before.field(lineEndings), tab.state.field(lineEndings))) {
       editor.inert = true;
       try {
         await removeTab(tab);
@@ -1007,25 +1019,24 @@ async function formatDocument() {
   if (formatButton.disabled) return;
   const tab = active;
   const version = tab.version;
-  const ending = tab.state.field(lineEnding);
+  const ending = tab.state.field(lineEndings);
   const stillEditing = () => active === tab && !changingProject && !tab.discarding &&
     !document.body.inert && !editor.inert && documents.get(tab.path) === tab;
-  const stillCurrent = () => stillEditing() && tab.version === version && tab.state.field(lineEnding) === ending;
+  const stillCurrent = () => stillEditing() && tab.version === version;
   if (document.activeElement === formatButton) view.focus();
   tab.formatting = true;
   syncCommands();
   notify('Formatting ' + tab.path + '…');
   try {
-    const result = await api.format(tab.projectId, tab.path, tab.state.doc.toString(), ending, Boolean(tab.bom));
+    const result = await api.format(tab.projectId, tab.path, tab.state.doc.toString(), ending.preferred, Boolean(tab.bom));
     if (!stillCurrent()) {
       if (stillEditing()) notify('Formatting skipped because the document changed.');
       return;
     }
-    if (!result.changes.length && result.eol === ending) {
+    if (!applyFormatResult(tab, ending, result)) {
       notify('No formatting changes for ' + tab.path);
       return;
     }
-    applyFormatResult(tab, ending, result);
     notify('Formatted ' + tab.path);
   } catch (error) {
     if (stillCurrent()) report(error);
@@ -1037,18 +1048,28 @@ async function formatDocument() {
 }
 
 function applyFormatResult(tab, ending, result) {
-  if (!result.changes.length && result.eol === ending) return;
+  const convert = result.eol !== ending.preferred || (result.normalizeEndings && ending.exceptions.size > 0);
+  if (!result.changes.length && !convert) return false;
   const changes = tab.state.changes(result.changes);
   const transaction = tab.state.update({
     changes,
     selection: tab.state.selection.map(changes, 1),
-    effects: result.eol === ending ? [] : [changeLineEnding.of(result.eol)],
+    effects: convert ? [changeLineEnding.of(result.eol)] : [],
     annotations: isolateHistory.of('full'),
     scrollIntoView: tab === active && view.hasFocus,
     userEvent: 'input.format',
   });
   if (tab === active) view.dispatch(transaction);
   else updateDocument(tab, transaction.startState, transaction.state, transaction.changes, transaction.docChanged);
+  return true;
+}
+
+function convertLineEndings(ending) {
+  const { preferred, exceptions } = view.state.field(lineEndings);
+  if (preferred === ending && !exceptions.size) return;
+  view.dispatch({ effects: changeLineEnding.of(ending), annotations: isolateHistory.of('full') });
+  view.focus();
+  notify('Using ' + lineEndingNames[ending] + ' line endings.');
 }
 
 function setRunState(text, state = '') {
@@ -1654,19 +1675,19 @@ const editPreview = createEditPreview({
       const tab = findDocument(file.path);
       const doc = tab?.state.doc;
       const version = tab?.version;
-      const ending = tab?.state.field(lineEnding);
+      const ending = tab?.state.field(lineEndings);
       const path = tab?.path ?? file.path;
       const disk = await api.read(workspace.id, path);
       bytes += encoder.encode(disk.text).byteLength;
       if (bytes > 16 * 1024 * 1024) throw new Error('Narrow the preview to at most 16 MiB of source.');
       if (project !== workspace || findDocument(path) !== tab || tab?.version !== version ||
-          tab?.state.field(lineEnding) !== ending || tab?.recoveryConflict || tab?.saving || tab?.discarding ||
+          tab?.recoveryConflict || tab?.saving || tab?.discarding ||
           (tab && tab.revision !== disk.revision) ||
           (file.documentId === undefined ? file.revision !== disk.revision || tab?.dirty :
             tab?.id !== file.documentId || version !== file.version)) throw staleEdits(path);
       const original = doc ?? Text.of(normalizeSource(disk.text).split('\n'));
-      const eol = ending ?? detectLineEnding(disk.text);
-      if (new Set(disk.text.match(/\r\n|\r|\n/g)).size > 1) {
+      const eol = ending?.preferred ?? detectLineEnding(disk.text);
+      if (ending?.exceptions.size || new Set(disk.text.match(/\r\n|\r|\n/g)).size > 1) {
         throw new Error('Normalize mixed line endings before applying a batch to ' + path);
       }
       const edits = file.matches.map(match => {
@@ -1707,7 +1728,7 @@ async function stageEdits({ workspace, changes, authority }, verify) {
   const staged = changes.map(file => {
     const { path, tab, disk, doc, eol, version, edits } = file;
     if (findDocument(path) !== tab || tab?.version !== version ||
-        (tab && (tab.state.doc !== doc || tab.state.field(lineEnding) !== eol || tab.revision !== disk.revision ||
+        (tab && (tab.state.doc !== doc || tab.revision !== disk.revision ||
           tab.recoveryConflict || tab.saving || tab.discarding || tab.formatting))) throw staleEdits(path);
     const state = tab?.state ?? EditorState.create({ doc });
     const modified = state.changes(edits).apply(doc);
@@ -1741,7 +1762,7 @@ api.onIntelligenceEditorSnapshot(request => editorSnapshot(request, true));
 api.onIntelligencePatchSnapshot(request => {
   const snapshot = editorSnapshot(request);
   const tab = project?.id === request.workspaceId ? findDocument(request.path) : undefined;
-  return snapshot ? { ...snapshot, lineEnding: tab.state.field(lineEnding) } :
+  return snapshot ? { ...snapshot, lineEnding: tab.state.field(lineEndings).preferred } :
     tab ? { blocked: true } : null;
 });
 
@@ -1893,6 +1914,10 @@ const commands = createCommandRegistry([
   { id: 'search', title: 'Search project', detail: 'Find text across files and drafts', icon: 'search', key: 'Ctrl+Shift+F',
     enabled: canUse(searchToggle), run: () => { layout.showSidebar(); searchPanel.show(); } },
   { id: 'format', title: 'Format document', icon: 'format', key: 'Alt+Shift+F', enabled: canUse(formatButton), run: formatDocument },
+  { id: 'line-endings', title: 'Change line endings', hidden: true, enabled: canUse(lineEndingButton),
+    run: () => commandCenter.open('commands', 'Convert line endings') },
+  ...Object.entries(lineEndingNames).map(([ending, name]) => ({ id: 'line-ending-' + name, title: 'Convert line endings to ' + name,
+    enabled: canUse(lineEndingButton), run: () => convertLineEndings(ending) })),
   { id: 'definition', title: 'Go to Definition', key: 'F12', context: editorFocused, enabled: canUse(definitionButton),
     run: () => { view.focus(); return definitionNavigation.go(view); } },
   { id: 'references', title: 'Find References', key: 'Shift+F12', context: editorFocused, enabled: canUse(findReferencesButton),
@@ -1938,7 +1963,7 @@ for (const [pane, button] of Object.entries(dockButtons)) commands.bind(button, 
 for (const [button, command] of [
   [byId('open-commands'), 'find'], [backButton, 'back'], [forwardButton, 'forward'],
   [openButton, 'open'], [welcomeOpen, 'open'], [exampleButton, 'example'], [saveButton, 'save'],
-  [recoveryButton, 'recover'], [formatButton, 'format'], [inspectButton, 'inspect'], [definitionButton, 'definition'],
+  [recoveryButton, 'recover'], [formatButton, 'format'], [lineEndingButton, 'line-endings'], [inspectButton, 'inspect'], [definitionButton, 'definition'],
   [symbolButton, 'symbol'], [findReferencesButton, 'references'], [renameButton, 'rename'], [settingsButton, 'settings'],
   [byId('workspace-trust-state'), 'settings'], [byId('reveal-file'), 'reveal'], [runButton, 'run'], [testButton, 'run-tests'],
   [retryButton, 'retry'], [stopButton, 'stop'], [diagnosticButton, 'error'], [byId('intelligence-mock-open'), 'intelligence'],

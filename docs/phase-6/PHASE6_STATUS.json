@@ -223,15 +223,23 @@
     {
       "id": "G5",
       "name": "Professional editor experience",
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "G4"
       ],
       "commit": null,
-      "evidence": [],
+      "evidence": [
+        "g5-editor-fidelity.md",
+        "../../qa/core.test.cjs",
+        "../../qa/workbench.test.cjs"
+      ],
       "ci": null,
       "ownerSignoff": null,
-      "openBlockers": []
+      "openBlockers": [
+        "Complete the Phase 2 editor workflow parity review.",
+        "Measure typing, scrolling, memory and undo on large-file and multi-tab workloads.",
+        "Verify live Windows IME and remaining editor input cases."
+      ]
     },
     {
       "id": "G6",

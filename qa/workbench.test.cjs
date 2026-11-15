@@ -196,6 +196,82 @@ test('saves a nested UTF-8 file with BOM and CRLF and preserves external changes
   assert.match(await editor.textContent(), /saved pending one/);
 });
 
+test('G5 mixed line endings and Unicode survive a Windows crash, save, undo and explicit conversion',
+  { timeout: 45_000, skip: process.platform !== 'win32' }, async t => {
+    const folder = 'source (QA)';
+    const name = 'café [#%].txt';
+    const relative = path.join(folder, name);
+    const original = '\uFEFFcafé\r\nplain line\rשלום 👩‍💻\nκόσμος\r\n';
+    const changed = original.replace('café', 'edited café');
+    let workbench = await openWorkbench(t, { [relative]: original });
+    await workbench.file(folder).click();
+    await workbench.open(name);
+    await workbench.page.locator('#line-ending').getByText('Mixed EOL', { exact: true }).waitFor();
+    await workbench.editor.press('Control+Home');
+    await workbench.page.keyboard.insertText('edited ');
+    await workbench.page.locator('#draft-status[data-state="saved"]').waitFor();
+    const diskPath = path.join(workbench.project, relative);
+    assert.deepEqual(await fs.readFile(diskPath), Buffer.from(original));
+
+    workbench = await workbench.restart({ crash: true });
+    const { page, editor } = workbench;
+    await workbench.selected(name).waitFor();
+    assert.match(await editor.textContent(), /edited café/);
+    const ending = page.locator('#line-ending');
+    assert.equal(await ending.textContent(), 'Mixed EOL');
+    await editor.press('Control+s');
+    await page.locator('#message').getByText('Saved ' + relative, { exact: true }).waitFor();
+    assert.deepEqual(await fs.readFile(diskPath), Buffer.from(changed));
+
+    await ending.press('Enter');
+    const chooser = page.getByRole('dialog', { name: 'Command center' });
+    await chooser.getByRole('option', { name: 'Convert line endings to LF', exact: true }).click();
+    await ending.getByText('LF', { exact: true }).waitFor();
+    await editor.press('Control+z');
+    await ending.getByText('Mixed EOL', { exact: true }).waitFor();
+    await page.locator('#draft-status[data-state="clear"]').waitFor({ state: 'attached' });
+    assert.deepEqual(await fs.readFile(diskPath), Buffer.from(changed));
+    await editor.press('Control+y');
+    await ending.getByText('LF', { exact: true }).waitFor();
+    await editor.press('Control+s');
+    await page.locator('#message').getByText('Saved ' + relative, { exact: true }).waitFor();
+    assert.deepEqual(await fs.readFile(diskPath), Buffer.from(changed.replace(/\r\n?/g, '\n')));
+  });
+
+test('G5 formatting preserves untouched separators and mixed drafts retain their bytes in a recovery copy',
+  { timeout: 35_000 }, async t => {
+    const name = 'mixed.cjs';
+    const original = '\uFEFFconst num=1;\r\nfunction summarize(){\r    return num;\n}\r\n';
+    const formatted = '\uFEFFconst num = 1;\r\nfunction summarize() {\r  return num;\n}\r\n';
+    const workbench = await openWorkbench(t, { [name]: original });
+    const { page, editor, project } = workbench;
+    const disk = path.join(project, name);
+    await workbench.open(name);
+    await editor.press('Shift+Alt+f');
+    await page.locator('#message').getByText('Formatted ' + name, { exact: true }).waitFor();
+    await editor.press('Control+s');
+    await page.locator('#message').getByText('Saved ' + name, { exact: true }).waitFor();
+    assert.deepEqual(await fs.readFile(disk), Buffer.from(formatted));
+
+    await fs.writeFile(path.join(project, '.cevra-format.json'), '{"lineEnding":"crlf"}');
+    await editor.press('Shift+Alt+f');
+    await page.locator('#line-ending').getByText('CRLF', { exact: true }).waitFor();
+    await editor.press('Control+z');
+    await page.locator('#line-ending').getByText('Mixed EOL', { exact: true }).waitFor();
+    await editor.press('Control+Home');
+    await page.keyboard.insertText('/* preserved */ ');
+    await page.locator('#draft-status[data-state="saved"]').waitFor();
+    await fs.writeFile(disk, 'external change\n');
+    await editor.press('Control+s');
+    await page.locator('#message').getByText(/This file changed on disk/).waitFor();
+    await page.getByRole('button', { name: 'Save recovery copy', exact: true }).click();
+    await page.locator('#message').getByText(/^Saved recovery copy/).waitFor();
+    const recovery = (await fs.readdir(project)).find(file => /^mixed \(recovered .*\)\.cjs$/.test(file));
+    assert.ok(recovery);
+    assert.deepEqual(await fs.readFile(path.join(project, recovery)), Buffer.from(formatted.replace('const', '/* preserved */ const')));
+    assert.equal(await fs.readFile(disk, 'utf8'), 'external change\n');
+  });
+
 test('saves before execution, runs from the project root, and stops a running script', async t => {
   const name = 'run (edited) & ready.cjs';
   const changed = 'console.log("saved before execution");\nconsole.log(process.cwd());\n';
