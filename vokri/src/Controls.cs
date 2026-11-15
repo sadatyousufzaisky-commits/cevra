@@ -51,6 +51,8 @@ namespace Vokri
         internal virtual void BeforeCreate() {}
         internal virtual void Created() {}
         internal virtual void Command(int code) {}
+        internal virtual IntPtr Notify(int code, IntPtr data) { return IntPtr.Zero; }
+        internal virtual void AppearanceChanged() {}
         internal void Detach() { Handle = IntPtr.Zero; }
         internal void ApplyFont() { Native.Send(Handle, Native.SetFont, Host.Font(Monospace), new IntPtr(1)); }
 
@@ -99,10 +101,45 @@ namespace Vokri
     public sealed class Button : Control
     {
         private string text;
-        public Button(string text, Size preferred) : base(preferred) { this.text = text ?? ""; }
+        private readonly bool? primary;
+        private readonly Native.SubclassProcedure subclass;
+        private bool hovered;
+        public Button(string text, Size preferred) : this(text, preferred, null) {}
+        public Button(string text, Size preferred, bool primary) : this(text, preferred, (bool?)primary) {}
+        private Button(string text, Size preferred, bool? primary) : base(preferred)
+        {
+            this.text = text ?? "";
+            this.primary = primary;
+            if (primary.HasValue) subclass = MouseMessages;
+        }
         internal override string ClassName { get { return "BUTTON"; } }
-        internal override uint Style { get { return Native.TabStop; } }
+        internal override uint Style { get { return Native.TabStop | (primary.HasValue ? 0x000bu : 0); } }
         internal override string Caption { get { return text; } }
+
+        internal override void Created()
+        {
+            if (subclass != null && !Native.SetWindowSubclass(Handle, subclass, UIntPtr.Zero, UIntPtr.Zero))
+                throw new InvalidOperationException("Could not register native button input.");
+        }
+
+        private IntPtr MouseMessages(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data)
+        {
+            if (message == 0x0200 && !hovered)
+            {
+                var tracking = new Native.MouseTracking {
+                    Size = (uint)Marshal.SizeOf(typeof(Native.MouseTracking)), Flags = 2, Window = window,
+                };
+                hovered = Native.TrackMouseEvent(ref tracking);
+                if (hovered) Native.InvalidateRect(window, IntPtr.Zero, false);
+            }
+            else if (message == 0x02a3 && hovered)
+            {
+                hovered = false;
+                Native.InvalidateRect(window, IntPtr.Zero, false);
+            }
+            else if (message == 0x0082) Native.RemoveWindowSubclass(window, subclass, id);
+            return Native.DefSubclassProc(window, message, wParam, lParam);
+        }
         public event Action Clicked;
         public string Text
         {
@@ -112,6 +149,37 @@ namespace Vokri
         internal override void Command(int code)
         {
             if (code == 0 && Enabled && Visible && Clicked != null) Clicked();
+        }
+
+        internal override void AppearanceChanged()
+        {
+            if (primary.HasValue) Native.InvalidateRect(Handle, IntPtr.Zero, false);
+        }
+
+        internal bool Draw(Native.DrawItemInfo item)
+        {
+            if (!primary.HasValue) return false;
+            var colors = Host.Colors;
+            bool pressed = (item.State & 1) != 0;
+            bool disabled = (item.State & 4) != 0;
+            bool emphasized = primary.Value && !disabled;
+            var fill = disabled ? colors.DisabledFill : emphasized ?
+                (pressed ? colors.PrimaryPressed : hovered ? colors.PrimaryHover : colors.Accent) :
+                pressed ? colors.Pressed : hovered ? colors.Hover : colors.Surface;
+            var ink = disabled ? colors.DisabledText : emphasized ? colors.AccentText : colors.Text;
+            var box = item.Bounds;
+            DrawingContext.FillPixels(item.Dc, box, colors.Background);
+            DrawingContext.RoundedPixels(item.Dc, box, Host.Scale(10), fill, emphasized ? fill : colors.Border);
+            if ((item.State & (0x10u | 0x200u)) == 0x10u)
+            {
+                int inset = Host.Scale(4);
+                var focus = new Native.Rectangle { Left = box.Left + inset, Top = box.Top + inset,
+                    Right = box.Right - inset, Bottom = box.Bottom - inset };
+                if (focus.Right > focus.Left && focus.Bottom > focus.Top)
+                    Native.DrawFocusRect(item.Dc, ref focus);
+            }
+            DrawingContext.TextPixels(item.Dc, Host.Font(false), text, box, ink, 0x8825);
+            return true;
         }
     }
 
@@ -162,7 +230,20 @@ namespace Vokri
             Native.Send(Handle, 0x0435, IntPtr.Zero, new IntPtr(Limit));
             Native.Send(Handle, 0x0445, IntPtr.Zero, new IntPtr(1)); // ENM_CHANGE
             ReadOnly = readOnly;
+            AppearanceChanged();
             if (initial.Length != 0) Text = initial;
+        }
+
+        internal override void AppearanceChanged()
+        {
+            var palette = Host.Colors;
+            Native.Send(Handle, 0x0443, IntPtr.Zero, new IntPtr(palette.Background.Value));
+            var format = new Native.CharacterFormat {
+                Size = (uint)Marshal.SizeOf(typeof(Native.CharacterFormat)), Mask = 0x40000000,
+                Text = palette.Text.Value, Face = "",
+            };
+            Native.SendCharacterFormat(Handle, 0x0444, IntPtr.Zero, ref format);
+            Native.InvalidateRect(Handle, IntPtr.Zero, false);
         }
 
         public bool ReadOnly

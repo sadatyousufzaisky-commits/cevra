@@ -9,6 +9,7 @@ namespace Vokri
         public static Color Rgb(byte red, byte green, byte blue) { return new Color((uint)(red | green << 8 | blue << 16)); }
         public static Color Window { get { return new Color(Native.GetSysColor(Native.WindowColor)); } }
         public static Color Text { get { return new Color(Native.GetSysColor(Native.WindowTextColor)); } }
+        internal static Color System(int index) { return new Color(Native.GetSysColor(index)); }
     }
 
     public sealed class DrawingContext
@@ -34,9 +35,32 @@ namespace Vokri
         public void Fill(Rect bounds, Color color)
         {
             Check();
-            var rectangle = Pixels(bounds);
+            FillPixels(dc, Pixels(bounds), color);
+        }
+
+        internal static void FillPixels(IntPtr dc, Native.Rectangle rectangle, Color color)
+        {
             IntPtr brush = Native.Require(Native.CreateSolidBrush(color.Value));
             try { Native.FillRect(dc, ref rectangle, brush); }
+            finally { Native.DeleteObject(brush); }
+        }
+
+        internal static void RoundedPixels(IntPtr dc, Native.Rectangle bounds, int diameter, Color fill, Color border)
+        {
+            IntPtr brush = Native.Require(Native.CreateSolidBrush(fill.Value));
+            try
+            {
+                IntPtr pen = Native.Require(Native.CreatePen(0, 1, border.Value));
+                IntPtr previousBrush = Native.SelectObject(dc, brush);
+                IntPtr previousPen = Native.SelectObject(dc, pen);
+                try { Native.RoundRect(dc, bounds.Left, bounds.Top, bounds.Right, bounds.Bottom, diameter, diameter); }
+                finally
+                {
+                    Native.SelectObject(dc, previousPen);
+                    Native.SelectObject(dc, previousBrush);
+                    Native.DeleteObject(pen);
+                }
+            }
             finally { Native.DeleteObject(brush); }
         }
 
@@ -58,15 +82,24 @@ namespace Vokri
         {
             Check();
             if (text == null) throw new ArgumentNullException("text");
-            var rectangle = Pixels(bounds);
-            IntPtr previous = Native.SelectObject(dc, host.Font(false));
+            TextPixels(dc, host.Font(false), text, Pixels(bounds), color, 0x0810);
+        }
+
+        internal static void TextPixels(IntPtr dc, IntPtr font, string text, Native.Rectangle rectangle, Color color, uint format)
+        {
+            IntPtr previous = Native.SelectObject(dc, font);
+            int previousMode = Native.SetBkMode(dc, 1);
+            uint previousColor = Native.SetTextColor(dc, color.Value);
             try
             {
-                Native.SetBkMode(dc, 1);
-                Native.SetTextColor(dc, color.Value);
-                Native.DrawTextW(dc, text, text.Length, ref rectangle, 0x0800 | 0x0010);
+                Native.DrawTextW(dc, text, text.Length, ref rectangle, format);
             }
-            finally { Native.SelectObject(dc, previous); }
+            finally
+            {
+                Native.SetTextColor(dc, previousColor);
+                Native.SetBkMode(dc, previousMode);
+                Native.SelectObject(dc, previous);
+            }
         }
     }
 
@@ -88,6 +121,7 @@ namespace Vokri
             VerifyAccess();
             if (Handle != IntPtr.Zero) Native.InvalidateRect(Handle, IntPtr.Zero, false);
         }
+        internal override void AppearanceChanged() { Invalidate(); }
 
         internal IntPtr Message(uint message, IntPtr wParam, IntPtr lParam)
         {
@@ -99,7 +133,7 @@ namespace Vokri
                     var context = new DrawingContext(Host, dc, new Rect(0, 0, Bounds.Width, Bounds.Height));
                     try
                     {
-                        context.Fill(context.Bounds, Color.Window);
+                        context.Fill(context.Bounds, Host.Colors.Background);
                         if (Paint != null) Paint(context);
                     }
                     finally { context.Expire(); Native.EndPaint(Handle, ref paint); }

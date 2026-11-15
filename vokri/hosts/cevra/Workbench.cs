@@ -59,7 +59,7 @@ internal sealed class Workbench : IDisposable
     {
         this.application = application;
         this.service = service;
-        window = new Window(application, "CEVRA · Vokri", new Size(1240, 820), new Size(790, 565));
+        window = new Window(application, "VOKRI Code · Native Preview", new Size(1240, 820), new Size(790, 565));
         var tools = Bar(openFolder, save, saveCopy, closeEditor, discard);
         var runner = Bar(run, tests, retry, stop, jump);
         var sidebar = new Grid(new[] { Track.Star() }, new[] {
@@ -198,7 +198,7 @@ internal sealed class Workbench : IDisposable
     private async Task PickFolder()
     {
         if (activeRun != 0) { status.Text = "Stop the current run before switching projects."; return; }
-        string chosen = Dialogs.OpenFolder(window, "Open CEVRA project");
+        string chosen = Dialogs.OpenFolder(window, "Open VOKRI Code project");
         if (chosen == null) return;
         await FlushCurrent();
         await Adopt(await service.Request("open", Args("folder", chosen)));
@@ -489,7 +489,7 @@ internal sealed class Workbench : IDisposable
         if (disconnected)
         {
             args.Cancel = current != null && current.Dirty && current.Backed != current.Version &&
-                !Dialogs.Confirm(window, "Close CEVRA", "The latest draft backup is unavailable. Close anyway?");
+                !Dialogs.Confirm(window, "Close VOKRI Code", "The latest draft backup is unavailable. Close anyway?");
             return;
         }
         Perform(async () =>

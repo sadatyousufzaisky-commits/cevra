@@ -73,7 +73,8 @@ namespace Vokri
         {
             var definition = new Native.WindowClass {
                 Size = (uint)Marshal.SizeOf(typeof(Native.WindowClass)), Procedure = Procedure, Name = name,
-                Instance = Instance, Cursor = Native.LoadCursorW(IntPtr.Zero, new IntPtr(32512)), Background = background
+                Instance = Instance, Cursor = Native.LoadCursorW(IntPtr.Zero, new IntPtr(32512)), Background = background,
+                Icon = name == WindowClass ? Native.LoadIconW(Instance, new IntPtr(32512)) : IntPtr.Zero,
             };
             if (Native.RegisterClassExW(ref definition) == 0) throw new Win32Exception();
         }
@@ -157,6 +158,12 @@ namespace Vokri
             if (richEdit == IntPtr.Zero) richEdit = Native.Require(Native.LoadLibraryExW("msftedit.dll", IntPtr.Zero, 0x800));
         }
 
+        internal void EnsureListView()
+        {
+            var controls = new Native.CommonControls { Size = 8, Classes = 1 };
+            if (!Native.InitCommonControlsEx(ref controls)) throw new Win32Exception();
+        }
+
         public int Run()
         {
             VerifyAccess();
@@ -216,9 +223,17 @@ namespace Vokri
         private int dpi;
         private IntPtr font;
         private IntPtr editorFont;
+        private IntPtr backgroundBrush;
+        private int uiFontSize = 14, codeFontSize = 15;
+        private Appearance appearance;
+        private readonly Dictionary<IntPtr, FrameSubscription> frames = new Dictionary<IntPtr, FrameSubscription>();
+        private int nextTimer;
         public Application Application { get; private set; }
         public IntPtr Handle { get; private set; }
         public int Dpi { get { return dpi; } }
+        public Palette Colors { get; private set; }
+        public bool AnimationsEnabled { get; private set; }
+        public event Action DisplayChanged;
         public event CancelEventHandler Closing;
         public event Action Closed;
 
@@ -236,6 +251,7 @@ namespace Vokri
             try
             {
                 application.Register(this);
+                UpdateAppearance();
                 SetDpi((int)Native.GetDpiForWindow(Handle));
                 if (dpi != 96) Native.SetWindowPos(Handle, IntPtr.Zero, 0, 0, Scale(size.Width), Scale(size.Height), 0x16);
             }
@@ -268,6 +284,86 @@ namespace Vokri
         public void Show() { VerifyOpen(); Native.ShowWindow(Handle, 5); }
         public void Close() { VerifyOpen(); Native.Send(Handle, Native.Close, IntPtr.Zero, IntPtr.Zero); }
 
+        public Appearance Appearance
+        {
+            get { return appearance; }
+            set
+            {
+                VerifyOpen();
+                if (appearance == value) return;
+                var colors = Palette.Resolve(value);
+                appearance = value;
+                Colors = colors;
+                Repaint();
+            }
+        }
+
+        public void SetFontSizes(int interfaceSize, int editorSize)
+        {
+            VerifyOpen();
+            if (interfaceSize < 10 || interfaceSize > 28 || editorSize < 10 || editorSize > 40)
+                throw new ArgumentOutOfRangeException("size");
+            uiFontSize = interfaceSize;
+            codeFontSize = editorSize;
+            SetDpi(dpi);
+            Layout();
+        }
+
+        private void UpdateAppearance()
+        {
+            int enabled;
+            AnimationsEnabled = Native.ReadWindowSetting(0x1042, 0, out enabled, 0) && enabled != 0;
+            Colors = Palette.Resolve(appearance);
+        }
+
+        private void Repaint()
+        {
+            int darkCaption = !Palette.HighContrast && (appearance == Appearance.IrisInkDark || appearance == Appearance.MidnightAtelier) ? 1 : 0;
+            Native.DwmSetWindowAttribute(Handle, 20, ref darkCaption, 4);
+            IntPtr next = Native.Require(Native.CreateSolidBrush(Colors.Background.Value));
+            if (backgroundBrush != IntPtr.Zero) Native.DeleteObject(backgroundBrush);
+            backgroundBrush = next;
+            foreach (var control in controls.Values) control.AppearanceChanged();
+            Native.InvalidateRect(Handle, IntPtr.Zero, true);
+        }
+
+        public IDisposable Animate(Action<TimeSpan> frame, int intervalMilliseconds = 16)
+        {
+            VerifyOpen();
+            if (frame == null) throw new ArgumentNullException("frame");
+            if (intervalMilliseconds < 16 || intervalMilliseconds > 1000)
+                throw new ArgumentOutOfRangeException("intervalMilliseconds");
+            var subscription = new FrameSubscription(this, frame);
+            if (!AnimationsEnabled) { frame(TimeSpan.Zero); return subscription; }
+            var id = Native.Require(Native.SetTimer(Handle, new IntPtr(checked(++nextTimer)),
+                (uint)intervalMilliseconds, IntPtr.Zero));
+            subscription.Id = id;
+            frames.Add(id, subscription);
+            return subscription;
+        }
+
+        private sealed class FrameSubscription : IDisposable
+        {
+            private readonly Window owner;
+            private readonly Action<TimeSpan> callback;
+            private readonly System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+            internal IntPtr Id;
+            internal FrameSubscription(Window owner, Action<TimeSpan> callback) { this.owner = owner; this.callback = callback; }
+            internal void Tick()
+            {
+                if (!owner.AnimationsEnabled) { Dispose(); callback(TimeSpan.Zero); }
+                else callback(clock.Elapsed);
+            }
+            public void Dispose()
+            {
+                if (Id == IntPtr.Zero) return;
+                owner.VerifyOpen();
+                Native.KillTimer(owner.Handle, Id);
+                owner.frames.Remove(Id);
+                Id = IntPtr.Zero;
+            }
+        }
+
         public void BindShortcut(int virtualKey, Modifiers modifiers, Action callback)
         {
             VerifyOpen();
@@ -283,11 +379,20 @@ namespace Vokri
                 (Native.GetKeyState(0x12) < 0 ? 4 : 0);
             Action callback;
             if (!shortcuts.TryGetValue(message.WParam.ToInt32() | modifiers << 8, out callback)) return false;
+            if (IsComposing(message.Window)) return false;
             if ((message.LParam.ToInt64() & 0x40000000) == 0)
             {
                 try { callback(); } catch (Exception error) { Application.Report(error); }
             }
             return true;
+        }
+
+        private static bool IsComposing(IntPtr window)
+        {
+            IntPtr ime = Native.ImmGetContext(window);
+            if (ime == IntPtr.Zero) return false;
+            try { return Native.ImmGetCompositionStringW(ime, 8, IntPtr.Zero, 0) > 0; } // GCS_COMPSTR
+            finally { Native.ImmReleaseContext(window, ime); }
         }
 
         internal int Scale(int value) { return (int)Math.Round(value * (double)dpi / 96); }
@@ -297,8 +402,8 @@ namespace Vokri
         private void SetDpi(int value)
         {
             dpi = value > 0 ? value : 96;
-            IntPtr next = Native.Require(Native.CreateFontW(-Scale(14), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI"));
-            IntPtr mono = Native.CreateFontW(-Scale(15), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Consolas");
+            IntPtr next = Native.Require(Native.CreateFontW(-Scale(uiFontSize), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI"));
+            IntPtr mono = Native.CreateFontW(-Scale(codeFontSize), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Consolas");
             if (mono == IntPtr.Zero) { Native.DeleteObject(next); throw new Win32Exception(); }
             IntPtr old = font, oldEditor = editorFont;
             font = next;
@@ -330,6 +435,7 @@ namespace Vokri
                     return IntPtr.Zero;
                 case Native.Destroy:
                     // Child HWNDs and their fonts stay valid until Windows sends WM_NCDESTROY.
+                    foreach (var frame in new List<FrameSubscription>(frames.Values)) frame.Dispose();
                     return IntPtr.Zero;
                 case 0x0082:
                     IntPtr previous = Handle;
@@ -339,6 +445,7 @@ namespace Vokri
                     Handle = IntPtr.Zero;
                     if (font != IntPtr.Zero) Native.DeleteObject(font);
                     if (editorFont != IntPtr.Zero) Native.DeleteObject(editorFont);
+                    if (backgroundBrush != IntPtr.Zero) Native.DeleteObject(backgroundBrush);
                     if (Closed != null) Closed();
                     return Native.DefWindowProcW(previous, message, wParam, lParam);
                 case Native.Size:
@@ -348,11 +455,54 @@ namespace Vokri
                     Control control;
                     if (controls.TryGetValue(lParam, out control)) control.Command(Native.High(wParam));
                     return IntPtr.Zero;
+                case Native.Notify:
+                    var notification = (Native.NotifyHeader)Marshal.PtrToStructure(lParam, typeof(Native.NotifyHeader));
+                    return controls.TryGetValue(notification.Window, out control) ?
+                        control.Notify(notification.Code, lParam) : IntPtr.Zero;
+                case Native.DrawItem:
+                    var item = (Native.DrawItemInfo)Marshal.PtrToStructure(lParam, typeof(Native.DrawItemInfo));
+                    if (controls.TryGetValue(item.Window, out control))
+                    {
+                        var button = control as Button;
+                        if (button != null && button.Draw(item)) return new IntPtr(1);
+                    }
+                    break;
+                case Native.EraseBackground:
+                    if (appearance != Appearance.System)
+                    {
+                        Native.Rectangle bounds;
+                        if (Native.GetClientRect(Handle, out bounds)) DrawingContext.FillPixels(wParam, bounds, Colors.Background);
+                        return new IntPtr(1);
+                    }
+                    break;
+                case Native.StaticColor:
+                    if (appearance != Appearance.System && controls.TryGetValue(lParam, out control) && control is Label)
+                    {
+                        Native.SetTextColor(wParam, Colors.Text.Value);
+                        Native.SetBkColor(wParam, Colors.Background.Value);
+                        return backgroundBrush;
+                    }
+                    break;
+                case Native.SystemColorChange:
+                case Native.SettingChange:
+                    UpdateAppearance();
+                    Repaint();
+                    break;
+                case Native.Timer:
+                    FrameSubscription subscription;
+                    if (frames.TryGetValue(wParam, out subscription))
+                    {
+                        try { subscription.Tick(); }
+                        catch { subscription.Dispose(); throw; }
+                        return IntPtr.Zero;
+                    }
+                    break;
                 case Native.DpiChanged:
                     SetDpi(Native.Low(wParam));
                     var next = (Native.Rectangle)Marshal.PtrToStructure(lParam, typeof(Native.Rectangle));
                     Native.SetWindowPos(Handle, IntPtr.Zero, next.Left, next.Top, next.Right - next.Left, next.Bottom - next.Top, 0x14);
                     Layout();
+                    if (DisplayChanged != null) DisplayChanged();
                     return IntPtr.Zero;
                 case Native.MinMax:
                     var limits = (Native.MinMaxInfo)Marshal.PtrToStructure(lParam, typeof(Native.MinMaxInfo));
@@ -360,8 +510,8 @@ namespace Vokri
                     limits.MinTrack.Y = Scale(minimum.Height);
                     Marshal.StructureToPtr(limits, lParam, false);
                     return IntPtr.Zero;
-                default: return Native.DefWindowProcW(Handle, message, wParam, lParam);
             }
+            return Native.DefWindowProcW(Handle, message, wParam, lParam);
         }
     }
 }

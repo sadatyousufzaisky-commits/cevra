@@ -121,6 +121,15 @@ function launch(profile, project) {
   return { child, exited };
 }
 
+test('native controls preserve accessibility and resources during virtual scrolling, resize and animation', async t => {
+  const checks = await compile('Vokri.NativeSurfaceChecks', 'vokri-native-surface.cs', [
+    '/reference:' + path.join(output, 'Vokri.dll'), '/reference:Accessibility.dll', '/win32manifest:' + manifest,
+  ]);
+  const { stdout } = await execute(checks, [], { timeout: 20000 });
+  assert.match(stdout, /Vokri native surface: frames=180 .* rows=100000/);
+  t.diagnostic(stdout.trim());
+});
+
 async function until(read, predicate, message) {
   const deadline = Date.now() + 10000;
   let value;
@@ -132,12 +141,36 @@ async function until(read, predicate, message) {
   assert.fail(message + ' Last value: ' + value);
 }
 
+test('the standalone sample opens with only Vokri.dll and navigates 100,000 documents', { timeout: 45000 }, async t => {
+  const probe = await compile('Vokri.Probe', 'vokri-probe.cs', []);
+  const temp = await temporaryFolder(t, 'vokri-standalone-');
+  for (const file of ['Vokri.dll', 'Vokri.Sample.exe']) await fs.copyFile(path.join(output, file), path.join(temp, file));
+  const child = spawn(path.join(temp, 'Vokri.Sample.exe'), [], { cwd: temp, stdio: 'ignore' });
+  const exited = once(child, 'exit');
+  void exited.catch(() => {});
+  try {
+    const query = async (...args) => (await execute(probe, [child.pid, ...args], { timeout: 15000, windowsHide: true })).stdout;
+    await query('wait', 'Field notes 000001 opened');
+    await query('click', 'Last document');
+    await query('wait', 'Field notes 100000 opened');
+    assert.match(await query('editor'), /Field notes 100000/);
+    await query('click', 'Text size');
+    await query('click', 'Switch appearance');
+    assert.match(await query('editor'), /const station = "North Ridge"/);
+    await query('close');
+    assert.deepEqual(await exited, [0, null]);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+    await exited.catch(() => {});
+  }
+});
+
 function processExists(pid) {
   try { process.kill(pid, 0); return true; }
   catch (error) { if (error.code === 'ESRCH') return false; throw error; }
 }
 
-test('native CEVRA saves, runs and recovers nested files on a Windows desktop', { timeout: 85000 }, async t => {
+test('the VOKRI Code native preview saves, runs and recovers nested files on Windows', { timeout: 85000 }, async t => {
   const temp = await temporaryFolder(t, 'cevra-vokri-desktop-');
   const project = path.join(temp, 'Project (QA) & café [#%]');
   const nestedName = 'nested (QA) & café';
@@ -183,7 +216,7 @@ test('native CEVRA saves, runs and recovers nested files on a Windows desktop', 
   try {
     await wait('Workspace opened.');
     await click('Open Folder');
-    await send('cancel', 'Open CEVRA project');
+    await send('cancel', 'Open VOKRI Code project');
     await send('select', nestedName);
     await click('Open Selected');
     await wait(nestedName);

@@ -11,7 +11,7 @@
     "phase5Commit": "4b7a404819a3a8db0535134152636b9255fa2e34",
     "vokriBranch": "cevra/vokri-framework",
     "vokriCommit": "663d4314e7fd707739f47fbafdf8d93cfbe77e15",
-    "integrationCommit": null
+    "integrationCommit": "d993113410886f7eaa50a29b2110573b4836ebe3"
   },
   "gates": [
     {
@@ -103,16 +103,26 @@
     {
       "id": "G2",
       "name": "VOKRI native SDK completion",
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "G0",
         "G1"
       ],
       "commit": null,
-      "evidence": [],
+      "evidence": [
+        "g2-native-sdk.md",
+        "../../vokri/README.md",
+        "../../vokri/samples/workbench/Program.cs",
+        "../../vokri/samples/workbench/app.manifest",
+        "../../qa/vokri.test.cjs",
+        "../../qa/vokri-native-surface.cs"
+      ],
       "ci": null,
       "ownerSignoff": null,
-      "openBlockers": []
+      "openBlockers": [
+        "Run the native SDK suite on a Windows 10 x64 client.",
+        "Verify a live IME composition session and a transition across mixed-DPI monitors."
+      ]
     },
     {
       "id": "G3",

@@ -23,7 +23,7 @@ internal static class Program
             string root = Path.GetFullPath(args[1]);
             string profile = Path.GetFullPath(args[2]).TrimEnd(Path.DirectorySeparatorChar);
             string serviceFile = Path.Combine(root, "vokri", "hosts", "cevra", "service.cjs");
-            if (!File.Exists(serviceFile)) throw new FileNotFoundException("The CEVRA workspace service is missing.");
+            if (!File.Exists(serviceFile)) throw new FileNotFoundException("The VOKRI Code workspace service is missing.");
             Directory.CreateDirectory(profile);
             string identity;
             using (var sha = SHA256.Create())
@@ -33,7 +33,7 @@ internal static class Program
                 bool acquired;
                 try { acquired = mutex.WaitOne(0); }
                 catch (AbandonedMutexException) { acquired = true; }
-                if (!acquired) throw new InvalidOperationException("This native CEVRA profile is already open.");
+                if (!acquired) throw new InvalidOperationException("This VOKRI Code native preview profile is already open.");
                 try
                 {
                     using (var application = new Application())
@@ -53,7 +53,7 @@ internal static class Program
         }
         catch (Exception error)
         {
-            MessageBoxW(IntPtr.Zero, error.Message, "CEVRA · Vokri", 0x10);
+            MessageBoxW(IntPtr.Zero, error.Message, "VOKRI Code · Native Preview", 0x10);
             return 1;
         }
     }

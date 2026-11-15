@@ -131,7 +131,7 @@ internal static class VokriProbe
                 case "wait":
                     WaitFor(() => Children(root, "STATIC").FirstOrDefault(handle => Caption(handle).Contains(args[2])),
                         () => "Expected " + args[2] + ". Actual labels: " + string.Join(" | ", Children(root, "STATIC").Select(Caption)) +
-                            ". Output: " + Caption(Children(root, "RichEdit50W")[1]));
+                            ". Editor: " + string.Join(" | ", Children(root, "RichEdit50W").Select(Caption)));
                     break;
                 case "click":
                     IntPtr button = Children(root, "BUTTON").FirstOrDefault(handle => Caption(handle) == args[2]);

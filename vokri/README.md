@@ -1,6 +1,6 @@
-# Vokri
+# VOKRI
 
-Vokri is a Windows x64 desktop SDK written in C#. It owns the window lifecycle, UI thread dispatcher, layout, input routing, drawing, and service transport. It calls Win32 and uses Windows controls for text editing, list selection, and buttons. A Vokri application can render its interface without Electron, WebView2, WinForms, WPF, or Node.js.
+VOKRI is a Windows x64 desktop SDK written in C#. It owns the window lifecycle, UI thread dispatcher, layout, input routing, drawing, and service transport. It calls Win32 and uses Windows controls for text editing, list selection, and buttons. The standalone sample runs with the Windows .NET Framework and the VOKRI DLL.
 
 ## Build the SDK
 
@@ -9,6 +9,15 @@ Use Windows 10 or 11 x64, .NET Framework 4.8 or later, and Node.js 24 to invoke 
 ```powershell
 node scripts/build-vokri.cjs --sdk-only
 ```
+
+Build and launch the standalone sample with these commands. The runtime folder needs only `Vokri.Sample.exe` and `Vokri.dll`.
+
+```powershell
+node scripts/build-vokri.cjs --sample
+& .\dist\vokri\Vokri.Sample.exe
+```
+
+The sample uses no project directory, package installation, or background service. Press **F6** to focus the source editor, **F7** to focus the document list, and use the arrow keys to navigate. **Last document** selects row 100,000. **Switch appearance** cycles Iris Ink Dark, Iris Ink Light, and Midnight Atelier. **Text size** changes the application and editor fonts. [Sample source](samples/workbench/Program.cs)
 
 Reference the DLL from a .NET Framework 4.8 x64 application and place it beside the executable. Use an STA entry point. Copy the workbench manifest and give the assembly identity your application's name. The manifest opts into per-monitor DPI awareness and Windows visual styles. [Workbench manifest](hosts/cevra/vokri.manifest), [Windows DPI changes](https://learn.microsoft.com/en-us/windows/win32/hidpi/wm-dpichanged)
 
@@ -49,10 +58,12 @@ Save the example as `Notes.cs` and a copy of the manifest as `Notes.manifest` at
 | API | Behavior |
 | --- | --- |
 | `Application` | STA message loop, bounded UI callback queue via `Post`, and an application error event |
-| `Window` | Multiple windows, optional ownership, minimum sizing, per-monitor DPI scaling, keyboard shortcuts, and cancellable close |
+| `Window` | Multiple windows, optional ownership, minimum sizing, per-monitor DPI scaling, keyboard shortcuts, and cancellable close. `Appearance`, `SetFontSizes`, and `DisplayChanged` support visual changes. |
 | `Grid` | Nested fixed, automatic, and proportional tracks with gaps, padding, and spans |
-| `Label`, `Button`, `TextField`, `TextEditor`, `ListBox` | Native controls with focus, keyboard navigation, and Windows accessibility for standard control roles |
+| `Label`, `Button`, `TextField`, `TextEditor`, `ListBox` | Native controls with focus, keyboard navigation, and Windows accessibility for standard control roles. The `Button` overload with a primary/secondary argument applies the VOKRI palette. |
+| `VirtualList` | Single-selection report list backed by `SetRows(count, labelAt)`. Win32 requests visible and accessibility labels on demand. `Select(index)` selects and scrolls to the row. Supply labels quickly on the UI thread and keep the data stable until the next `SetRows`. |
 | `Canvas`, `DrawingContext` | Native paint callback for text, lines, and fills in logical coordinates, plus pointer presses |
+| `Palette`, `Window.Animate` | Iris Ink and Midnight Atelier colors, Windows contrast color fallback, and UI-thread frame callbacks. Dispose an animation on the UI thread. The SDK ends it on window close or callback failure and emits a static frame when Windows animations are disabled. |
 | `Dialogs`, `Clipboard` | Native file, folder, save, and confirmation dialogs, and bounded Unicode clipboard access |
 | `ServiceClient` | Asynchronous requests and notifications over private pipes with deadlines and process-tree ownership |
 
@@ -73,19 +84,19 @@ Each packet uses a 4-byte unsigned little-endian UTF-8 byte count followed by a 
 
 Keep the service's standard output reserved for frames. The client drains standard error independently. The supplied Node.js peer serves named routes and disposes resources when the connection closes. [Node.js protocol peer](bridge/stdio.cjs)
 
-## Native CEVRA
+## VOKRI Code native preview
 
 ```powershell
 npm run start:vokri -- "C:\path\to\project"
 npm run test:vokri
 ```
 
-The native host uses Vokri's SDK for the entire interface and Node.js 24 for CEVRA's existing workspace and execution services. Omit the folder argument to open a folder from the workbench or restore a backed-up draft. The profile lives under `%LOCALAPPDATA%\CEVRA\Vokri`.
+The experimental native host uses the VOKRI SDK and Node.js 24 for workspace and execution services. Omit the folder argument to open a folder from the workbench or restore a backed-up draft. Existing preview profiles retain the historical path `%LOCALAPPDATA%\CEVRA\Vokri`.
 
 - Open nested files, edit multiple documents, and save with Ctrl+S. The workbench accepts UTF-8 source up to 2 MiB and retains the BOM and the file's detected line-ending style on save.
 - Run a JavaScript or TypeScript file with F5. Run Node.js project tests, retry failures, and stop a running process tree. Jump to the reported file and line while its recorded revision still matches.
 - Recover an unsaved edit after a restart once the workbench has reported **Draft backed up**. Use **Save Copy** if the original file changed externally.
 
-The native workbench covers the workspace and run workflows described here. The Electron workbench remains the entry point for language services, Python, the integrated terminal, debugging, Git, extensions, and Intelligence.
+The production workbench remains the entry point for language services, Python, the integrated terminal, debugging, Git, extensions, and Intelligence. The production migration is G3 and later Phase 6 gates.
 
 The automated Windows suite exercises real windows, drawing, accessibility, file dialogs, saving, JavaScript and TypeScript execution, syntax and runtime navigation, test retries, stale-source detection, process termination, and crash recovery. It also verifies the transport and workspace boundaries with isolated fixtures.

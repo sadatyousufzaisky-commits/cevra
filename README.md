@@ -48,15 +48,16 @@ Open **OpenAI usage and daily estimate limit** to track estimated usage and set 
 
 The Phase 5 acceptance guide records the Windows integration checks, benchmark method, and supported provider scope. [Integration and benchmarking](docs/phase-5/g9-integration-and-benchmarking.md)
 
-## Run CEVRA on Vokri
+## VOKRI native SDK
 
-Vokri is CEVRA's original Windows desktop framework. The native workbench supports browsing and editing a workspace, recovering drafts, running JavaScript and TypeScript, and jumping to errors across files. Start it on Windows x64 with Node.js 24 and the .NET Framework 4.x compiler.
+VOKRI is the Windows desktop SDK for VOKRI Code. Build the standalone sample on Windows x64 with Node.js 24 and the .NET Framework compiler. The sample opens a native window with themed controls and a virtualized list of 100,000 documents.
 
 ```powershell
-npm run start:vokri -- "C:\path\to\project"
+node scripts/build-vokri.cjs --sample
+& .\dist\vokri\Vokri.Sample.exe
 ```
 
-Run `npm run test:vokri` to build and verify the native SDK and workbench. The SDK guide covers building an independent desktop app and connecting a service. [Vokri SDK guide](vokri/README.md)
+Run `npm run test:vokri` to verify the SDK, sample, and experimental VOKRI Code native preview. [VOKRI SDK guide](vokri/README.md)
 
 ## Run TypeScript and Python
 

@@ -3,11 +3,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('Building Vokri requires Windows x64.');
-const sdkOnly = process.argv[2] === '--sdk-only';
-if (process.argv.length > (sdkOnly ? 3 : 2)) throw new Error('Usage: node scripts/build-vokri.cjs [--sdk-only]');
+const target = process.argv[2] ?? '--all';
+if (process.argv.length > 3 || !['--all', '--sdk-only', '--sample'].includes(target)) {
+  throw new Error('Usage: node scripts/build-vokri.cjs [--sdk-only | --sample]');
+}
 const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'vokri', 'src');
 const host = path.join(root, 'vokri', 'hosts', 'cevra');
+const sample = path.join(root, 'vokri', 'samples', 'workbench');
 const output = path.join(root, 'dist', 'vokri');
 const compiler = path.join(process.env.SystemRoot || 'C:\\Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
 const sdk = path.join(output, 'Vokri.dll');
@@ -17,8 +20,14 @@ function compile(args) { execFileSync(compiler, [...common, ...args], { stdio: '
 const csFiles = folder => fs.readdirSync(folder).filter(name => name.endsWith('.cs')).sort().map(name => path.join(folder, name));
 fs.mkdirSync(output, { recursive: true });
 compile(['/target:library', '/out:' + sdk, '/reference:System.Web.Extensions.dll', ...csFiles(source)]);
-if (!sdkOnly) {
+if (target === '--all') {
   compile(['/target:winexe', '/out:' + path.join(output, 'Vokri.Cevra.exe'), '/reference:' + sdk,
     '/win32manifest:' + path.join(host, 'vokri.manifest'), ...csFiles(host)]);
 }
-console.log(sdkOnly ? 'Built Vokri.dll' : 'Built Vokri.dll and Vokri.Cevra.exe');
+if (target !== '--sdk-only') {
+  compile(['/target:winexe', '/out:' + path.join(output, 'Vokri.Sample.exe'), '/reference:' + sdk,
+    '/win32manifest:' + path.join(sample, 'app.manifest'), '/win32icon:' + path.join(root, 'assets', 'brand', 'vc.ico'),
+    ...csFiles(sample)]);
+}
+console.log('Built Vokri.dll' + (target === '--all' ? ', Vokri.Cevra.exe' : '') +
+  (target === '--sdk-only' ? '' : ' and Vokri.Sample.exe'));

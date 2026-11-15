@@ -9,6 +9,8 @@ namespace Vokri
     {
         internal const uint Close = 0x0010, Destroy = 0x0002, Paint = 0x000f, Size = 0x0005,
             Command = 0x0111, MinMax = 0x0024, DpiChanged = 0x02e0, SetFont = 0x0030,
+            Notify = 0x004e, DrawItem = 0x002b, Timer = 0x0113, SettingChange = 0x001a,
+            EraseBackground = 0x0014, SystemColorChange = 0x0015, StaticColor = 0x0138,
             Dispatch = 0x8001, MouseDown = 0x0201, KeyDown = 0x0100, SysKeyDown = 0x0104;
         internal const uint Child = 0x40000000, Visible = 0x10000000, TabStop = 0x00010000,
             VScroll = 0x00200000, HScroll = 0x00100000, ClipChildren = 0x02000000,
@@ -16,10 +18,31 @@ namespace Vokri
         internal const int WindowColor = 5, WindowTextColor = 8, FaceColor = 15;
 
         internal delegate IntPtr WindowProcedure(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+        internal delegate IntPtr SubclassProcedure(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data);
         [StructLayout(LayoutKind.Sequential)]
         internal struct Point { internal int X, Y; }
         [StructLayout(LayoutKind.Sequential)]
         internal struct Rectangle { internal int Left, Top, Right, Bottom; }
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct NotifyHeader { internal IntPtr Window, Id; internal int Code; }
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct DrawItemInfo
+        {
+            internal uint Type, Id, Item, Action, State;
+            internal IntPtr Window, Dc;
+            internal Rectangle Bounds;
+            internal IntPtr Data;
+        }
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct HighContrast
+        {
+            internal uint Size, Flags;
+            internal IntPtr Scheme;
+        }
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct CommonControls { internal uint Size, Classes; }
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct MouseTracking { internal uint Size, Flags; internal IntPtr Window; internal uint HoverTime; }
         [StructLayout(LayoutKind.Sequential)]
         internal struct Message
         {
@@ -62,6 +85,15 @@ namespace Vokri
             internal uint Bytes, Flags, CodePage;
             internal IntPtr DefaultCharacter, UsedDefaultCharacter;
         }
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        internal struct CharacterFormat
+        {
+            internal uint Size, Mask, Effects;
+            internal int Height, Offset;
+            internal uint Text;
+            internal byte Charset, Pitch;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] internal string Face;
+        }
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)] internal static extern IntPtr GetModuleHandleW(string name);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
@@ -82,6 +114,22 @@ namespace Vokri
         [DllImport("user32.dll")] internal static extern bool ShowWindow(IntPtr window, int command);
         [DllImport("user32.dll")] internal static extern bool EnableWindow(IntPtr window, bool enabled);
         [DllImport("user32.dll")] internal static extern IntPtr SetFocus(IntPtr window);
+        [DllImport("user32.dll")] internal static extern IntPtr GetFocus();
+        [DllImport("user32.dll")] internal static extern IntPtr SetTimer(IntPtr hwnd, IntPtr id, uint milliseconds, IntPtr callback);
+        [DllImport("user32.dll")] internal static extern bool KillTimer(IntPtr hwnd, IntPtr id);
+        [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW", ExactSpelling = true)]
+        internal static extern bool ReadHighContrast(uint action, uint size, ref HighContrast value, uint flags);
+        [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW", ExactSpelling = true)]
+        internal static extern bool ReadWindowSetting(uint action, uint unused, out int value, uint flags);
+        [DllImport("comctl32.dll")] internal static extern bool InitCommonControlsEx(ref CommonControls controls);
+        [DllImport("comctl32.dll")] internal static extern bool SetWindowSubclass(IntPtr window, SubclassProcedure callback, UIntPtr id, UIntPtr data);
+        [DllImport("comctl32.dll")] internal static extern bool RemoveWindowSubclass(IntPtr window, SubclassProcedure callback, UIntPtr id);
+        [DllImport("comctl32.dll")] internal static extern IntPtr DefSubclassProc(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll")] internal static extern bool TrackMouseEvent(ref MouseTracking tracking);
+        [DllImport("imm32.dll")] internal static extern IntPtr ImmGetContext(IntPtr window);
+        [DllImport("imm32.dll")] internal static extern bool ImmReleaseContext(IntPtr window, IntPtr context);
+        [DllImport("imm32.dll", ExactSpelling = true)]
+        internal static extern int ImmGetCompositionStringW(IntPtr context, uint index, IntPtr output, uint bytes);
         [DllImport("user32.dll")] internal static extern IntPtr GetAncestor(IntPtr window, uint flags);
         [DllImport("user32.dll")] internal static extern short GetKeyState(int key);
         [DllImport("user32.dll")] internal static extern uint GetDpiForWindow(IntPtr window);
@@ -101,6 +149,10 @@ namespace Vokri
         [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
         internal static extern IntPtr LoadCursorW(IntPtr instance, IntPtr id);
         [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        internal static extern IntPtr LoadIconW(IntPtr instance, IntPtr id);
+        [DllImport("dwmapi.dll")]
+        internal static extern int DwmSetWindowAttribute(IntPtr window, uint attribute, ref int value, uint bytes);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
         internal static extern bool SetWindowTextW(IntPtr window, string value);
         [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
         internal static extern int GetWindowTextW(IntPtr window, StringBuilder value, int capacity);
@@ -114,6 +166,8 @@ namespace Vokri
         internal static extern IntPtr SendTextLength(IntPtr window, uint message, ref TextLength options, IntPtr lParam);
         [DllImport("user32.dll", EntryPoint = "SendMessageW", CharSet = CharSet.Unicode, ExactSpelling = true)]
         internal static extern IntPtr SendTextBuffer(IntPtr window, uint message, ref TextBuffer options, IntPtr lParam);
+        [DllImport("user32.dll", EntryPoint = "SendMessageW", ExactSpelling = true)]
+        internal static extern IntPtr SendCharacterFormat(IntPtr window, uint message, IntPtr wParam, ref CharacterFormat format);
         [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
         internal static extern int MessageBoxW(IntPtr owner, string text, string title, uint flags);
         [DllImport("user32.dll")] internal static extern IntPtr BeginPaint(IntPtr window, out PaintInfo paint);
@@ -121,6 +175,7 @@ namespace Vokri
         [DllImport("user32.dll")] internal static extern bool InvalidateRect(IntPtr window, IntPtr bounds, bool erase);
         [DllImport("user32.dll")] internal static extern uint GetSysColor(int index);
         [DllImport("user32.dll")] internal static extern int FillRect(IntPtr dc, ref Rectangle bounds, IntPtr brush);
+        [DllImport("user32.dll")] internal static extern bool DrawFocusRect(IntPtr dc, ref Rectangle bounds);
         [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
         internal static extern int DrawTextW(IntPtr dc, string text, int length, ref Rectangle bounds, uint format);
         [DllImport("gdi32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
@@ -130,10 +185,12 @@ namespace Vokri
         [DllImport("gdi32.dll")] internal static extern IntPtr SelectObject(IntPtr dc, IntPtr value);
         [DllImport("gdi32.dll")] internal static extern IntPtr CreateSolidBrush(uint color);
         [DllImport("gdi32.dll")] internal static extern IntPtr CreatePen(int style, int width, uint color);
+        [DllImport("gdi32.dll")] internal static extern bool RoundRect(IntPtr dc, int left, int top, int right, int bottom, int width, int height);
         [DllImport("gdi32.dll")] internal static extern bool MoveToEx(IntPtr dc, int x, int y, IntPtr previous);
         [DllImport("gdi32.dll")] internal static extern bool LineTo(IntPtr dc, int x, int y);
         [DllImport("gdi32.dll")] internal static extern int SetBkMode(IntPtr dc, int mode);
         [DllImport("gdi32.dll")] internal static extern uint SetTextColor(IntPtr dc, uint color);
+        [DllImport("gdi32.dll")] internal static extern uint SetBkColor(IntPtr dc, uint color);
 
         internal static int Low(IntPtr value) { return (int)(value.ToInt64() & 65535); }
         internal static int High(IntPtr value) { return (int)((value.ToInt64() >> 16) & 65535); }
