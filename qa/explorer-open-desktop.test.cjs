@@ -125,6 +125,7 @@ test('G10 opens the Windows Default apps surface from the control center', { ski
     globalThis.defaultAppsCalls = [];
     shell.openExternal = async uri => { globalThis.defaultAppsCalls.push(uri); };
   });
+  await page.locator('#editor-settings:enabled').waitFor();
   await page.getByRole('button', { name: 'Settings', exact: true }).press('Enter');
   const center = page.getByRole('dialog', { name: 'Settings', exact: true });
   await center.getByRole('searchbox', { name: 'Search settings' }).fill('default editor');
