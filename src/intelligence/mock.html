@@ -106,6 +106,7 @@
         <details id="response-preferences" hidden>
           <summary>Response preferences</summary>
           <form id="preference-form" inert>
+            <p class="muted">Provider default is the default for each preference.</p>
             <label for="response-language">Language</label>
             <select id="response-language" name="language">
               <option value="default">Provider default</option><option value="en">English</option>
@@ -128,7 +129,7 @@
               <option value="default">Provider default</option><option value="suggest">Suggest relevant tests</option>
               <option value="regression">Suggest regression and edge-case tests</option>
             </select>
-            <div class="actions"><button type="submit" id="save-response-preferences">Save preferences</button></div>
+            <div class="actions"><button type="reset">Restore defaults</button><button type="submit" id="save-response-preferences">Save preferences</button></div>
             <p id="preference-status" role="status"></p>
           </form>
         </details>
@@ -145,6 +146,7 @@
             <p id="local-model-status" role="status"></p>
           </form>
           <form id="model-profile-form">
+            <p class="muted">Choose Use the model picker to restore the default for a task.</p>
             <label for="chat-model">Chat model</label><select id="chat-model" name="chat"></select>
             <label for="explain-model">Explain code model</label><select id="explain-model" name="explain"></select>
             <label for="patch-model">Patch proposal model</label><select id="patch-model" name="patch"></select>
@@ -165,6 +167,7 @@
           <p id="budget-today"></p>
           <form id="budget-form">
             <label for="budget-limit">Daily estimate limit in USD</label>
+            <p class="muted">Clear the field and save to restore the default of no daily limit.</p>
             <input id="budget-limit" type="number" min="0" max="1000" step="0.01" placeholder="No daily limit">
             <div class="actions"><button type="submit">Save daily limit</button></div>
           </form>

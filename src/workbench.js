@@ -10,7 +10,9 @@ import { javascript } from '@codemirror/lang-javascript';
 import { linter, lintGutter, setDiagnostics, setDiagnosticsEffect } from '@codemirror/lint';
 import { createDefinitionNavigation } from './definition-navigation.js';
 import { createEditPreview } from './edit-preview.js';
-import { createEditorSettings, editorOptions, optionExtensions } from './editor-settings.js';
+import { editorOptions, optionExtensions } from './editor-settings.js';
+import { createSettingsCenter } from './settings-center.js';
+import { defaultTheme } from './settings-schema.cjs';
 import { createEditorReview } from './editor-review.js';
 import { colorModeExtension, editorColorMode, editorTheme } from './editor-theme.js';
 import { createExtensionContributions } from './extension-contributions.js';
@@ -120,7 +122,7 @@ let diagnostic;
 let retryAvailable = false;
 let testPass;
 let outputText = '';
-let selectedTheme = themeChoice.value;
+let selectedTheme = defaultTheme;
 let colorMode = 'dark';
 let stagingEdits;
 let intelligenceProposal;
@@ -193,9 +195,7 @@ function applyAppearance({ theme, mode }) {
 
 api.onAppearance(applyAppearance);
 
-themeChoice.onchange = async () => {
-  const choice = themeChoice.value;
-  themeChoice.disabled = true;
+async function changeTheme(choice) {
   try {
     if (choice.includes(':')) {
       await api.setExtensionPalette(choice);
@@ -208,11 +208,11 @@ themeChoice.onchange = async () => {
     await extensionContributions.refresh();
   } catch (error) {
     report(error);
+    throw error;
   } finally {
     extensionContributions.syncThemeChoice();
-    themeChoice.disabled = false;
   }
-};
+}
 
 function syncCommands() {
   const open = [...documents.values()];
@@ -248,6 +248,7 @@ function syncCommands() {
   inspectButton.disabled = definitionButton.disabled = findReferencesButton.disabled = !active?.language || changingProject;
   renameButton.disabled = !active?.language || changingProject || Boolean(run || saving || discarding);
   settingsButton.disabled = Boolean(changingProject || run || saving || discarding);
+  byId('appearance-settings').disabled = settingsButton.disabled;
   lineEndingButton.disabled = !active || Boolean(changingProject || active.saving || active.discarding || active.formatting);
   byId('workspace-trust-state').disabled = settingsButton.disabled;
   byId('reveal-file').disabled = !active || changingProject;
@@ -1696,12 +1697,20 @@ function applyEditorSettings(settings) {
   }
 }
 
-const settingsDialog = createEditorSettings({
-  api, getProject: () => project, apply: applyEditorSettings, errorText,
+const settingsDialog = createSettingsCenter({
+  api, getProject: () => project, apply: applyEditorSettings, changeTheme, resetLayout: resetWorkspaceLayout,
+  manageExtensions: () => byId('extension-manager-open').click(), openStore: () => extensionManager.openStore(),
+  openIntelligence: api.openIntelligenceSettings, intelligenceAvailable: intelligenceLayout.settingsAvailable, errorText, report,
 });
 
-function openSettings() {
-  if (!settingsButton.disabled) void settingsDialog.show();
+function openSettings(category) {
+  if (!settingsButton.disabled) void settingsDialog.show(category);
+}
+
+async function resetWorkspaceLayout() {
+  layout.reset();
+  restoreDock();
+  if (!await layout.flush()) throw new Error('The default layout could not be saved.');
 }
 
 const staleEdits = path => new Error('The source changed. Refresh the preview for ' + path);
@@ -2014,11 +2023,15 @@ const commands = createCommandRegistry([
   { id: 'details', title: 'Toggle workspace details', icon: 'inspector-layout', run: layout.toggleInspector },
   { id: 'float', title: 'Float or dock bottom panel', icon: 'float-panel', run: layout.toggleFloating },
   { id: 'pin-view', title: 'Pin or unpin current panel view', icon: 'pin-view', enabled: canUse(byId('pin-panel')), run: layout.pinView },
-  { id: 'reset-layout', title: 'Reset workspace layout', icon: 'panel-layout', run: () => { layout.reset(); restoreDock(); } },
+  { id: 'reset-layout', title: 'Reset workspace layout', icon: 'panel-layout', run: resetWorkspaceLayout },
   ...Object.entries(dockButtons).map(([pane, button]) => ({ id: 'view-' + pane, title: 'Show ' + dockNames[pane],
     icon: 'panel-layout', key: pane === 'problems' ? 'Ctrl+Shift+M' : pane === 'terminal' ? 'Ctrl+`' : undefined,
     enabled: canUse(button), run: () => showDock(pane, true) })),
-  { id: 'settings', title: 'Settings', icon: 'settings-icon', key: 'Ctrl+,', enabled: canUse(settingsButton), run: openSettings },
+  { id: 'settings', title: 'Settings', icon: 'settings-icon', key: 'Ctrl+,', enabled: canUse(settingsButton), run: () => openSettings() },
+  { id: 'appearance-settings', title: 'Appearance settings', detail: 'Change theme and editor palettes',
+    enabled: canUse(settingsButton), run: () => openSettings('appearance') },
+  { id: 'workspace-settings', title: 'Workspace settings', detail: 'Review execution trust and layout',
+    enabled: canUse(settingsButton), run: () => openSettings('workspace') },
   { id: 'extensions', title: 'Extensions', enabled: canUse(byId('extension-manager-open')), run: () => byId('extension-manager-open').click() },
   { id: 'extension-store', title: 'Extension Store', detail: 'Browse online and bundled packages',
     enabled: canUse(byId('extension-manager-open')), run: extensionManager.openStore },
@@ -2037,12 +2050,12 @@ for (const [button, command] of [
   [openButton, 'open'], [welcomeOpen, 'open'], [exampleButton, 'example'], [saveButton, 'save'],
   [recoveryButton, 'recover'], [formatButton, 'format'], [lineEndingButton, 'line-endings'], [inspectButton, 'inspect'], [definitionButton, 'definition'],
   [symbolButton, 'symbol'], [findReferencesButton, 'references'], [renameButton, 'rename'], [settingsButton, 'settings'],
-  [byId('workspace-trust-state'), 'settings'], [byId('reveal-file'), 'reveal'], [runButton, 'run'], [testButton, 'run-tests'],
+  [byId('appearance-settings'), 'appearance-settings'], [byId('workspace-trust-state'), 'workspace-settings'],
+  [byId('reveal-file'), 'reveal'], [runButton, 'run'], [testButton, 'run-tests'],
   [retryButton, 'retry'], [stopButton, 'stop'], [diagnosticButton, 'error'], [byId('intelligence-mock-open'), 'intelligence'],
   [byId('toggle-sidebar'), 'explorer'], [byId('toggle-inspector'), 'details'], [byId('toggle-dock'), 'panel'],
   [byId('rail-dock'), 'panel'], [byId('float-dock'), 'float'], [byId('pin-panel'), 'pin-view'],
 ]) commands.bind(button, command);
-byId('about-product').onclick = () => api.about().catch(report);
 byId('intelligence-attach-selection').onclick = () => {
   if (!active || changingProject) return;
   const { from, to } = active.state.selection.main;

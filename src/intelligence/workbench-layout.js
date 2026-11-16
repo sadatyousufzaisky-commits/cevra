@@ -8,6 +8,7 @@ export function createIntelligenceLayout({ api, report }) {
   let mode;
   let frame;
   let enabled = false;
+  let contextAvailable = false;
   let busy = true;
   let toggling = false;
 
@@ -47,11 +48,12 @@ export function createIntelligenceLayout({ api, report }) {
 
   function setFeatures(features) {
     enabled = features.intelligenceMock === true;
+    contextAvailable = features.intelligenceContext === true;
     power.textContent = enabled ? 'AI On' : 'AI Off';
     power.setAttribute('aria-pressed', String(enabled));
     power.setAttribute('aria-label', (enabled ? 'Turn off' : 'Turn on') + ' VOKRI Intelligence');
     dock.hidden = windowButton.hidden = !enabled;
-    attach.hidden = features.intelligenceContext !== true;
+    attach.hidden = !contextAvailable;
     sync();
   }
 
@@ -75,6 +77,7 @@ export function createIntelligenceLayout({ api, report }) {
 
   return {
     setFeatures,
+    settingsAvailable: () => contextAvailable,
     setBusy(value) { busy = value; sync(); },
     openDock,
   };

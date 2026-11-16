@@ -379,14 +379,7 @@
       <button id="intelligence-attach-selection" class="status-action" hidden disabled>Attach selection to Intelligence</button>
       <button id="intelligence-review-proposal" class="status-action" hidden>Review Intelligence edit</button>
       <button id="intelligence-dismiss-proposal" class="status-action" hidden>Dismiss Intelligence edit</button>
-      <label class="theme-control">Theme
-        <select id="theme-choice" aria-label="Theme" disabled>
-          <option value="dark">Iris Ink Dark</option>
-          <option value="light">Iris Ink Light</option>
-          <option value="midnight">Midnight Atelier</option>
-          <option value="system">System</option>
-        </select>
-      </label>
+      <button id="appearance-settings" class="status-action" title="Appearance settings" disabled>Theme</button>
       <span id="language" class="status-field"></span>
       <button id="line-ending" class="status-action" aria-haspopup="dialog" hidden></button>
       <span id="cursor" class="status-field"></span>
@@ -422,32 +415,106 @@
     <button id="definition-cancel" class="button">Cancel</button>
   </dialog>
   <dialog id="settings-dialog" class="definition-dialog settings-dialog" aria-labelledby="settings-heading">
-    <h2 id="settings-heading">Editor Settings</h2>
-    <form id="settings-form">
-      <label>Scope <select id="settings-scope"><option value="global">Global</option><option value="workspace">This workspace</option></select></label>
-      <div class="settings-fields">
-        <label>Font size <input name="fontSize" type="number" min="10" max="32" required></label>
-        <label>Font family <select name="fontFamily"><option value="default">Default</option><option value="consolas">Consolas</option><option value="courier">Courier New</option></select></label>
-        <label>Indent width <input name="indentWidth" type="number" min="1" max="8" required></label>
-        <label>Indentation <select name="indentStyle"><option value="spaces">Spaces</option><option value="tabs">Tabs</option></select></label>
-        <label>Cursor width <select name="cursor"><option value="thin">Thin</option><option value="wide">Wide</option></select></label>
-        <label>Rename shortcut <select name="renameShortcut"><option value="f2">F2</option><option value="ctrl-alt-r">Ctrl+Alt+R</option></select></label>
-        <label><input name="wrap" type="checkbox"> Wrap lines</label>
-        <label><input name="lineNumbers" type="checkbox"> Show line numbers</label>
-        <label><input name="formatOnSave" type="checkbox"> Format JavaScript and TypeScript on save</label>
+    <header class="settings-header">
+      <h2 id="settings-heading">Settings</h2>
+      <label for="settings-search" class="settings-search-label">Search settings</label>
+      <input id="settings-search" type="search" maxlength="120" placeholder="Try font size, format on save, or API key" autofocus>
+    </header>
+    <div class="settings-body">
+      <nav class="settings-nav" aria-label="Settings categories">
+        <button type="button" data-settings-category="all" aria-pressed="true">All settings</button>
+        <button type="button" data-settings-category="editor" aria-pressed="false">Editor</button>
+        <button type="button" data-settings-category="appearance" aria-pressed="false">Appearance</button>
+        <button type="button" data-settings-category="workspace" aria-pressed="false">Workspace</button>
+        <button type="button" data-settings-category="extensions" aria-pressed="false">Extensions</button>
+        <button type="button" data-settings-category="intelligence" aria-pressed="false">Intelligence</button>
+        <button type="button" data-settings-category="profile" aria-pressed="false">Profile</button>
+      </nav>
+      <div class="settings-content">
+        <p id="settings-results" role="status" hidden></p>
+        <section data-settings-section="editor" aria-labelledby="editor-settings-title">
+          <h3 id="editor-settings-title">Editor</h3>
+          <form id="settings-form" novalidate>
+            <div class="settings-scope">
+              <label for="settings-scope">Scope</label>
+              <select id="settings-scope" aria-describedby="settings-scope-note"><option value="global">Global</option><option value="workspace">This workspace</option></select>
+              <p id="settings-scope-note"></p>
+            </div>
+            <div id="settings-fields"></div>
+            <button id="settings-reset" type="button" class="button">Restore editor defaults</button>
+          </form>
+        </section>
+        <section data-settings-section="appearance" aria-labelledby="appearance-settings-title">
+          <h3 id="appearance-settings-title">Appearance</h3>
+          <div class="settings-row" data-setting="theme" data-keywords="color colour scheme skin high contrast dark light night system">
+            <div><label for="theme-choice">Theme</label><p id="theme-impact">Changes workbench and editor colors. Extension palettes apply to the editor.</p><p id="theme-default" class="setting-default"></p></div>
+            <div class="setting-controls">
+              <select id="theme-choice" aria-describedby="theme-impact theme-default" disabled></select>
+              <button id="theme-reset" type="button" class="button setting-reset" aria-label="Reset Theme" disabled>Reset</button>
+            </div>
+          </div>
+        </section>
+        <section data-settings-section="workspace" aria-labelledby="workspace-settings-title">
+          <h3 id="workspace-settings-title">Workspace</h3>
+          <div id="settings-trust" class="settings-row" data-setting="workspaceTrust" data-keywords="security sandbox permission restricted allow execution revoke trust">
+            <div><h4>Execution trust</h4><p id="trust-status"></p><p class="setting-default">Default · Ask before running workspace code</p></div>
+            <div class="setting-controls"><button id="trust-revoke" type="button" class="button" hidden>Revoke Trust</button></div>
+          </div>
+          <div class="settings-row" data-setting="workbenchLayout" data-keywords="sidebar explorer inspector dock terminal panel position size restore reset">
+            <div><h4>Workbench layout</h4><p>Panel sizes, visibility, and pinned views are saved as you arrange the workbench.</p><p class="setting-default">Default · Explorer open, details and bottom panel closed</p></div>
+            <div class="setting-controls"><button id="settings-reset-layout" type="button" class="button">Reset layout</button></div>
+          </div>
+        </section>
+        <section data-settings-section="extensions" aria-labelledby="extensions-settings-title">
+          <h3 id="extensions-settings-title">Extensions</h3>
+          <div class="settings-row" data-setting="extensionManager" data-keywords="plugin plugins addons add-on install online offline catalog marketplace permissions disable uninstall">
+            <div><h4>Extension permissions and packages</h4><p>Review installed extensions and their permissions, or discover packages in the store.</p><p class="setting-default">Default · Extensions need approval before running commands</p></div>
+            <div class="setting-controls">
+              <button id="settings-extensions" type="button" class="button">Manage extensions</button>
+              <button id="settings-store" type="button" class="button">Open store</button>
+            </div>
+          </div>
+        </section>
+        <section data-settings-section="intelligence" aria-labelledby="intelligence-settings-title">
+          <h3 id="intelligence-settings-title">Intelligence</h3>
+          <p id="settings-intelligence-state"></p>
+          <div class="settings-row" data-setting="providerConnections" data-keywords="AI cloud API key OpenAI credential token password disconnect">
+            <div><h4>Provider connections</h4><p>Connect, replace, or disconnect an API key through Windows Credential Manager.</p><p class="setting-default">Default · Disconnected</p></div>
+            <div class="setting-controls"><button type="button" class="button" data-intelligence-settings="connections" aria-describedby="settings-intelligence-state">Manage connections</button></div>
+          </div>
+          <div class="settings-row" data-setting="modelProfiles" data-keywords="AI Ollama localhost loopback offline provider chat coding patch model route">
+            <div><h4>Models and local connection</h4><p>Choose models by task or connect to an Ollama service running on this device.</p><p class="setting-default">Default · Use the model picker, Ollama disconnected</p></div>
+            <div class="setting-controls"><button type="button" class="button" data-intelligence-settings="models-and-local" aria-describedby="settings-intelligence-state">Manage models</button></div>
+          </div>
+          <div class="settings-row" data-setting="responsePreferences" data-keywords="AI language verbose concise code style answer length testing personalization">
+            <div><h4>Response preferences</h4><p>Choose the language, answer length, code style, and testing guidance for requests.</p><p class="setting-default">Default · Provider defaults</p></div>
+            <div class="setting-controls"><button type="button" class="button" data-intelligence-settings="response-preferences" aria-describedby="settings-intelligence-state">Edit response preferences</button></div>
+          </div>
+          <div class="settings-row" data-setting="usageLimit" data-keywords="AI OpenAI cost budget billing charges dollars spending usage daily limit">
+            <div><h4>OpenAI usage estimate</h4><p>Set an optional daily limit for the usage VOKRI Code estimates.</p><p class="setting-default">Default · No daily estimate limit</p></div>
+            <div class="setting-controls"><button type="button" class="button" data-intelligence-settings="usage-budget" aria-describedby="settings-intelligence-state">Manage estimate limit</button></div>
+          </div>
+        </section>
+        <section data-settings-section="profile" aria-labelledby="profile-settings-title">
+          <h3 id="profile-settings-title">Profile</h3>
+          <div class="settings-row" data-setting="settingsExport" data-keywords="backup share transfer JSON portability privacy secrets credentials">
+            <div><h4>Export settings</h4><p>Save your global editor settings and built-in theme as a JSON file.</p></div>
+            <div class="setting-controls"><button id="settings-export" type="button" class="button">Export settings</button></div>
+          </div>
+          <div class="settings-row" data-setting="about" data-keywords="version build release information branding">
+            <div><h4>About VOKRI Code</h4><p>View the installed version and profile information.</p></div>
+            <div class="setting-controls"><button id="about-product" type="button" class="button">About VOKRI Code</button></div>
+          </div>
+        </section>
       </div>
-      <div id="settings-trust" class="settings-trust" hidden>
-        <p id="trust-status"></p>
-        <button id="trust-revoke" type="button" class="button" hidden>Revoke Trust</button>
-      </div>
-      <p id="settings-status" role="status"></p>
-      <div class="edits-actions">
-        <button id="settings-reset" type="button" class="button" hidden>Clear Workspace Overrides</button>
-        <button id="about-product" type="button" class="button">About VOKRI Code</button>
+    </div>
+    <footer class="settings-footer">
+      <div><p id="settings-status" role="status"></p><p id="settings-pending" role="status"></p></div>
+      <div class="setting-controls">
         <button id="settings-close" type="button" class="button">Close</button>
-        <button id="settings-save" type="submit" class="button primary">Save Settings</button>
+        <button id="settings-save" type="submit" form="settings-form" class="button primary" disabled>Save Settings</button>
       </div>
-    </form>
+    </footer>
   </dialog>
   <dialog id="extension-manager" class="definition-dialog" aria-labelledby="extension-manager-heading">
     <div class="extension-heading">

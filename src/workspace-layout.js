@@ -31,7 +31,7 @@ export function createWorkspaceLayout({ persist, reveal, report }) {
     clearTimeout(timer);
     if (!dirty) return pending;
     dirty = false;
-    pending = persist(state).catch(report);
+    pending = persist(state).then(() => true, error => { report(error); return false; });
     return pending;
   }
 

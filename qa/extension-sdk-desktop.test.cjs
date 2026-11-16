@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { test } = require('node:test');
 const { installSample } = require('./extension-sdk-workbench.cjs');
+const { selectWorkbenchTheme } = require('./desktop-workbench.cjs');
 
 test('the author starter tools ZIP installs and its snippet and palette survive a disable cycle',
   { timeout: 45_000 }, async t => {
@@ -10,7 +11,6 @@ test('the author starter tools ZIP installs and its snippet and palette survive 
       title: 'Starter Tools',
       files: { 'example.js': 'cevrahell' },
     });
-    const theme = page.getByRole('combobox', { name: 'Theme' });
     const palette = page.locator('#theme-choice optgroup option').filter({ hasText: 'Tideline' });
     const snippet = page.getByRole('option', { name: /cevrahello.*org\.cevra\.examples\.starter-tools\/hello-log/ });
     const key = report.manifest.id + ':' + report.sha256 + ':tideline';
@@ -22,7 +22,7 @@ test('the author starter tools ZIP installs and its snippet and palette survive 
     await button('Close').click();
     await open('example.js');
     await palette.waitFor({ state: 'attached' });
-    await theme.selectOption(key);
+    await selectWorkbenchTheme(page, key);
     await themed();
     await editor.press('Control+End');
     await editor.press('Control+Space');
@@ -36,7 +36,7 @@ test('the author starter tools ZIP installs and its snippet and palette survive 
     await state('Disabled');
     await button('Close').click();
     await palette.waitFor({ state: 'detached' });
-    assert.notEqual(await theme.inputValue(), key);
+    assert.notEqual(await page.locator('#theme-choice').inputValue(), key);
     assert.deepEqual(await page.evaluate(async () => (await window.cevra.extensionContributions()).packages), []);
 
     await show();

@@ -42,4 +42,5 @@ contextBridge.exposeInMainWorld('intelligenceWorkspace', {
   reviewPatch: () => ipcRenderer.invoke('cevra:intelligence-mock:review-patch'),
   onLayoutChanged: callback => ipcRenderer.on('cevra:intelligence-mock:layout-changed', (_event, layout) => callback(layout)),
   onProposalChanged: callback => ipcRenderer.on('cevra:intelligence-mock:proposal-changed', (_event, available) => callback(available)),
+  onSettingsRequested: callback => ipcRenderer.on('cevra:intelligence-mock:settings-requested', (_event, section) => callback(section)),
 });

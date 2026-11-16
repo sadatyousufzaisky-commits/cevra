@@ -608,7 +608,7 @@ function createIntelligenceMockWindow(profile, {
       if (panel?.loaded) contents.unshift(panel.contents);
       for (const renderer of contents) if (!renderer.isDestroyed()) void applyAppearance(renderer).catch(() => {});
     },
-    async open(parent, selection, mode) {
+    async open(parent, selection, mode, section) {
       let owner = panel;
       if (selection !== undefined) {
         const project = live && getWorkspace();
@@ -641,6 +641,7 @@ function createIntelligenceMockWindow(profile, {
       if (panel === owner && !owner.contents.isDestroyed()) {
         present(owner, mode === 'window' ? owner.layout : mode);
         sendContext(owner);
+        if (section) owner.contents.send('cevra:intelligence-mock:settings-requested', section);
       }
     },
     setBounds(parent, bounds) {

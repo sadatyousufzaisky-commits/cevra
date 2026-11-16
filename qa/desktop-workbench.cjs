@@ -139,4 +139,11 @@ async function replaceEditor(workbench, text) {
   await workbench.page.locator('#draft-status[data-state="saved"]').waitFor();
 }
 
-module.exports = { assertWindowsProcessStopped, openWorkbench, replaceEditor };
+async function selectWorkbenchTheme(page, value) {
+  await page.locator('#appearance-settings').press('Enter');
+  const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await settings.getByRole('combobox', { name: 'Theme', exact: true }).selectOption(value);
+  await settings.getByRole('button', { name: 'Close', exact: true }).click();
+}
+
+module.exports = { assertWindowsProcessStopped, openWorkbench, replaceEditor, selectWorkbenchTheme };

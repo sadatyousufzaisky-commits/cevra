@@ -390,17 +390,22 @@
     {
       "id": "G9",
       "name": "Settings, personalization and control center",
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "G4",
         "G7",
         "G8"
       ],
       "commit": null,
-      "evidence": [],
+      "evidence": [
+        "g9-settings-control-center.md",
+        "../../qa/settings-desktop.test.cjs"
+      ],
       "ci": null,
       "ownerSignoff": null,
-      "openBlockers": []
+      "openBlockers": [
+        "Complete full Windows reliability verification and record the settings evidence."
+      ]
     },
     {
       "id": "G10",

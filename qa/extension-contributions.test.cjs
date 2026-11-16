@@ -6,7 +6,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { sha256 } = require('../src/extensions/inspect-package.cjs');
 const { createExtensionRegistry } = require('../src/extensions/registry.cjs');
 const { archive, manifest } = require('./extension-fixtures.cjs');
-const { openWorkbench, replaceEditor } = require('./desktop-workbench.cjs');
+const { openWorkbench, replaceEditor, selectWorkbenchTheme } = require('./desktop-workbench.cjs');
 
 async function install(profile, id, contributes, enabled = true) {
   const bytes = archive({ ...manifest(contributes), id });
@@ -109,16 +109,15 @@ test('a verified editor palette survives restart, falls back on disable, and is 
       });
     });
     const key = `${installed.join(':')}:deep-sea`;
-    const theme = workbench.page.getByRole('combobox', { name: 'Theme' });
     const palette = workbench.page.locator('#theme-choice optgroup option');
     const builtIn = 'rgb(255, 255, 255)';
     const extension = 'rgb(16, 32, 48)';
     await workbench.open('entry.js');
     await palette.waitFor({ state: 'attached' });
-    await theme.selectOption('light');
+    await selectWorkbenchTheme(workbench.page, 'light');
     await themeSelected(workbench.page, 'light', builtIn);
     await replaceEditor(workbench, draft);
-    await theme.selectOption(key);
+    await selectWorkbenchTheme(workbench.page, key);
     await themeSelected(workbench.page, key, extension);
     assert.equal(await workbench.editor.getByText('const', { exact: true }).evaluate(node => getComputedStyle(node).color),
       'rgb(121, 220, 186)');

@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { test } = require('node:test');
-const { openWorkbench } = require('./desktop-workbench.cjs');
+const { openWorkbench, selectWorkbenchTheme } = require('./desktop-workbench.cjs');
 
 const flag = '--enable-intelligence-mock';
 const source = 'const privateFixture = "G1 PRIVATE SOURCE";\n';
@@ -34,9 +34,7 @@ test('G8 moves the same sandboxed conversation between dock and full workspace, 
       window.unmaximize();
       window.setSize(920, 660);
     });
-    const theme = page.getByLabel('Theme', { exact: true });
-    await theme.focus();
-    await theme.selectOption('midnight');
+    await selectWorkbenchTheme(page, 'midnight');
     await page.locator('#message').getByText('Theme saved.', { exact: true }).waitFor({ state: 'visible' });
     await page.waitForFunction(() => {
       const message = document.getElementById('message');

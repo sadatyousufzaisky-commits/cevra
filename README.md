@@ -235,11 +235,13 @@ Press **Ctrl+B** to show or hide the Explorer and **Ctrl+J** to toggle the botto
 
 The editor shows the current file path and indentation guides. **Tab** and **Shift+Tab** indent and outdent JavaScript and TypeScript lines. Press **Escape** and then **Tab** to move focus out of the editor.
 
-## Customize the editor
+## Customize VOKRI Code
 
-Use **Theme** in the status bar to choose **VOKRI Dark**, **VOKRI Light**, or **System**. System follows the operating system's app color mode. The theme applies to the workbench, editor, and window controls. VOKRI Code remembers it across projects and restarts. New profiles start with VOKRI Dark.
+Open **Settings** or press **Ctrl+,** to search for preferences. **Theme** in the status bar opens Appearance, where you can choose Iris Ink Dark, Iris Ink Light, Midnight Atelier, System, or an enabled extension palette. System follows Windows app color mode. Iris Ink Dark is the default.
 
-Use **Settings** or **Ctrl+,** for font size and family, indentation, wrapping, line numbers, cursor width, format on save, and the Rename Symbol shortcut. Changes apply to open tabs. **Global** sets the defaults, and **This workspace** overrides just the fields you change. **Clear Workspace Overrides** restores inheritance. Format on save uses the project's formatter configuration.
+Editor settings show their defaults and the active scope. **Global** applies across projects. **This workspace** overrides individual settings. Reset a row to its default or inherited value, then select **Save Settings** to apply the changes to open tabs. Format on save uses the project's formatter configuration.
+
+Settings also leads to workspace trust, layout reset, extension management, and VOKRI Intelligence preferences. Under **Profile**, **Export settings** saves a JSON file with global editor preferences and the built-in theme. [Settings and profile behavior](docs/phase-6/g9-settings-control-center.md)
 
 ## Verify VOKRI Code
 

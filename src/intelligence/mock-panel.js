@@ -439,7 +439,7 @@ profileForm.onsubmit = async event => {
   } catch { profileStatus.textContent = 'Model profiles could not be saved.'; }
   finally { profileForm.inert = false; }
 };
-Promise.all([api.models(), api.localStatus(), api.modelProfile()]).then(([catalogs, local, saved]) => {
+const modelsReady = Promise.all([api.models(), api.localStatus(), api.modelProfile()]).then(([catalogs, local, saved]) => {
   if (saved.ok) profile = saved.value;
   document.getElementById('local-port').value = local.defaultPort;
   budgetPanel.hidden = !local.enabled;
@@ -449,3 +449,15 @@ Promise.all([api.models(), api.localStatus(), api.modelProfile()]).then(([catalo
   status.textContent = 'Ready.';
   prompt.focus();
 }).catch(() => { status.textContent = 'The model catalog is unavailable.'; });
+
+workspace.onSettingsRequested(section => {
+  void modelsReady.then(() => {
+    const details = document.getElementById(section);
+    if (!details || details.hidden) {
+      status.textContent = 'These settings are unavailable.';
+      return;
+    }
+    details.open = true;
+    details.querySelector('summary').focus();
+  });
+});

@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { test } = require('node:test');
 const { setTimeout: delay } = require('node:timers/promises');
-const { openWorkbench, replaceEditor } = require('./desktop-workbench.cjs');
+const { openWorkbench, replaceEditor, selectWorkbenchTheme } = require('./desktop-workbench.cjs');
 
 const evidence = process.env.VOKRI_G4_EVIDENCE;
 const record = evidence && process.env.VOKRI_G4_RECORD === '1';
@@ -89,11 +89,11 @@ test('G4 keyboard journey opens, edits, saves and runs a nested file, then follo
   await command(page, 'Toggle workspace details');
   await page.getByRole('complementary', { name: 'Workspace details' }).getByText('Execution trusted', { exact: true }).waitFor();
   await capture(page, 'g4-04-iris-ink-dark');
-  await page.locator('#theme-choice').selectOption('light');
+  await selectWorkbenchTheme(page, 'light');
   await page.waitForFunction(() => document.documentElement.dataset.colorMode === 'light');
   await capture(page, 'g4-05-iris-ink-light');
   await page.getByRole('button', { name: 'Trusted workspace settings' }).press('Enter');
-  const settings = page.getByRole('dialog', { name: 'Editor Settings' });
+  const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
   await settings.getByText('Workspace execution is trusted.', { exact: true }).waitFor();
   await settings.getByRole('button', { name: 'Revoke Trust', exact: true }).press('Enter');
   await settings.getByText('VOKRI Code will ask before running workspace code.', { exact: true }).waitFor();

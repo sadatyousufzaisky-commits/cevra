@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { test } = require('node:test');
-const { openWorkbench } = require('./desktop-workbench.cjs');
+const { openWorkbench, selectWorkbenchTheme } = require('./desktop-workbench.cjs');
 
 const evidence = process.env.VOKRI_DESIGN_SCREENSHOTS;
 
@@ -87,8 +87,7 @@ test('G1 workbench shares semantic states and file artwork across list and tabs'
     assert.equal(await row.getAttribute('aria-current'), 'true');
   }
 
-  const theme = page.getByLabel('Theme', { exact: true });
-  await theme.selectOption('dark');
+  await selectWorkbenchTheme(page, 'dark');
   await page.locator('html[data-color-mode=dark]').waitFor({ state: 'attached' });
   t.diagnostic('Dark minimum contrast ratios ' + JSON.stringify(await auditContrast(page, 'dark')));
   await wb.open('app.js');
@@ -116,7 +115,7 @@ test('G1 workbench shares semantic states and file artwork across list and tabs'
   await page.waitForFunction(() => document.activeElement?.matches('.cm-content'));
   const settings = page.getByRole('button', { name: 'Settings', exact: true });
   await settings.press('Enter');
-  const dialog = page.getByRole('dialog', { name: 'Editor Settings' });
+  const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
   await dialog.waitFor();
   assert.match(await dialog.ariaSnapshot(), /spinbutton "Font size"/);
   await screenshot(page, 'g1-workbench-settings');
@@ -125,7 +124,7 @@ test('G1 workbench shares semantic states and file artwork across list and tabs'
   await page.keyboard.press('Escape');
   await dialog.waitFor({ state: 'hidden' });
   assert.equal(await settings.evaluate(node => node === document.activeElement), true);
-  await theme.selectOption('light');
+  await selectWorkbenchTheme(page, 'light');
   await page.locator('html[data-color-mode=light]').waitFor({ state: 'attached' });
   t.diagnostic('Light minimum contrast ratios ' + JSON.stringify(await auditContrast(page, 'light')));
   await screenshot(page, 'g1-workbench-light');
@@ -251,9 +250,8 @@ test('G1 prototypes exercise keyboard flows and draw distinct accessible states 
 
 test('Midnight Atelier follows the saved theme through restart and Intelligence', { timeout: 35_000 }, async t => {
   let workbench = await openWorkbench(t, { 'app.js': 'const sample = 1;\n' }, undefined, { args: ['--enable-intelligence-mock'] });
-  const theme = page => page.getByRole('combobox', { name: 'Theme' });
   const select = async (page, choice, direction) => {
-    await theme(page).selectOption(choice);
+    await selectWorkbenchTheme(page, choice);
     await page.locator(`html[data-direction=${direction}]`).waitFor({ state: 'attached' });
     await page.locator('#message').getByText('Theme saved.', { exact: true }).waitFor();
   };
@@ -270,7 +268,7 @@ test('Midnight Atelier follows the saved theme through restart and Intelligence'
   workbench = await workbench.restart({ args: appArgs });
   const { app, page, profile } = workbench;
   await page.locator('html[data-direction=midnight][data-color-mode=dark]').waitFor({ state: 'attached' });
-  assert.equal(await theme(page).inputValue(), 'midnight');
+  assert.equal(await page.locator('#theme-choice').inputValue(), 'midnight');
   assert.equal(JSON.parse(await fs.readFile(path.join(profile, 'preferences.json'), 'utf8')).theme, 'midnight');
   assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase()), '#11111c');
   const opened = app.waitForEvent('window');

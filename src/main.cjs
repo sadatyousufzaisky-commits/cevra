@@ -7,8 +7,9 @@ const { randomUUID } = require('node:crypto');
 const { productName, appId, icon } = require('./identity.cjs');
 const { profileLocation } = require('./profile-location.cjs');
 const { acquireProfileLease } = require('./profile-lease.cjs');
-const { createWorkspace, listFolder, maxFileBytes, readSource, saveSource, saveRecoveryCopy,
+const { createWorkspace, inside, listFolder, maxFileBytes, readSource, saveSource, saveRecoveryCopy,
   resolveEntry, verifyRevision, workspacePath } = require('./workspace.cjs');
+const { writeAtomic } = require('./atomic-file.cjs');
 const { sourceFileKey } = require('./source-files.cjs');
 const { startSourceRun } = require('./runner.cjs');
 const { createTestSession } = require('./project-tests.cjs');
@@ -453,13 +454,20 @@ handle('initial', async () => {
   return { ...features, unavailable, unreadable };
 });
 
-handle('open-intelligence-mock', (input, mode = 'window') => {
+function openIntelligence(input, mode, section) {
   if (!intelligenceEnabled) throw new Error('VOKRI Intelligence is disabled.');
   if (!rendererReady || changingWorkspace || closePending || allowClose || !window || window.isDestroyed()) {
     throw new Error('Wait for the workbench to become available.');
   }
   if (mode !== 'window' && mode !== 'dock' && mode !== 'workspace') throw new Error('Choose an Intelligence layout.');
-  return intelligenceController().open(window, input, mode);
+  return intelligenceController().open(window, input, mode, section);
+}
+handle('open-intelligence-mock', (input, mode = 'window') => openIntelligence(input, mode));
+handle('open-intelligence-settings', section => {
+  if (!liveIntelligence || !['connections', 'models-and-local', 'response-preferences', 'usage-budget'].includes(section)) {
+    throw new Error('Choose an available Intelligence settings section.');
+  }
+  return openIntelligence(undefined, 'workspace', section);
 });
 handle('set-intelligence-enabled', enabled => {
   if (typeof enabled !== 'boolean' || !rendererReady || changingWorkspace || closePending || allowClose) {
@@ -573,6 +581,29 @@ ipcMain.on('cevra:intelligence-document-closed', (event, id, file) => {
 handle('editor-settings', id => preferences.getEditor(id ? currentWorkspace(id) : undefined));
 handle('set-editor-settings', (id, scope, values) =>
   preferences.setEditor(id ? currentWorkspace(id) : undefined, scope, values));
+let exportingSettings = false;
+handle('export-settings', async () => {
+  if (exportingSettings) throw new Error('The settings export is already open.');
+  exportingSettings = true;
+  try {
+    const { canceled, filePath } = await dialog.showSaveDialog(window, {
+      title: 'Export VOKRI Code settings',
+      defaultPath: path.join(app.getPath('documents'), 'VOKRI Code settings.json'),
+      filters: [{ name: 'Settings JSON', extensions: ['json'] }],
+    });
+    if (canceled || !filePath) return false;
+    const directory = await fs.realpath(path.dirname(filePath)).catch(() => undefined);
+    if (!directory) throw new Error('Choose an accessible folder for the export.');
+    const profile = await fs.realpath(app.getPath('userData'));
+    if (inside(profile, directory)) throw new Error('Choose a folder outside the active profile.');
+    try {
+      await writeAtomic(path.join(directory, path.basename(filePath)), JSON.stringify(await preferences.exportPortable(), null, 2) + '\n');
+    } catch {
+      throw new Error('The settings file could not be saved.');
+    }
+    return true;
+  } finally { exportingSettings = false; }
+});
 handle('workspace-trust', id => preferences.isTrusted(currentWorkspace(id)));
 handle('revoke-trust', async id => {
   const project = currentWorkspace(id);

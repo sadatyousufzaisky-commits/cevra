@@ -9,7 +9,7 @@ const { promisify } = require('node:util');
 const { createWorkspace } = require('../src/workspace.cjs');
 const { createPythonProfiles } = require('../src/execution/python-profiles.cjs');
 
-const { assertWindowsProcessStopped, openWorkbench, replaceEditor } = require('./desktop-workbench.cjs');
+const { assertWindowsProcessStopped, openWorkbench, replaceEditor, selectWorkbenchTheme } = require('./desktop-workbench.cjs');
 
 const execute = promisify(execFile);
 
@@ -1543,13 +1543,13 @@ test('editor settings apply to open tabs and workspace overrides persist after r
   const { page, open, editor, project } = workbench;
   await open('source.js');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Editor Settings' });
+  const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
   await dialog.getByText(/override global settings/).waitFor();
-  await dialog.getByLabel('Font size').fill('21');
-  await dialog.getByLabel('Indent width').fill('4');
-  await dialog.getByLabel('Wrap lines').check();
-  await dialog.getByLabel('Show line numbers').uncheck();
-  await dialog.getByLabel('Format JavaScript and TypeScript on save').check();
+  await dialog.getByLabel('Font size', { exact: true }).fill('21');
+  await dialog.getByLabel('Indent width', { exact: true }).fill('4');
+  await dialog.getByLabel('Wrap lines', { exact: true }).check();
+  await dialog.getByLabel('Show line numbers', { exact: true }).uncheck();
+  await dialog.getByLabel('Format JavaScript and TypeScript on save', { exact: true }).check();
   await dialog.getByRole('button', { name: 'Save Settings' }).click();
   await dialog.getByText('Settings saved.').waitFor();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
@@ -1585,8 +1585,8 @@ test('workspace execution requires a grant and canceling leaves disk unchanged',
   await editor.press('F5');
   await output.getByText('confirmed', { exact: true }).waitFor();
   await state.getByText(/^Passed/).waitFor();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const settings = page.getByRole('dialog', { name: 'Editor Settings' });
+  await page.getByRole('button', { name: 'Trusted workspace settings', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
   await settings.getByText('Workspace execution is trusted.').waitFor();
   await settings.getByRole('button', { name: 'Revoke Trust' }).click();
   await settings.getByText('VOKRI Code will ask before running workspace code.').waitFor();
@@ -1611,7 +1611,6 @@ test('switching themes updates the window and editor and preserves drafts and un
   const second = 'const second = "original";\n';
   let workbench = await openWorkbench(t, { 'first.ts': first, 'second.js': second });
   const { app, page, editor, open, project } = workbench;
-  const theme = page.getByRole('combobox', { name: 'Theme' });
   await waitForTheme(page, 'dark', 'dark');
   await open('first.ts');
   await replaceEditor(workbench, 'const first = 42;\n');
@@ -1624,7 +1623,7 @@ test('switching themes updates the window and editor and preserves drafts and un
   const keyword = editor.getByText('const', { exact: true });
   assert.equal(await keyword.evaluate(element => getComputedStyle(element).color), 'rgb(217, 173, 251)');
 
-  await theme.selectOption('light');
+  await selectWorkbenchTheme(page, 'light');
   await waitForTheme(page, 'light', 'light');
   assert.equal(await keyword.evaluate(element => getComputedStyle(element).color), 'rgb(102, 51, 140)');
   assert.deepEqual(await page.evaluate(() => ['.titlebar', '.cm-editor', '.run-panel'].map(selector =>
@@ -1654,7 +1653,6 @@ test('switching themes updates the window and editor and preserves drafts and un
 test('System theme follows native color changes and a failed theme save rolls back the control',
   { timeout: 30_000 }, async t => {
   const { app, page, profile, open } = await openWorkbench(t, { 'entry.js': 'const ready = true;' });
-  const theme = page.getByRole('combobox', { name: 'Theme' });
   const preference = path.join(profile, 'preferences.json');
   const backup = path.join(profile, 'preferences-before-theme-test.json');
   await open('entry.js');
@@ -1662,14 +1660,14 @@ test('System theme follows native color changes and a failed theme save rolls ba
   const saved = JSON.parse(await fs.readFile(preference, 'utf8'));
   await fs.rename(preference, backup);
   await fs.mkdir(preference);
-  await theme.selectOption('light');
+  await selectWorkbenchTheme(page, 'light');
   await page.locator('#message[data-error="true"]').waitFor();
   await waitForTheme(page, 'dark', 'dark');
   assert.equal(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource), 'dark');
 
   await fs.rmdir(preference);
   await fs.rename(backup, preference);
-  await theme.selectOption('system');
+  await selectWorkbenchTheme(page, 'system');
   await page.locator('#message').getByText('Theme saved.', { exact: true }).waitFor();
   await page.waitForFunction(() => {
     const select = document.getElementById('theme-choice');

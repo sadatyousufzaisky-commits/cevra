@@ -10,6 +10,7 @@ const { _electron } = require('playwright');
 const { createDraftStore } = require('../src/drafts.cjs');
 const { createPreferences } = require('../src/preferences.cjs');
 const { acquireProfileLease } = require('../src/profile-lease.cjs');
+const { selectWorkbenchTheme } = require('./desktop-workbench.cjs');
 const { createWorkspace, readSource } = require('../src/workspace.cjs');
 const { createExtensionRegistry } = require('../src/extensions/registry.cjs');
 const { sha256 } = require('../src/extensions/inspect-package.cjs');
@@ -135,7 +136,8 @@ test('Windows hands an existing profile and its drafts between the native and El
       assert.match(await editor.innerText(), /recovered/);
       assert.equal(await last.page.locator('#theme-choice').inputValue(), 'midnight');
       await last.page.getByRole('button', { name: 'Settings', exact: true }).click();
-      assert.equal(await last.page.getByLabel('Font size').inputValue(), '21');
+      await last.page.locator('input[name="fontSize"]:enabled').waitFor();
+      assert.equal(await last.page.getByLabel('Font size', { exact: true }).inputValue(), '21');
     } finally { await last.app.close(); }
     assert.deepEqual(await fs.readFile(preferencesFile), originalPreferences);
     assert.equal(await fs.readFile(entry, 'utf8'), source);
@@ -156,7 +158,7 @@ test('Windows shows VOKRI Code identity and uses a branded profile on first laun
     const screenshots = process.env.VOKRI_IDENTITY_SCREENSHOTS;
     if (screenshots) await page.screenshot({ path: path.join(screenshots, 'workbench-dark.png') });
     assert.equal(await page.locator('#welcome-open').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(176, 166, 255)');
-    await page.locator('#theme-choice').selectOption('light');
+    await selectWorkbenchTheme(page, 'light');
     await page.waitForFunction(() => document.documentElement.dataset.colorMode === 'light');
     assert.equal(await page.locator('#welcome-open').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(87, 64, 184)');
     await assert.rejects(fs.access(path.join(appData, 'CEVRA')), { code: 'ENOENT' });
@@ -167,7 +169,7 @@ test('Windows shows VOKRI Code identity and uses a branded profile on first laun
       await new Promise(resolve => setTimeout(resolve, 25));
     }
     assert.deepEqual(await app.evaluate(() => globalThis.identityAbout), { title: 'About VOKRI Code', detail: 'Version 0.1.0', icon: true });
-    await page.getByRole('dialog', { name: 'Editor Settings' }).getByRole('button', { name: 'Close', exact: true }).press('Enter');
+    await page.getByRole('dialog', { name: 'Settings', exact: true }).getByRole('button', { name: 'Close', exact: true }).press('Enter');
     const shortcut = await app.evaluate(({ shell }, { file, directory }) => {
       const icon = process.getBuiltinModule('node:path').join(directory, 'assets', 'brand', 'vc.ico');
       if (!shell.writeShortcutLink(file, 'create', { target: process.execPath, args: '"' + directory + '"',
@@ -221,8 +223,8 @@ test('Windows reuses the original profile and retains drafts, trust, extensions 
         assert.equal(await page.locator('#theme-choice').inputValue(), 'light');
         await page.getByRole('button', { name: 'Settings', exact: true }).click();
         await page.getByText('Workspace execution is trusted.', { exact: true }).waitFor();
-        assert.equal(await page.getByLabel('Font size').inputValue(), '19');
-        await page.getByRole('dialog', { name: 'Editor Settings' }).getByRole('button', { name: 'Close', exact: true }).click();
+        assert.equal(await page.getByLabel('Font size', { exact: true }).inputValue(), '19');
+        await page.getByRole('dialog', { name: 'Settings', exact: true }).getByRole('button', { name: 'Close', exact: true }).click();
         await page.getByRole('button', { name: 'Extensions', exact: true }).click();
         await page.getByRole('heading', { name: extension.displayName, exact: true }).waitFor();
         await page.getByRole('dialog', { name: 'Extension Manager' }).getByRole('button', { name: 'Close', exact: true }).click();
