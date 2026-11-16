@@ -17,7 +17,7 @@ The [editor settings schema](../../src/settings-schema.cjs) defines each key, ty
 
 Global editor values apply to every project. Each workspace can override individual fields. The control center shows the global value alongside a workspace override. **Reset** on a workspace row stages a return to inheritance. **Clear Workspace Overrides** stages that reset for all editor settings in the workspace. Global reset stages the application defaults. **Save Settings** commits the selected scope and applies the effective settings to open tabs. Switching scopes or changing the search keeps staged changes until you save or discard them.
 
-Theme selection saves immediately, and **Reset Theme** restores Iris Ink Dark. **Reset layout** restores the default layout from the same command used by the Command Center. The Workspace category reports current execution trust and can revoke a grant. The existing execution prompt handles granting trust. Extension management and Intelligence links open their existing controls, including their usual permission and credential flows. Opening Settings leaves Intelligence in its current state.
+Theme selection saves immediately, and **Reset Theme** restores Iris Ink Dark. **Reset layout** restores the default layout from the same command used by the Command Center. The Workspace category reports current execution trust and can revoke a grant. The existing execution prompt handles granting trust. Extension management and Intelligence links open their existing controls, including their usual permission and credential flows. Enable Intelligence from its status-bar control to access live settings.
 
 ## Profile compatibility and export
 
@@ -28,3 +28,9 @@ The **Export settings** picker writes a separate JSON file with `schemaVersion: 
 ## Verification
 
 The Windows desktop tests exercise beginner and configuration-term search, keyboard focus, forced colors, 200% zoom, save and reset across restart, profile compatibility, the portable export, and navigation to existing extension and Intelligence settings. [Desktop regression tests](../../qa/settings-desktop.test.cjs)
+
+On Windows 11 x64 build 26300, revision `8c8e44cb8f99b9752b436f11173dbc808d0fece1` passed 173 core tests and 108 desktop tests across two runs. A local test process exited before reporting the workbench cases, and all 66 of those cases passed on the isolated rerun. The screenshots show a beginner query in Iris Ink and an advanced query in forced colors at 200% zoom. [Beginner search](evidence/g9/beginner-search.png) · [Advanced search at 200%](evidence/g9/advanced-search-200.png)
+
+## Gate decision
+
+G9 passed on 2026-11-16 for the Electron workbench. The final revision passed 173 core tests and 108 desktop tests together on Windows Server 2025. Credential account isolation, 19 extension-host tests, and 13 Intelligence benchmark checks also passed. The optional native profile-handoff test was skipped. [Phase 6 status](PHASE6_STATUS.json) · [Windows reliability run](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43794028270)

@@ -390,22 +390,38 @@
     {
       "id": "G9",
       "name": "Settings, personalization and control center",
-      "status": "in_progress",
+      "status": "passed",
       "dependsOn": [
         "G4",
         "G7",
         "G8"
       ],
-      "commit": null,
+      "commit": "8c8e44cb8f99b9752b436f11173dbc808d0fece1",
       "evidence": [
         "g9-settings-control-center.md",
-        "../../qa/settings-desktop.test.cjs"
+        "../../qa/settings-desktop.test.cjs",
+        "evidence/g9/beginner-search.png",
+        "evidence/g9/advanced-search-200.png"
       ],
-      "ci": null,
-      "ownerSignoff": null,
-      "openBlockers": [
-        "Complete full Windows reliability verification and record the settings evidence."
-      ]
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43794028270",
+      "ownerSignoff": {
+        "date": "2026-11-16",
+        "authorization": "Project owner directed G9 implementation on Electron."
+      },
+      "openBlockers": [],
+      "verification": {
+        "verifiedAt": "2026-11-16",
+        "localPlatform": "Windows 11 x64 build 26300",
+        "localDesktopPassed": "42 in the desktop run and 66 on the isolated workbench rerun",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassedCi": 173,
+        "desktopPassedCi": 108,
+        "optionalNativePreviewSkipped": 1,
+        "credentialAccountIsolationCi": "passed",
+        "extensionHostPassedCi": 19,
+        "benchmarkPassedCi": 13,
+        "accessibility": "Keyboard focus, accessibility tree, forced colors, and 200 percent Electron zoom verified."
+      }
     },
     {
       "id": "G10",
