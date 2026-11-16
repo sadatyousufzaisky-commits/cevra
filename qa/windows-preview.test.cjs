@@ -15,6 +15,8 @@ const enabled = process.platform === 'win32' && /^[a-z0-9][a-z0-9-]{0,35}$/i.tes
 
 test('G10 staged preview receives real Windows Shell file and folder activations', { skip: !enabled, timeout: 75_000 }, async t => {
   const preview = path.join(repo, 'dist/windows-integration', tag);
+  const reportingHelper = path.join(preview, executable.replace(/\.exe$/i, '_wer.dll'));
+  assert.ok((await fs.stat(reportingHelper)).isFile());
   const appRoot = path.join(preview, 'resources/app');
   const fixture = await temporaryFolder(t, 'vokri-g10-shell-');
   const first = path.join(fixture, 'first');

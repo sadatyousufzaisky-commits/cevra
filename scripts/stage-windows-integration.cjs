@@ -27,7 +27,9 @@ async function stage() {
     const copy = (relative, destination = path.join(app, relative)) => fs.cp(path.join(repository, relative), destination, { recursive: true });
     for (const entry of await fs.readdir(electron)) {
       if (entry.toLowerCase() === 'resources') continue;
-      await fs.cp(path.join(electron, entry), path.join(temporary, entry === 'electron.exe' ? executable : entry), { recursive: true });
+      const name = entry === 'electron.exe' ? executable :
+        entry === 'electron_wer.dll' ? executable.replace(/\.exe$/i, '_wer.dll') : entry;
+      await fs.cp(path.join(electron, entry), path.join(temporary, name), { recursive: true });
     }
     await fs.mkdir(app, { recursive: true });
     await fs.writeFile(path.join(app, 'package.json'), JSON.stringify({

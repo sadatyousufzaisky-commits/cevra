@@ -1,6 +1,6 @@
 # G10 Windows Open with, defaults, and VC document icons
 
-The Windows x64 Electron preview stages `VokriCode.exe` and its runtime together. Run `npm run stage:windows-integration -- preview` from the repository. Run `pwsh -File dist/windows-integration/preview/windows-integration.ps1 Register` to register it for the signed-in Windows account. The same script provides **Status** and **Unregister**. Update by staging a second named build and running its **Register** action. Keep the registered directory available until you switch registrations or remove them.
+The Windows x64 Electron preview stages `VokriCode.exe`, its matching Windows Error Reporting helper, and the app runtime together. Run `npm run stage:windows-integration -- preview` from the repository. Run `pwsh -File dist/windows-integration/preview/windows-integration.ps1 Register` to register it for the signed-in Windows account. The same script provides **Status** and **Unregister**. Update by staging a second named build and running its **Register** action. Keep the registered directory available until you switch registrations or remove them. [Electron 45 packaging requirements](https://www.electronjs.org/blog/electron-45-0#broader-crash-reporting-on-windows)
 
 ## File associations
 
@@ -26,10 +26,14 @@ Each registration version identifies a stable ProgID schema across application u
 
 The registered command quotes the executable and target and passes the target after an argument separator. Explorer launches sent while VOKRI Code is running go to its existing instance. Same-workspace files open in tabs, including files selected in a short Explorer launch burst. Selections for separate workspaces remain available through **Open next Explorer selection**. Switching workspaces uses the existing draft and terminal prompts.
 
+On Windows 11, **Open Folder with VOKRI Code** is in the classic folder menu reached through **Show more options**.
+
 The preview accepts supported files and local folders, including Unicode names, spaces, relative arguments from another working directory, and local long paths. It checks file and folder identity before opening and rejects device paths, UNC paths, alternate streams, linked files, hidden workspace internals, and unsupported or unreadable documents. Explorer activation opens content for editing with the workspace's normal execution authorization.
 
 ## Verification
 
 The desktop tests open and save every registered extension, test a warm instance and a two-folder selection, and check Unicode, long paths, junctions, hard links, rejected inputs, and draft preservation. The Registry fixture covers fresh registration, update, repeat operations, ownership collision, and removal with a separate seeded default. A staged live test uses the real Windows Shell to resolve all four icon classes and activate a file and folder, then compares real user default records before and after cleanup. [Activation tests](../../qa/explorer-open-desktop.test.cjs) · [Registry tests](../../qa/windows-integration.test.cjs) · [Live Shell test](../../qa/windows-preview.test.cjs)
 
-The remaining manual matrix uses disposable Windows 10 and Windows 11 desktops. Open a registered file through Explorer's chooser, select VOKRI Code permanently through Windows Default apps, inspect the resulting document icon, update and unregister the preview, and restore the original default in Windows. Capture the chooser, Default apps, the file icon, and the post-removal state for each platform.
+On Windows 11 Home build 26300, a real Explorer TypeScript fixture listed VOKRI Code in **Open with** and showed the existing Media Player default. The Windows URI opened the app-specific **Default apps** page. After unregistering, VOKRI Code disappeared from the chooser. The user-choice records for all 23 extensions matched the baseline. [Open with](evidence/g10/windows-11-open-with.png) · [Default apps](evidence/g10/windows-11-default-apps.png) · [After unregistering](evidence/g10/windows-11-after-unregister.png)
+
+The remaining manual checks use disposable desktops. On Windows 10, verify Explorer's chooser and registration removal. On Windows 10 and Windows 11, select VOKRI Code as the default, inspect the resulting file icon, update and unregister the preview, and restore the original default through Windows.
