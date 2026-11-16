@@ -102,7 +102,7 @@ function createPreferences(directory) {
       return builtInTheme((await current()).theme);
     },
     async setTheme(theme) {
-      if (typeof theme !== 'string' || !Object.hasOwn(themes, theme)) throw new Error('Choose a built-in theme.');
+      if (typeof theme !== 'string' || !Object.hasOwn(themes, theme)) throw new Error('Choose Dark, Light, System, or Midnight Atelier.');
       await save(data => {
         const next = { ...data, theme };
         delete next.extensionPalette;

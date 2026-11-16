@@ -886,6 +886,8 @@ test('editor settings inherit validated defaults and trust belongs to the origin
   await preferences.setEditor(workspace, 'global', { fontSize: 19, wrap: true, indentWidth: 4 });
   await preferences.setEditor(workspace, 'workspace', { indentWidth: 8, wrap: false });
   await assert.rejects(preferences.setEditor(workspace, 'workspace', { indentWidth: 0 }), /invalid/);
+  await assert.rejects(preferences.setEditor(workspace, 'workspace', { unknown: null }), /invalid/);
+  await assert.rejects(preferences.setEditor(workspace, 'global', { indentWidth: null }), /invalid/);
   await assert.rejects(preferences.setEditor(workspace, 'global', { fontFamily: 'arbitrary' }), /invalid/);
   assert.equal(await preferences.isTrusted(workspace), false);
   await preferences.setTrusted(workspace, true);
@@ -893,8 +895,11 @@ test('editor settings inherit validated defaults and trust belongs to the origin
   assert.deepEqual((await reopened.getEditor(workspace)).overrides, { indentWidth: 8, wrap: false });
   assert.equal((await reopened.getEditor(workspace)).effective.fontSize, 19);
   assert.equal(await reopened.isTrusted(await createWorkspace(root)), true);
-  await reopened.setEditor(workspace, 'workspace', null);
+  await reopened.setEditor(workspace, 'workspace', { indentWidth: null });
   assert.equal((await reopened.getEditor(workspace)).effective.indentWidth, 4);
+  assert.deepEqual((await reopened.getEditor(workspace)).overrides, { wrap: false });
+  await reopened.setEditor(workspace, 'workspace', null);
+  assert.equal((await reopened.getEditor(workspace)).effective.wrap, true);
   await fs.rename(root, path.join(folder, 'original'));
   await fs.mkdir(root);
   assert.equal(await reopened.isTrusted(await createWorkspace(root)), false);
