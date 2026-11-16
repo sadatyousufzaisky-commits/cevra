@@ -21,11 +21,13 @@ function send(workbench, entries, cwd = workbench.project) {
 test('G10 opens and saves every registered type from one Windows launch', { skip: !windows, timeout: 55_000 }, async t => {
   const names = Object.values(types).flat().map((extension, index) => `étude ${index} (QA) & 50%${extension}`);
   const workbench = await openWorkbench(t, Object.fromEntries(names.map(name => [name, text])), undefined, {
-    openOnStart: false, args: project => ['--vokri-open', '--', ...names.map(name => path.join(project, name))],
+    openOnStart: false, args: project => ['--vokri-open', '--', ...names.map(name => path.join(project, name)),
+      path.join(project, 'unavailable.js')],
   });
   const { page, editor, project } = workbench;
   await workbench.selected(names.at(-1)).waitFor();
   assert.equal(await page.locator('#tabs [data-tab-id]').count(), names.length);
+  await page.locator('#message[data-error="true"]').getByText('Some Explorer items are unavailable or unsupported.', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Restricted workspace settings', exact: true }).waitFor();
   for (const name of names) {
     const file = path.join(project, name);
@@ -115,4 +117,21 @@ test('G10 opens a long local path while rejecting unsupported selections without
   assert.equal(await workbench.page.locator('#tabs [data-tab-id]').count(), 1);
   assert.equal(await workbench.output.getByText('should never execute').count(), 0);
   await workbench.page.getByRole('button', { name: 'Restricted workspace settings', exact: true }).waitFor();
+});
+
+test('G10 opens the Windows Default apps surface from the control center', { skip: !windows, timeout: 25_000 }, async t => {
+  const { app, page } = await openWorkbench(t, {}, undefined, { openOnStart: false });
+  await app.evaluate(({ shell }) => {
+    globalThis.defaultAppsCalls = [];
+    shell.openExternal = async uri => { globalThis.defaultAppsCalls.push(uri); };
+  });
+  await page.getByRole('button', { name: 'Settings', exact: true }).press('Enter');
+  const center = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await center.getByRole('searchbox', { name: 'Search settings' }).fill('default editor');
+  await center.getByRole('button', { name: 'Open Default apps', exact: true }).click();
+  await center.locator('#windows-default-apps:enabled').waitFor();
+  const calls = await app.evaluate(() => ({
+    urls: globalThis.defaultAppsCalls, build: Number(process.getSystemVersion().split('.')[2]),
+  }));
+  assert.deepEqual(calls.urls, [calls.build >= 22000 ? 'ms-settings:defaultapps?registeredAppUser=VOKRI%20Code' : 'ms-settings:defaultapps']);
 });

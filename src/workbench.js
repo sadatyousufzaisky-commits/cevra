@@ -936,8 +936,11 @@ explorerOpen.onclick = () => void openExplorerSelection();
 api.onExplorerOpenChanged(({ pending, rejected, automatic }) => {
   explorerOpen.hidden = !pending;
   explorerOpen.textContent = `Open next Explorer selection (${pending})`;
-  if (automatic) void openExplorerSelection();
-  if (rejected) notify('Some Explorer items are unavailable or unsupported.', true);
+  const reportRejected = () => {
+    if (rejected) notify('Some Explorer items are unavailable or unsupported.', true);
+  };
+  if (automatic) void openExplorerSelection().then(reportRejected);
+  else reportRejected();
 });
 
 function renderRecentProjects() {

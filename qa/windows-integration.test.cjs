@@ -17,9 +17,10 @@ test('G10 treats Explorer arguments as paths only after the activation separator
   assert.deepEqual(activationArguments(['app.exe', '--vokri-open', '--', 'C:\\café & (50%)\\source.ts']), ['C:\\café & (50%)\\source.ts']);
   assert.deepEqual(activationArguments(['app.exe', '--vokri-open', 'C:\\source.js']), []);
   assert.equal(localPath('x.js', 'D:\\project'), 'D:\\project\\x.js');
+  assert.equal(localPath('.\\x.js', 'D:\\project'), 'D:\\project\\x.js');
   assert.equal(localPath('\\\\?\\C:\\long\\sample.py'), 'C:\\long\\sample.py');
   for (const input of ['\\\\.\\pipe\\x.js', '\\\\host\\share\\x.js', 'D:a.js', 'FILE:///D:/a.js',
-    'C:\\x.js:alternate', '..\\x.js', '.\\x.js', 'D:\\folder.\\x.js', 'D:\\con.js', 'C:\\code\\.git\\x.js',
+    'C:\\x.js:alternate', '..\\x.js', 'D:\\folder.\\x.js', 'D:\\con.js', 'C:\\code\\.git\\x.js',
     'C:\\x\\bad" quote.js', '--disable-extensions']) {
     assert.throws(() => localPath(input, 'C:\\code'), /unavailable/);
   }

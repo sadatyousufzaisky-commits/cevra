@@ -26,7 +26,7 @@ function localPath(input, cwd) {
   const drive = /^[a-z]:\\/i;
   if (value.startsWith('\\') || value.startsWith('-') || /:/.test(drive.test(value) ? value.slice(2) : value)) throw unavailable();
   const parts = (drive.test(value) ? value.slice(3) : value).split('\\').filter(Boolean);
-  if (parts.some(part => /[. ]$/.test(part) || reserved.test(part) || unsupported.has(part.toLowerCase()))) throw unavailable();
+  if (parts.some(part => (part !== '.' && /[. ]$/.test(part)) || reserved.test(part) || unsupported.has(part.toLowerCase()))) throw unavailable();
   if (!drive.test(value) && (typeof cwd !== 'string' || !drive.test(cwd))) throw unavailable();
   const resolved = path.win32.resolve(cwd ?? value, value);
   if (resolved.slice(3).split('\\').some(part => unsupported.has(part.toLowerCase()))) throw unavailable();
@@ -119,22 +119,26 @@ function createExplorerQueue(current, changed) {
   const raw = [];
   const plans = [];
   let timer;
-  let resolving = false;
+  let resolving = 0;
   let rejected = 0;
   function emit(automatic) {
     if (changed({ pending: plans.length, rejected, automatic })) rejected = 0;
   }
   async function flush() {
     if (resolving || !raw.length) return;
-    resolving = true;
+    const batch = raw.splice(0);
+    resolving = batch.length;
     try {
-      const { plans: ready, rejected: invalid } = await explorerPlans(raw.splice(0), current());
+      const { plans: ready, rejected: invalid } = await explorerPlans(batch, current());
       rejected += invalid;
       const automatic = plans.length === 0;
       plans.push(...ready);
       emit(automatic);
+    } catch {
+      rejected += batch.length;
+      emit(false);
     } finally {
-      resolving = false;
+      resolving = 0;
       if (raw.length) schedule();
     }
   }
@@ -145,7 +149,8 @@ function createExplorerQueue(current, changed) {
   return {
     enqueue(inputs, cwd) {
       if (!Array.isArray(inputs) || !inputs.length) return;
-      const allowed = Math.max(0, maxSelection - raw.length - plans.reduce((size, plan) => size + Math.max(1, plan.files.length), 0));
+      const waiting = plans.reduce((size, plan) => size + Math.max(1, plan.files.length), raw.length + resolving);
+      const allowed = Math.max(0, maxSelection - waiting);
       rejected += Math.max(0, inputs.length - allowed);
       raw.push(...inputs.slice(0, allowed).map(input => ({ input, cwd })));
       if (raw.length) schedule();

@@ -717,8 +717,10 @@ handle('choose-folder', async discard => {
 
 const explorerQueue = createExplorerQueue(() => workspace, state => {
   if (!rendererReady || !window || window.isDestroyed()) return false;
-  window.webContents.send('cevra:explorer-open-changed', state);
-  return true;
+  try {
+    window.webContents.send('cevra:explorer-open-changed', state);
+    return true;
+  } catch { return false; }
 });
 handle('next-explorer-open', async () => {
   const plan = explorerQueue.peek();
