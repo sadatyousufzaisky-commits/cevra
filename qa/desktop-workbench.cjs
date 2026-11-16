@@ -123,7 +123,7 @@ async function openWorkbench(t, files, prepare, { appRoot = repo, projectPath, a
     };
   }
   const started = performance.now();
-  const result = await launch(initialArgs);
+  const result = await launch(typeof initialArgs === 'function' ? initialArgs(project, profile) : initialArgs);
   if (openOnStart) {
     await result.page.locator('#open-folder').click();
     await result.page.getByRole('heading', { name: 'Choose a file to edit.' }).waitFor().catch(async error => {

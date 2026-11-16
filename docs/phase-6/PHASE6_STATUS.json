@@ -426,17 +426,26 @@
     {
       "id": "G10",
       "name": "Windows Open with, defaults and VC file icons",
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "G0",
         "G5",
         "G9"
       ],
       "commit": null,
-      "evidence": [],
+      "evidence": [
+        "g10-windows-integration.md",
+        "evidence/g10/document-icon-atlas.png",
+        "../../qa/windows-integration.test.cjs",
+        "../../qa/explorer-open-desktop.test.cjs",
+        "../../qa/windows-preview.test.cjs"
+      ],
       "ci": null,
       "ownerSignoff": null,
-      "openBlockers": []
+      "openBlockers": [
+        "Complete hosted Windows reliability verification.",
+        "Record manual Explorer chooser, default selection, document icon, and removal behavior on Windows 10 and Windows 11."
+      ]
     },
     {
       "id": "G11",

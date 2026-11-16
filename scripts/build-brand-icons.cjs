@@ -27,7 +27,7 @@ if (process.versions.electron) {
     const window = new BrowserWindow({ show: false, width: 300, height: 300, webPreferences: { backgroundThrottling: false } });
     return window.loadURL('about:blank');
   }).catch(() => app.exit(1));
-} else {
+} else if (require.main === module) {
   async function build() {
     const { _electron } = require('playwright');
     const app = await _electron.launch({ executablePath: require('electron'), args: [__filename], chromiumSandbox: true });
@@ -52,3 +52,5 @@ if (process.versions.electron) {
   }
   build().catch(error => { console.error(error.message); process.exitCode = 1; });
 }
+
+module.exports = { ico, sizes };

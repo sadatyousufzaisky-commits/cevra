@@ -82,6 +82,7 @@ const findReferencesButton = byId('find-references');
 const renameButton = byId('rename-symbol');
 const themeChoice = byId('theme-choice');
 const settingsButton = byId('editor-settings');
+const explorerOpen = byId('explorer-open-next');
 const runButton = byId('run-file');
 const testButton = byId('run-tests');
 const retryButton = byId('rerun-failures');
@@ -110,6 +111,7 @@ let project;
 let recentProjects = [];
 let active;
 let changingProject = true;
+let openingFromExplorer = false;
 let changingGit = false;
 let fileRequest = 0;
 let documentSequence = 0;
@@ -238,6 +240,7 @@ function syncCommands() {
   terminalPanel.setBusy(changingProject);
   testEvidence.setBusy(Boolean(run || changingProject));
   openButton.disabled = welcomeOpen.disabled = exampleButton.disabled = Boolean(run || changingProject || changingGit || saving || discarding);
+  explorerOpen.disabled = openButton.disabled || openingFromExplorer || closingWorkbench;
   byId('open-commands').disabled = changingProject || closingWorkbench;
   for (const button of byId('recent-project-list').querySelectorAll('button')) button.disabled = openButton.disabled;
   saveButton.disabled = !active?.dirty || Boolean(active.saving || active.discarding || changingProject || changingGit);
@@ -869,6 +872,7 @@ async function adoptProject(next) {
   } else if (next.entry) {
     await openFile(next.entry);
   }
+  for (const file of next.explorerEntries ?? []) await openFromNavigation(file);
   if (next.unreadable) notify('Some draft backups could not be read. The backups are still on disk.', true);
   syncDirty();
 }
@@ -901,6 +905,40 @@ async function openProject(picker) {
 }
 
 const openRecent = id => openProject(discard => api.openRecent(id, discard)).catch(report);
+
+async function openExplorerSelection() {
+  if (explorerOpen.disabled || explorerOpen.hidden || document.querySelector('dialog[open]')) return;
+  openingFromExplorer = true;
+  syncCommands();
+  let selection;
+  let deferred = false;
+  try {
+    selection = await api.nextExplorerOpen();
+    if (!selection) return;
+    if (openButton.disabled || document.querySelector('dialog[open]')) {
+      deferred = true;
+      return;
+    }
+    if (selection.unavailable) throw new Error('An Explorer item changed or is unavailable. Select it again in Explorer.');
+    if (selection.switch) await openProject(discard => api.openExplorerWorkspace(selection.id, discard));
+    else if (selection.workspaceId === project?.id) {
+      for (const file of selection.entries) await openFromNavigation(file);
+    } else deferred = true;
+  } catch (error) { report(error); }
+  finally {
+    if (selection && !deferred) await api.finishExplorerOpen(selection.id).catch(report);
+    openingFromExplorer = false;
+    syncCommands();
+  }
+}
+
+explorerOpen.onclick = () => void openExplorerSelection();
+api.onExplorerOpenChanged(({ pending, rejected, automatic }) => {
+  explorerOpen.hidden = !pending;
+  explorerOpen.textContent = `Open next Explorer selection (${pending})`;
+  if (automatic) void openExplorerSelection();
+  if (rejected) notify('Some Explorer items are unavailable or unsupported.', true);
+});
 
 function renderRecentProjects() {
   const list = byId('recent-project-list');

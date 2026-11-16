@@ -1,0 +1,12 @@
+{
+  "application": "VOKRI Code",
+  "executable": "VokriCode.exe",
+  "owner": "Vokri.Code.WindowsIntegration",
+  "version": 1,
+  "types": {
+    "Code": [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".py", ".c", ".h", ".cpp", ".cs", ".sh", ".ps1"],
+    "Data": [".json", ".yaml", ".yml", ".xml"],
+    "Web": [".html", ".css"],
+    "Text": [".md", ".txt"]
+  }
+}

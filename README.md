@@ -243,6 +243,16 @@ Editor settings show their defaults and the active scope. **Global** applies acr
 
 Settings also leads to workspace trust, layout reset, extension management, and VOKRI Intelligence preferences. Under **Profile**, **Export settings** saves a JSON file with global editor preferences and the built-in theme. [Settings and profile behavior](docs/phase-6/g9-settings-control-center.md)
 
+## Open files from Windows Explorer
+
+On Windows x64, run `npm run stage:windows-integration -- preview` to stage the Electron preview. Register it for your account with PowerShell.
+
+```powershell
+pwsh -File dist/windows-integration/preview/windows-integration.ps1 Register
+```
+
+Use Explorer's **Open with** for supported files, or **Open Folder with VOKRI Code** from the folder context menu. Set file defaults in **Settings → Profile → Windows Default apps**. Run the same script with **Unregister** before removing the preview directory. [File types and Windows registration](docs/phase-6/g10-windows-integration.md)
+
 ## Verify VOKRI Code
 
 Run `npm test` on Windows before expanding the workbench. Put Git and Python 3 with `venv` support on PATH. The core suite exercises process output and exit codes, stale edits, atomic saves, workspace boundaries, and draft ordering. The desktop suite launches Electron against temporary projects and checks JavaScript, TypeScript, and Python execution, syntax and runtime navigation across files, failed-test retries, file safety through the editor bridge, and recovery after forced process termination. Run the suites independently with `npm run test:core` and `npm run test:desktop`.

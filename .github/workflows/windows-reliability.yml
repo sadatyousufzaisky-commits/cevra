@@ -86,6 +86,13 @@ jobs:
       - run: npm test
         env:
           VOKRI_TEST_PROFILE_HANDOFF: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_native_preview && '1' || '0' }}
+      - name: Stage and verify Windows Shell activation
+        env:
+          VOKRI_TEST_WINDOWS_PREVIEW: ci-shell
+        run: |
+          node scripts/stage-windows-integration.cjs ci-shell
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test qa/windows-preview.test.cjs
       - name: Verify Windows credential account separation
         run: pwsh -NoProfile -File qa/test-credential-account.ps1
       - name: Verify extension host isolation

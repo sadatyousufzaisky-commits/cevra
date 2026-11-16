@@ -1,4 +1,4 @@
-const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell } = require('electron');
 const fs = require('node:fs/promises');
 const { mkdirSync } = require('node:fs');
 const path = require('node:path');
@@ -20,6 +20,7 @@ const { createSyntaxService } = require('./syntax-service.cjs');
 const { createFormatService } = require('./format-service.cjs');
 const { createSemanticService } = require('./semantic-service.cjs');
 const { createPreferences } = require('./preferences.cjs');
+const { activationArguments, createExplorerQueue, samePath, verifyExplorerPlan } = require('./explorer-activation.cjs');
 const { createExtensionRegistry } = require('./extensions/registry.cjs');
 const { createExtensionCatalog } = require('./extensions/catalog.cjs');
 const { createOnlineCatalog } = require('./extensions/online-catalog.cjs');
@@ -390,7 +391,7 @@ function ensureWorkspaceAvailable(recovering = false) {
   if (gitWrite && !recovering) throw new Error('Wait for the Git action to finish.');
 }
 
-async function openWorkspace(folder, { entry, discard, recent, recovering = false } = {}) {
+async function openWorkspace(folder, { entry, discard, recent, explorer, recovering = false } = {}) {
   ensureWorkspaceAvailable(recovering);
   changingWorkspace = true;
   runGrant = undefined;
@@ -409,6 +410,7 @@ async function openWorkspace(folder, { entry, discard, recent, recovering = fals
       });
       if (response !== 1) return null;
     }
+    const explorerEntries = explorer ? await verifyExplorerPlan(explorer, next) : undefined;
     if (discard && workspace) await drafts.clear(workspace.root);
     const { entries, unreadable } = await readDrafts();
     const recovered = entries.filter(draft => draft.root === next.root);
@@ -429,7 +431,7 @@ async function openWorkspace(folder, { entry, discard, recent, recovering = fals
     pythonProfiles = createPythonProfiles(next);
     if (!recovering) await preferences.rememberWorkspace(next).catch(() => {});
     return {
-      id: next.id, root: next.root, name: next.name, files, entry, recovered, unreadable, settings, trusted,
+      id: next.id, root: next.root, name: next.name, files, entry, explorerEntries, recovered, unreadable, settings, trusted,
       caseInsensitivePaths: process.platform === 'win32',
       terminalLimit: process.platform === 'win32' ? terminals.maxSessions : 0,
     };
@@ -711,6 +713,35 @@ handle('choose-folder', async discard => {
   });
   if (choice.canceled) return null;
   return openWorkspace(choice.filePaths[0], { discard: discard === true });
+});
+
+const explorerQueue = createExplorerQueue(() => workspace, state => {
+  if (!rendererReady || !window || window.isDestroyed()) return false;
+  window.webContents.send('cevra:explorer-open-changed', state);
+  return true;
+});
+handle('next-explorer-open', async () => {
+  const plan = explorerQueue.peek();
+  const current = workspace;
+  if (!plan || changingWorkspace || closePending || allowClose) return null;
+  if (!current || !samePath(current.root, plan.root)) return { id: plan.id, switch: true };
+  try { return { id: plan.id, entries: await verifyExplorerPlan(plan, current), workspaceId: current.id }; }
+  catch { return { id: plan.id, unavailable: true }; }
+});
+handle('open-explorer-workspace', (id, discard) => {
+  const plan = explorerQueue.peek();
+  if (!plan || plan.id !== id || closePending || allowClose) throw new Error('This Explorer selection is no longer available.');
+  return openWorkspace(plan.root, { explorer: plan, discard: discard === true });
+});
+handle('finish-explorer-open', id => explorerQueue.finish(id));
+handle('windows-default-apps', async () => {
+  if (process.platform !== 'win32') throw new Error('Windows Default apps is available on Windows.');
+  const base = 'ms-settings:defaultapps';
+  if (Number(process.getSystemVersion().split('.')[2]) >= 22000) {
+    try { await shell.openExternal(base + '?registeredAppUser=' + encodeURIComponent(productName)); return; }
+    catch {}
+  }
+  await shell.openExternal(base);
 });
 
 handle('workbench-layout', () => preferences.getWorkbenchLayout());
@@ -1078,7 +1109,9 @@ handle('run-output', (id, runId, sessionId, cursor) => {
 });
 
 ipcMain.on('cevra:ready', event => {
-  if (isWorkbench(event)) rendererReady = true;
+  if (!isWorkbench(event)) return;
+  rendererReady = true;
+  explorerQueue.ready();
 });
 
 handle('about', async () => {
@@ -1125,7 +1158,9 @@ handle('close-ready', async (hasDrafts, backupFailed) => {
     if (!closePending || window !== closing) return;
     closePending = false;
     if (restarting) {
-      const args = process.argv.slice(1).filter(arg => !/^--disable-extensions(?:=|$)/.test(arg));
+      const argumentsBeforeSelection = process.argv.indexOf('--vokri-open');
+      const args = process.argv.slice(1, argumentsBeforeSelection < 0 ? undefined : argumentsBeforeSelection)
+        .filter(arg => !/^--disable-extensions(?:=|$)/.test(arg));
       if (restartExtensions) args.push('--disable-extensions');
       restartExtensions = undefined;
       try { app.relaunch({ args }); }
@@ -1222,10 +1257,13 @@ async function launch() {
   await workbench.loadFile(page);
 }
 
-if (app.requestSingleInstanceLock()) {
-  app.on('second-instance', () => {
+const launchSelection = process.platform === 'win32' ? activationArguments(process.argv) : [];
+if (app.requestSingleInstanceLock({ explorerSelection: launchSelection })) {
+  if (launchSelection.length) explorerQueue.enqueue(launchSelection, process.cwd());
+  app.on('second-instance', (_event, _argv, cwd, data) => {
     if (window?.isMinimized()) window.restore();
     window?.focus();
+    if (process.platform === 'win32') explorerQueue.enqueue(data?.explorerSelection, cwd);
   });
   app.whenReady().then(async () => {
     await acquireProfileLease(selectedProfile.directory, () => app.exit(1));

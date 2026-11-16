@@ -369,6 +369,7 @@
     <button id="workspace-trust-state" class="status-action workspace-trust" title="Workspace trust settings" hidden><svg aria-hidden="true"><use href="#shield"></use></svg><span>Restricted</span></button>
     <span id="message" class="message" role="status">Ready to open a project</span>
     <div class="status-tools">
+      <button id="explorer-open-next" class="status-action" hidden>Open next Explorer selection</button>
       <span id="draft-status" class="status-field" data-state="clear" hidden></span>
       <button id="inspect-symbol" class="status-action" title="Inspect symbol (Ctrl+Alt+I)" disabled>Inspect symbol</button>
       <button id="go-definition" class="status-action" title="Go to Definition (F12)" disabled>Go to Definition</button>
@@ -497,6 +498,10 @@
         </section>
         <section data-settings-section="profile" aria-labelledby="profile-settings-title">
           <h3 id="profile-settings-title">Profile</h3>
+          <div id="windows-default-apps-setting" class="settings-row" data-setting="windowsDefaultApps" data-keywords="association file type Explorer Open with default editor" hidden>
+            <div><h4>Windows Default apps</h4><p>Choose your preferred editor for each file type in Windows Settings.</p></div>
+            <div class="setting-controls"><button id="windows-default-apps" type="button" class="button">Open Default apps</button></div>
+          </div>
           <div class="settings-row" data-setting="settingsExport" data-keywords="backup share transfer JSON portability privacy secrets credentials">
             <div><h4>Export settings</h4><p>Save your global editor settings and built-in theme as a JSON file.</p></div>
             <div class="setting-controls"><button id="settings-export" type="button" class="button">Export settings</button></div>
