@@ -432,20 +432,37 @@
         "G5",
         "G9"
       ],
-      "commit": null,
+      "commit": "04d761306951926c7240f099896c2a422159ee1f",
       "evidence": [
         "g10-windows-integration.md",
         "evidence/g10/document-icon-atlas.png",
+        "evidence/g10/windows-11-open-with.png",
+        "evidence/g10/windows-11-default-apps.png",
+        "evidence/g10/windows-11-after-unregister.png",
         "../../qa/windows-integration.test.cjs",
         "../../qa/explorer-open-desktop.test.cjs",
         "../../qa/windows-preview.test.cjs"
       ],
-      "ci": null,
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43798651807",
       "ownerSignoff": null,
       "openBlockers": [
-        "Complete hosted Windows reliability verification.",
-        "Record manual Explorer chooser, default selection, document icon, and removal behavior on Windows 10 and Windows 11."
-      ]
+        "Verify the Explorer chooser and registration removal on a Windows 10 desktop.",
+        "Use disposable Windows 10 and Windows 11 profiles to select the VOKRI Code default, verify the resulting Explorer document icon, and restore the original default through Windows."
+      ],
+      "verification": {
+        "verifiedAt": "2026-11-16",
+        "localPlatform": "Windows 11 Home x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "corePassed": 177,
+        "desktopPassed": 112,
+        "optionalNativePreviewSkipped": 1,
+        "registeredExtensionsOpenSavePassed": 23,
+        "stagedShellActivationPassedLocalAndCi": true,
+        "credentialAccountIsolationCi": "passed",
+        "extensionHostPassedCi": 19,
+        "benchmarkPassedCi": 13,
+        "windows11VisualEvidence": "Open with, app-specific Default apps, and registration removal with the existing registered choices preserved"
+      }
     },
     {
       "id": "G11",

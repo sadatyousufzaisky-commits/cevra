@@ -36,4 +36,6 @@ The desktop tests open and save every registered extension, test a warm instance
 
 On Windows 11 Home build 26300, a real Explorer TypeScript fixture listed VOKRI Code in **Open with** and showed the existing Media Player default. The Windows URI opened the app-specific **Default apps** page. After unregistering, VOKRI Code disappeared from the chooser. The user-choice records for all 23 extensions matched the baseline. [Open with](evidence/g10/windows-11-open-with.png) · [Default apps](evidence/g10/windows-11-default-apps.png) · [After unregistering](evidence/g10/windows-11-after-unregister.png)
 
+Revision `04d761306951926c7240f099896c2a422159ee1f` passed 177 core tests, 112 Electron desktop tests, and the staged Windows Shell integration test on Windows 11 Home and Windows Server 2025. Hosted checks also passed credential account isolation, 19 extension-host tests, and 13 Intelligence benchmark checks. The optional native profile-handoff test was skipped. [Windows reliability run](https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43798651807)
+
 The remaining manual checks use disposable desktops. On Windows 10, verify Explorer's chooser and registration removal. On Windows 10 and Windows 11, select VOKRI Code as the default, inspect the resulting file icon, update and unregister the preview, and restore the original default through Windows.
