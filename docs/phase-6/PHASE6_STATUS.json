@@ -426,7 +426,7 @@
     {
       "id": "G10",
       "name": "Windows Open with, defaults and VC file icons",
-      "status": "in_progress",
+      "status": "passed",
       "dependsOn": [
         "G0",
         "G5",
@@ -444,11 +444,16 @@
         "../../qa/windows-preview.test.cjs"
       ],
       "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/43798651807",
-      "ownerSignoff": null,
-      "openBlockers": [
-        "Verify the Explorer chooser and registration removal on a Windows 10 desktop.",
-        "Use disposable Windows 10 and Windows 11 profiles to select the VOKRI Code default, verify the resulting Explorer document icon, and restore the original default through Windows."
+      "ownerSignoff": {
+        "date": "2026-11-21",
+        "reviewedRevision": "04d7613",
+        "authorization": "Project owner directed G10 closure and waived Windows 10 desktop validation because a Windows 10 environment was unavailable."
+      },
+      "acceptanceExceptions": [
+        "The Windows 10 Explorer chooser, registration removal, and manual default-app checks were waived for G10.",
+        "The Windows 11 manual default selection, Explorer document icon display, and default restoration were outside the evidence used for closure."
       ],
+      "openBlockers": [],
       "verification": {
         "verifiedAt": "2026-11-16",
         "localPlatform": "Windows 11 Home x64 build 26300",
