@@ -100,7 +100,7 @@ function explorerRegistry(hive) {
   return entries.join('\n');
 }
 
-function fragment(files, { scope, version }) {
+function fragment(files, { scope, version, rollbackBytes }) {
   const currentUser = scope === 'perUser';
   const hive = currentUser ? 'HKCU' : 'HKLM';
   const parent = currentUser ? 'LocalAppDataFolder' : 'ProgramFiles64Folder';
@@ -151,6 +151,7 @@ function fragment(files, { scope, version }) {
     <DirectoryRef Id="INSTALLFOLDER">
       <Component Id="InstallationRecord" Guid="${guid(scope + ':record')}" Bitness="always64">
         ${currentUser ? '<RemoveFolder Id="RemoveEmptyLocalPrograms" Directory="LocalPrograms" On="uninstall" />' : ''}
+        <ReserveCost Id="RollbackRoom" RunFromSource="0" RunLocal="${rollbackBytes}" />
         ${registry(keys, 'Scope', scope, hive, true)}
         ${registry(keys, 'Version', version, hive)}
         ${registry(keys, 'Location', '[INSTALLFOLDER]', hive)}
@@ -184,8 +185,8 @@ async function invoke(executable, args) {
 }
 
 async function validateMsi(msi, scopeName) {
-  // ALLUSERS=1 assigns the shared shortcut folders and HKMU values to the machine.
-  const scopeRules = scopeName === 'machine' ? ['-sice', 'ICE57'] : [];
+  // The all-users package has shared shortcut folders. The account package has a fixed profile path.
+  const scopeRules = ['-sice', scopeName === 'machine' ? 'ICE57' : 'ICE91'];
   await invoke('dotnet', ['--roll-forward', 'Major', wix, 'msi', 'validate', ...scopeRules, msi]);
 }
 
@@ -210,8 +211,14 @@ async function buildMsi({ version, scopeName, stage, output, signer = '', fault 
     scope: details.scope, upgradeCode: details.upgradeCode, signer: signer.toUpperCase(),
   }, null, 2) + '\n');
   files.push({ name: path.join('resources', 'app', 'windows-installation.json'), file: installerInfo });
+  let rollbackBytes = 0;
+  for (const file of files) {
+    file.bytes = (await fs.stat(file.file)).size;
+    rollbackBytes += file.bytes;
+  }
+  if (rollbackBytes > 0x7fffffff) throw new Error('The payload exceeds the supported Windows Installer disk cost.');
   const generated = path.join(work, 'payload.wxs');
-  await fs.writeFile(generated, fragment(files, { scope: details.scope, version }));
+  await fs.writeFile(generated, fragment(files, { scope: details.scope, version, rollbackBytes }));
   const setupInformation = path.join(work, 'setup.rtf');
   const scope = scopeName === 'account' ? 'your Windows account' : 'all users of this computer';
   const location = scopeName === 'account' ? 'Local AppData, under Programs' : 'Program Files';
@@ -227,9 +234,14 @@ async function buildMsi({ version, scopeName, stage, output, signer = '', fault 
     BrandIcon: path.join(repo, 'assets', 'brand', 'vc.ico'), Banner: path.join(work, 'banner.bmp'),
     Dialog: path.join(work, 'dialog.bmp'), SetupInformation: setupInformation,
   };
-  await invoke('dotnet', ['--roll-forward', 'Major', wix, 'build', path.join(source, 'product.wxs'), generated, '-arch', 'x64',
-    '-ext', ui, '-loc', path.join(source, 'setup.wxl'), '-culture', 'en-us', '-o', output,
-    ...Object.entries(definitions).flatMap(([key, value]) => ['-d', key + '=' + value])]);
+  const intermediate = await fs.mkdtemp(path.join(work, 'intermediate-'));
+  try {
+    await invoke('dotnet', ['--roll-forward', 'Major', wix, 'build', path.join(source, 'product.wxs'), generated, '-arch', 'x64',
+      '-ext', ui, '-loc', path.join(source, 'setup.wxl'), '-culture', 'en-us', '-o', output,
+      '-intermediateFolder', intermediate, ...Object.entries(definitions).flatMap(([key, value]) => ['-d', key + '=' + value])]);
+  } finally {
+    if ((await fs.realpath(intermediate)) === intermediate) await fs.rm(intermediate, { recursive: true, force: true });
+  }
   const inventory = {
     schema: 1, product: associations.application, version, scope: details.scope, architecture: 'x64',
     upgradeCode: details.upgradeCode, productCode: definitions.ProductCode,
@@ -242,8 +254,8 @@ async function buildMsi({ version, scopeName, stage, output, signer = '', fault 
     ],
     files: [],
   };
-  for (const { name, file } of files) {
-    inventory.files.push({ path: name.replaceAll('\\', '/'), bytes: (await fs.stat(file)).size, sha256: await hash(file) });
+  for (const { name, file, bytes } of files) {
+    inventory.files.push({ path: name.replaceAll('\\', '/'), bytes, sha256: await hash(file) });
   }
   await fs.writeFile(output + '.inventory.json', JSON.stringify(inventory, null, 2) + '\n');
   const bom = {

@@ -101,7 +101,8 @@ test('real Windows Installer installs, repairs, updates, rolls back, and removes
       catch (error) { code = error.code; }
       notes.push({ operation, code });
       assert.ok(expected.includes(code), `${operation} exited with ${code}. See ${log}`);
-      return fs.readFile(log, 'utf8');
+      const bytes = await fs.readFile(log);
+      return bytes[0] === 0xff && bytes[1] === 0xfe ? bytes.toString('utf16le', 2) : bytes.toString('utf8');
     }
     const manifest = path.join(target, 'resources', 'app', 'package.json');
     const appVersion = async () => JSON.parse(await fs.readFile(manifest, 'utf8')).version;
@@ -160,6 +161,7 @@ test('real Windows Installer installs, repairs, updates, rolls back, and removes
       await preserved();
 
       const rollback = await install('failed-upgrade', ['/i', builds.get('0.1.2').msi], [1603]);
+      assert.match(rollback, /Action ended .*RemoveExistingProducts\. Return value 1\./);
       assert.match(rollback, /Deliberate failure while verifying upgrade rollback/);
       assert.equal(await appVersion(), next);
       assert.match(await registry(hive, key, 'Version'), /0\.1\.1/);
