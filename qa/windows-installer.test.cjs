@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const { once } = require('node:events');
 const { execFile } = require('node:child_process');
 const { randomUUID, createHash } = require('node:crypto');
 const { promisify } = require('node:util');
@@ -100,6 +101,7 @@ test('real Windows Installer installs, repairs, updates, rolls back, and removes
       try { await run(msiexec, [...args, '/qn', '/norestart', '/L*v', log], { windowsHide: true, timeout: 120_000 }); }
       catch (error) { code = error.code; }
       notes.push({ operation, code });
+      t.diagnostic(`${operation}: ${code}`);
       assert.ok(expected.includes(code), `${operation} exited with ${code}. See ${log}`);
       const bytes = await fs.readFile(log);
       return bytes[0] === 0xff && bytes[1] === 0xfe ? bytes.toString('utf16le', 2) : bytes.toString('utf8');
@@ -119,12 +121,10 @@ test('real Windows Installer installs, repairs, updates, rolls back, and removes
         ['--user-data-dir=' + path.join(scratch, 'launch-profile'), '--vokri-open', '--', file];
       const app = await _electron.launch({ executablePath: path.join(target, 'VokriCode.exe'),
         args, env, cwd: scratch, chromiumSandbox: true, timeout: 30_000 });
+      const child = app.process();
+      const exited = once(child, 'exit');
       try {
-        assert.equal(await app.evaluate(({ app: desktop, dialog }) => {
-          const message = dialog.showMessageBoxSync;
-          dialog.showMessageBoxSync = (owner, options) => options.message === 'Quit VOKRI Code and keep your drafts?' ? 1 : message(owner, options);
-          return desktop.getVersion();
-        }), expected);
+        assert.equal(await app.evaluate(({ app: desktop }) => desktop.getVersion()), expected);
         const page = await app.firstWindow();
         page.setDefaultTimeout(12_000);
         const activeFile = path.basename(recoverDraft ? draftSource : file);
@@ -134,7 +134,15 @@ test('real Windows Installer installs, repairs, updates, rolls back, and removes
         await page.getByRole('button', { name: 'Settings', exact: true }).click();
         await page.getByText('Signed updates are unavailable in this preview.').waitFor();
         assert.equal(await page.locator('#windows-install-update').isDisabled(), true);
-      } finally { await app.close(); }
+        t.diagnostic(recoverDraft ? 'Installed editor recovered the saved draft backup.' : 'Installed editor opened the Explorer launch file.');
+      } finally {
+        // This isolated instance leaves its fixture draft on disk for the uninstall assertion.
+        const timeout = setTimeout(() => child.kill(), 10_000).unref();
+        try {
+          await app.evaluate(({ app: desktop }) => { setImmediate(() => desktop.exit()); }).catch(() => {});
+          await exited;
+        } finally { clearTimeout(timeout); }
+      }
     };
     try {
       const packageHash = createHash('sha256').update(await fs.readFile(builds.get(next).msi)).digest('hex');
