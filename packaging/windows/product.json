@@ -1,0 +1,4 @@
+{
+  "account": { "scope": "perUser", "upgradeCode": "2F2FF9A0-4D5D-437C-BB6E-D383EF30E6F9", "suffix": "current-user" },
+  "machine": { "scope": "perMachine", "upgradeCode": "2C503C49-E9BF-4523-AAAF-B9EA59B8A108", "suffix": "all-users" }
+}

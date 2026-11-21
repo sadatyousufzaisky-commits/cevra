@@ -5,6 +5,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { randomUUID } = require('node:crypto');
 const { productName, appId, icon } = require('./identity.cjs');
+const { installationAt, prepareUpdate } = require('./windows-update.cjs');
 const { profileLocation } = require('./profile-location.cjs');
 const { acquireProfileLease } = require('./profile-lease.cjs');
 const { createWorkspace, inside, listFolder, maxFileBytes, readSource, saveSource, saveRecoveryCopy,
@@ -50,6 +51,9 @@ mkdirSync(selectedProfile.directory, { recursive: true });
 app.setPath('userData', selectedProfile.directory);
 
 const page = path.join(__dirname, 'index.html');
+const windowsInstallation = installationAt(app.getAppPath());
+let updatePending;
+let choosingUpdate = false;
 const pageURL = pathToFileURL(page).href;
 const tests = createTestSession(app.getPath('temp'));
 const drafts = createDraftStore(path.join(app.getPath('userData'), 'drafts'));
@@ -740,10 +744,38 @@ handle('windows-default-apps', async () => {
   if (process.platform !== 'win32') throw new Error('Windows Default apps is available on Windows.');
   const base = 'ms-settings:defaultapps';
   if (Number(process.getSystemVersion().split('.')[2]) >= 22000) {
-    try { await shell.openExternal(base + '?registeredAppUser=' + encodeURIComponent(productName)); return; }
+    const scope = windowsInstallation?.scope === 'perMachine' ? 'registeredAppMachine' : 'registeredAppUser';
+    try { await shell.openExternal(base + '?' + scope + '=' + encodeURIComponent(productName)); return; }
     catch {}
   }
   await shell.openExternal(base);
+});
+
+handle('windows-install-update', async () => {
+  if (!windowsInstallation?.signer || choosingUpdate || updatePending || closePending || allowClose) return;
+  const parent = window;
+  choosingUpdate = true;
+  try {
+    const selection = await dialog.showOpenDialog(parent, {
+      title: 'Choose a VOKRI Code update', properties: ['openFile'],
+      filters: [{ name: 'Windows Installer package', extensions: ['msi'] }],
+    });
+    if (selection.canceled || parent.isDestroyed() || window !== parent || closePending) return;
+    const candidate = await prepareUpdate(selection.filePaths[0], windowsInstallation, app.getVersion());
+    try {
+      if (parent.isDestroyed() || window !== parent || closePending) return;
+      const choice = await dialog.showMessageBox(parent, {
+        type: 'question', title: 'Install update', message: `Update VOKRI Code to ${candidate.version}?`,
+        detail: 'VOKRI Code will close and open Windows Installer. Your settings and draft backups stay in your profile.',
+        buttons: ['Close and update', 'Cancel'], defaultId: 1, cancelId: 1,
+      });
+      if (choice.response !== 0 || parent.isDestroyed() || window !== parent || closePending) return;
+      updatePending = candidate;
+      parent.close();
+    } finally {
+      if (updatePending !== candidate) await candidate.discard();
+    }
+  } finally { choosingUpdate = false; }
 });
 
 handle('workbench-layout', () => preferences.getWorkbenchLayout());
@@ -1151,6 +1183,9 @@ handle('close-ready', async (hasDrafts, backupFailed) => {
   if (stay) {
     closePending = false;
     restartExtensions = undefined;
+    const canceledUpdate = updatePending;
+    updatePending = undefined;
+    await canceledUpdate?.discard();
     window.webContents.send('cevra:close-canceled');
   } else {
     runGrant = undefined;
@@ -1169,6 +1204,17 @@ handle('close-ready', async (hasDrafts, backupFailed) => {
       catch (error) {
         closing.webContents.send('cevra:close-canceled');
         throw error;
+      }
+    }
+    if (updatePending) {
+      const candidate = updatePending;
+      updatePending = undefined;
+      try { await candidate.launch(); }
+      catch {
+        await candidate.discard();
+        closing.webContents.send('cevra:close-canceled');
+        dialog.showErrorBox('Update could not start', 'Windows Installer could not be started. Choose the package again to retry.');
+        return;
       }
     }
     allowClose = true;
@@ -1195,6 +1241,7 @@ async function launch() {
     icon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
+      additionalArguments: windowsInstallation ? [windowsInstallation.signer ? '--vokri-signed-installer' : '--vokri-preview-installer'] : [],
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
@@ -1211,6 +1258,8 @@ async function launch() {
     intelligenceMock?.close();
     extensionManager.clearReview();
     restartExtensions = undefined;
+    void updatePending?.discard();
+    updatePending = undefined;
     void extensionBroker.suspend().catch(() => {});
     runGrant = undefined;
     closePending = false;

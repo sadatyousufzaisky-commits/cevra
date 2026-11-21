@@ -11,6 +11,8 @@
     "build:design-preview": "esbuild docs/phase-6/design/preview.js --bundle --outfile=dist/design-preview.js",
     "build:document-icons": "node scripts/build-document-icons.cjs",
     "stage:windows-integration": "npm run build && node scripts/stage-windows-integration.cjs",
+    "build:windows-installer": "npm run build && node scripts/build-windows-installer.cjs",
+    "test:windows-installer": "node --test --test-concurrency=1 qa/windows-installer.test.cjs",
     "start": "npm run build && electron .",
     "test": "npm run test:core && npm run test:desktop",
     "test:core": "npm run build:host && node --test --test-concurrency=1 qa/core.test.cjs qa/extensions.test.cjs qa/extension-packaging.test.cjs qa/extension-registry.test.cjs qa/extension-broker.test.cjs qa/extension-sdk.test.cjs qa/intelligence-provider.test.cjs qa/intelligence-openai.test.cjs qa/intelligence-connections.test.cjs qa/intelligence-context.test.cjs qa/intelligence-patch.test.cjs qa/intelligence-agent.test.cjs qa/intelligence-routing.test.cjs qa/intelligence-budget.test.cjs qa/profile-location.test.cjs qa/windows-integration.test.cjs",

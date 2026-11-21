@@ -1,0 +1,68 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="VOKRI Code" Manufacturer="VOKRI Code" Version="$(var.Version)"
+           ProductCode="$(var.ProductCode)" UpgradeCode="$(var.UpgradeCode)" Scope="$(var.Scope)"
+           InstallerVersion="500" Language="1033" Compressed="yes">
+    <MediaTemplate EmbedCab="yes" CompressionLevel="mszip" />
+    <MajorUpgrade Schedule="afterInstallInitialize"
+                  DowngradeErrorMessage="A newer version of VOKRI Code is already installed." />
+    <Upgrade Id="$(var.UpgradeCode)">
+      <UpgradeVersion Minimum="$(var.Version)" IncludeMinimum="yes" Maximum="$(var.Version)"
+                      IncludeMaximum="yes" OnlyDetect="yes" Property="VOKRISAMEVERSION" />
+    </Upgrade>
+    <Launch Condition="Installed OR NOT VOKRISAMEVERSION"
+            Message="This version is already installed. Use Installed apps to repair or uninstall VOKRI Code." />
+    <Property Id="VKOTHERSCOPE">
+      <RegistrySearch Id="OtherInstallation" Root="$(var.OtherHive)" Key="Software\Vokri\Installer"
+                      Name="Scope" Type="raw" Bitness="always64" />
+    </Property>
+    <Property Id="VKEXPLOREROWNER">
+      <RegistrySearch Id="ExplorerOwner" Root="$(var.ThisHive)" Key="Software\Vokri\WindowsIntegration\Capabilities"
+                      Name="VokriRegistrationOwner" Type="raw" Bitness="always64" />
+    </Property>
+    <Property Id="VKEXPLORERREGISTERED">
+      <RegistrySearch Id="ExplorerRegistered" Root="$(var.ThisHive)" Key="Software\RegisteredApplications"
+                      Name="VOKRI Code" Type="raw" Bitness="always64" />
+    </Property>
+    <Launch Condition="Installed OR NOT VKOTHERSCOPE"
+            Message="VOKRI Code is already installed with a different scope. Use an update package for that installation." />
+    <Property Id="ARPPRODUCTICON" Value="VokriBrand" />
+    <Property Id="ARPCOMMENTS" Value="VOKRI Code desktop editor and development workspace." />
+    <Property Id="VOKRIINSTALLSCOPE" Value="$(var.Scope)" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="Open VOKRI Code from the Start menu when setup is finished." />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch VOKRI Code" />
+    <Icon Id="VokriBrand" SourceFile="$(var.BrandIcon)" />
+    <WixVariable Id="WixUIBannerBmp" Value="$(var.Banner)" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(var.Dialog)" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.SetupInformation)" />
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    <CustomAction Id="LaunchVokri" FileRef="VokriExecutable" ExeCommand="" Return="asyncNoWait" Impersonate="yes" />
+    <CustomAction Id="KeepExistingExplorerRegistration"
+                  Error="An existing VOKRI Code Explorer registration uses this scope. Remove it using the previous preview's Unregister command, or leave File Explorer integration unselected." />
+    <?if $(var.TestFault) = yes ?>
+    <CustomAction Id="TestRollback" Error="Deliberate failure while verifying upgrade rollback." />
+    <?endif?>
+    <InstallExecuteSequence>
+      <Custom Action="KeepExistingExplorerRegistration" After="CostFinalize"
+              Condition="(&amp;Explorer = 3) AND (VKEXPLOREROWNER OR VKEXPLORERREGISTERED) AND VKEXPLOREROWNER &lt;&gt; &quot;Vokri.Code.Installer&quot;" />
+      <?if $(var.TestFault) = yes ?>
+      <Custom Action="TestRollback" Before="InstallFinalize" Condition="WIX_UPGRADE_DETECTED" />
+      <?endif?>
+    </InstallExecuteSequence>
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchVokri"
+               Condition="NOT Installed AND WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1" Order="1" />
+    </UI>
+    <Feature Id="Core" Title="VOKRI Code" Description="The editor and its bundled Windows runtime." Level="1" AllowAbsent="no">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="InstallationRecord" />
+      <ComponentRef Id="StartShortcut" />
+    </Feature>
+    <Feature Id="DesktopShortcut" Title="Desktop shortcut" Description="Add VOKRI Code to the desktop." Level="2">
+      <ComponentRef Id="DesktopLink" />
+    </Feature>
+    <Feature Id="Explorer" Title="File Explorer integration"
+             Description="Add VOKRI Code to Open with and the folder menu. Choose defaults in Windows Settings." Level="2">
+      <ComponentRef Id="ExplorerRegistration" />
+    </Feature>
+  </Package>
+</Wix>

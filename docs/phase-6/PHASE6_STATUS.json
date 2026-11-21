@@ -472,16 +472,21 @@
     {
       "id": "G11",
       "name": "Premium installer, updater and uninstaller",
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "G0",
         "G10"
       ],
       "commit": null,
-      "evidence": [],
+      "evidence": [
+        "docs/phase-6/g11-windows-installer.md"
+      ],
       "ci": null,
       "ownerSignoff": null,
-      "openBlockers": []
+      "openBlockers": [
+        "A release signing certificate and verification of the signed update path are required for public installer distribution.",
+        "Windows client validation remains open for Windows 10, low disk space, and interactive setup review."
+      ]
     },
     {
       "id": "G12",

@@ -69,6 +69,9 @@ contextBridge.exposeInMainWorld('cevra', {
   onExplorerOpenChanged: callback => ipcRenderer.on('cevra:explorer-open-changed', (_event, state) => callback(state)),
   windowsIntegration: process.platform === 'win32',
   windowsDefaultApps: () => ipcRenderer.invoke('cevra:windows-default-apps'),
+  windowsInstaller: process.argv.includes('--vokri-signed-installer') ? 'signed' :
+    process.argv.includes('--vokri-preview-installer') ? 'preview' : null,
+  windowsInstallUpdate: () => ipcRenderer.invoke('cevra:windows-install-update'),
   recentWorkspaces: () => ipcRenderer.invoke('cevra:recent-workspaces'),
   openRecent: (id, discard) => ipcRenderer.invoke('cevra:open-recent', id, discard),
   workbenchLayout: () => ipcRenderer.invoke('cevra:workbench-layout'),

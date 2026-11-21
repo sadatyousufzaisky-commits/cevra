@@ -6,6 +6,8 @@ VOKRI Code continues the project developed under the CEVRA codename. Existing pr
 
 ## Run the workbench
 
+For an offline Windows x64 installer preview, build a current-account or all-users MSI. [Windows installer guide](docs/phase-6/g11-windows-installer.md)
+
 On Windows 10 or 11 with Node.js 24, npm, and the Windows .NET Framework 4.x compiler, run these commands in the repository:
 
 ```powershell

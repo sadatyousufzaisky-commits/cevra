@@ -43,6 +43,9 @@ export function createSettingsCenter({ api, getProject, apply, changeTheme, rese
   const about = byId('about-product');
   const defaultApps = byId('windows-default-apps');
   const defaultAppsRow = byId('windows-default-apps-setting');
+  const installUpdate = byId('windows-install-update');
+  const installUpdateRow = byId('windows-install-update-setting');
+  if (api.windowsInstaller === 'preview') byId('windows-install-update-note').textContent = 'Signed updates are unavailable in this preview.';
   const intelligenceButtons = [...dialog.querySelectorAll('[data-intelligence-settings]')];
   const categories = [...dialog.querySelectorAll('[data-settings-category]')];
   const drafts = { global: new Map(), workspace: new Map() };
@@ -89,7 +92,8 @@ export function createSettingsCenter({ api, getProject, apply, changeTheme, rese
 
   const sections = [...dialog.querySelectorAll('[data-settings-section]')].map(section => ({
     section,
-    rows: [...section.querySelectorAll('[data-setting]')].filter(row => row !== defaultAppsRow || api.windowsIntegration).map(row => ({
+    rows: [...section.querySelectorAll('[data-setting]')].filter(row =>
+      (row !== defaultAppsRow || api.windowsIntegration) && (row !== installUpdateRow || api.windowsInstaller)).map(row => ({
       row, index: searchable([row.dataset.setting, row.dataset.keywords, section.querySelector('h3').textContent, row.textContent].join(' ')),
     })),
   }));
@@ -143,6 +147,7 @@ export function createSettingsCenter({ api, getProject, apply, changeTheme, rese
     theme.disabled = busy;
     themeReset.disabled = busy || theme.value === defaultTheme;
     for (const button of [revoke, exportButton, resetLayoutButton, extensionButton, storeButton, about, defaultApps]) button.disabled = busy;
+    installUpdate.disabled = busy || api.windowsInstaller !== 'signed';
     for (const button of intelligenceButtons) button.disabled = busy || !availableIntelligence;
     byId('settings-intelligence-state').textContent = availableIntelligence ? '' :
       'Enable VOKRI Intelligence in the status bar to manage live settings.';
@@ -281,6 +286,14 @@ export function createSettingsCenter({ api, getProject, apply, changeTheme, rese
   }
   about.onclick = () => void operation(api.about);
   defaultApps.onclick = () => void operation(api.windowsDefaultApps);
+  installUpdate.onclick = () => {
+    if (dirty()) {
+      tell('Save or discard your editor changes before installing an update.');
+      (save.disabled ? scope : save).focus();
+      return;
+    }
+    void operation(api.windowsInstallUpdate);
+  };
   close.onclick = () => dialog.close();
   dialog.oncancel = event => {
     if (busy || dirty()) event.preventDefault();

@@ -1,0 +1,68 @@
+name: Windows Installer
+
+on:
+  push:
+    paths:
+      - '.github/workflows/windows-installer.yml'
+      - 'packaging/windows/**'
+      - 'scripts/**'
+      - 'src/**'
+      - 'assets/**'
+      - 'qa/windows-installer.test.cjs'
+      - 'package*.json'
+  pull_request:
+    paths:
+      - '.github/workflows/windows-installer.yml'
+      - 'packaging/windows/**'
+      - 'scripts/**'
+      - 'src/**'
+      - 'assets/**'
+      - 'qa/windows-installer.test.cjs'
+      - 'package*.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    name: Lifecycle (${{ matrix.scope }})
+    runs-on: windows-2025
+    timeout-minutes: 21
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: [account, machine]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: npm ci
+      - name: Prepare Electron runtime
+        run: |
+          node -e "require('electron')"
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          node qa/cache-electron-release.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node -e "require('electron')"
+      - name: Stage editor payload
+        run: npm run stage:windows-integration -- ci-installer
+      - name: Acquire pinned installer tools
+        run: ./scripts/get-windows-installer-toolchain.ps1
+      - name: Run Windows Installer lifecycle
+        env:
+          VOKRI_TEST_INSTALLER_SCOPE: ${{ matrix.scope }}
+          VOKRI_TEST_INSTALLER_STAGE: ci-installer
+        run: npm run test:windows-installer
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: installer-${{ matrix.scope }}-evidence
+          path: |
+            dist/windows-installer/tests/*/*.log
+            dist/windows-installer/tests/*/*.json
+          if-no-files-found: ignore

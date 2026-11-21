@@ -1,0 +1,5 @@
+<WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="en-US">
+  <String Id="LicenseAgreementDlgTitle" Value="{\WixUI_Font_Title}Before you install" />
+  <String Id="LicenseAgreementDlgDescription" Value="Review your setup options before continuing." />
+  <String Id="LicenseAgreementDlgLicenseAcceptedCheckBox" Value="I have reviewed the setup information" />
+</WixLocalization>
