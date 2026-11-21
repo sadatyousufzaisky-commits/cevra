@@ -477,16 +477,28 @@
         "G0",
         "G10"
       ],
-      "commit": null,
+      "commit": "1c11572eaadcb03f9baba0fbf0c56efe8fbd3b95",
       "evidence": [
-        "docs/phase-6/g11-windows-installer.md"
+        "g11-windows-installer.md",
+        "../../qa/windows-installer.test.cjs"
       ],
-      "ci": null,
+      "ci": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/44874590118",
       "ownerSignoff": null,
       "openBlockers": [
         "A release signing certificate and verification of the signed update path are required for public installer distribution.",
-        "Windows client validation remains open for Windows 10, low disk space, and interactive setup review."
-      ]
+        "Windows client validation remains open for Windows 10, a controlled low-space retest, and interactive setup review."
+      ],
+      "verification": {
+        "verifiedAt": "2026-11-21",
+        "localPlatform": "Windows 11 Home x64 build 26300",
+        "ciPlatform": "Windows Server 2025 x64 build 26100",
+        "currentAccountInstallerLifecycle": "passed",
+        "allUsersInstallerLifecycle": "passed",
+        "previewInventoriesAndMsiValidation": "passed for both packages",
+        "windowsReliabilityCi": "https://github.com/sadatyousufzaisky-commits/cevra/actions/runs/44873558691",
+        "corePassed": 177,
+        "desktopPassed": 112
+      }
     },
     {
       "id": "G12",
