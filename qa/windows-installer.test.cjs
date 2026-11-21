@@ -64,7 +64,12 @@ test('real Windows Installer installs, repairs, updates, rolls back, and removes
     }
     const drafts = createDraftStore(path.join(profile, 'drafts'));
     await drafts.set(draftProject, 'unsaved.js', 'const unsaved = true;\n', createHash('sha256').update(source).digest('hex'));
-    const originalDrafts = await drafts.list();
+    const draftContents = async () => {
+      const { unreadable, entries } = await drafts.list();
+      assert.equal(unreadable, false);
+      return entries.map(({ root, path: name, text, revision }) => ({ root, name, text, revision }));
+    };
+    const originalDrafts = await draftContents();
     buildVaultProbe();
     const credential = [createHash('sha256').update((await fs.realpath(profile)).toLowerCase()).digest('hex'),
       'openai', randomUUID(), 'first'];
@@ -102,15 +107,17 @@ test('real Windows Installer installs, repairs, updates, rolls back, and removes
     const appVersion = async () => JSON.parse(await fs.readFile(manifest, 'utf8')).version;
     const preserved = async () => {
       for (const [name, data] of personalFiles) assert.equal(await fs.readFile(name, 'utf8'), data);
-      assert.deepEqual(await drafts.list(), originalDrafts);
+      assert.deepEqual(await draftContents(), originalDrafts);
       assert.equal(await vaultProbe('verify', ...credential), 0);
     };
-    const verifyApp = async expected => {
+    const verifyApp = async (expected, recoverDraft = false) => {
       const env = { ...process.env };
       delete env.ELECTRON_RUN_AS_NODE;
       delete env.NODE_TEST_CONTEXT;
+      const args = recoverDraft ? ['--user-data-dir=' + profile] :
+        ['--user-data-dir=' + path.join(scratch, 'launch-profile'), '--vokri-open', '--', file];
       const app = await _electron.launch({ executablePath: path.join(target, 'VokriCode.exe'),
-        args: ['--user-data-dir=' + profile, '--vokri-open', '--', file], env, cwd: scratch, chromiumSandbox: true, timeout: 30_000 });
+        args, env, cwd: scratch, chromiumSandbox: true, timeout: 30_000 });
       try {
         assert.equal(await app.evaluate(({ app: desktop, dialog }) => {
           const message = dialog.showMessageBoxSync;
@@ -119,8 +126,10 @@ test('real Windows Installer installs, repairs, updates, rolls back, and removes
         }), expected);
         const page = await app.firstWindow();
         page.setDefaultTimeout(12_000);
-        await page.locator('#tabs [aria-current="true"]').getByText(path.basename(file), { exact: true }).waitFor();
-        assert.match(await page.getByRole('textbox', { name: 'Source editor' }).textContent(), /const installed = true/);
+        const activeFile = path.basename(recoverDraft ? draftSource : file);
+        await page.locator('#tabs [aria-current="true"]').getByText(activeFile, { exact: true }).waitFor();
+        assert.match(await page.getByRole('textbox', { name: 'Source editor' }).textContent(),
+          recoverDraft ? /const unsaved = true/ : /const installed = true/);
         await page.getByRole('button', { name: 'Settings', exact: true }).click();
         await page.getByText('Signed updates are unavailable in this preview.').waitFor();
         assert.equal(await page.locator('#windows-install-update').isDisabled(), true);
@@ -154,7 +163,7 @@ test('real Windows Installer installs, repairs, updates, rolls back, and removes
       assert.match(rollback, /Deliberate failure while verifying upgrade rollback/);
       assert.equal(await appVersion(), next);
       assert.match(await registry(hive, key, 'Version'), /0\.1\.1/);
-      await verifyApp(next);
+      await verifyApp(next, true);
       const downgrade = await install('downgrade', ['/i', builds.get(base).msi], [1603]);
       assert.match(downgrade, /A newer version of VOKRI Code is already installed/);
       await install('uninstall', ['/x', id(next)]);
