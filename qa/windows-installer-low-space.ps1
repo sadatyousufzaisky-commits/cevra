@@ -69,7 +69,7 @@ try {
         throw 'The actual free space differs from the intended test condition.'
     }
     try {
-        $log = Invoke-Installer "/i `"$updated`" INSTALLFOLDER=`"$target`"" 'upgrade' @(1603)
+        $log = Invoke-Installer "/i `"$updated`"" 'upgrade' @(1603)
         if ($log -notmatch 'OutOfDiskSpace.*(?:value is | = )''?1' -or
             $log -notmatch 'InstallValidate\. Return value 3\.' -or
             $log -match 'RemoveExistingProducts\. Return value 1\.') {

@@ -15,6 +15,12 @@
       <RegistrySearch Id="OtherInstallation" Root="$(var.OtherHive)" Key="Software\Vokri\Installer"
                       Name="Scope" Type="raw" Bitness="always64" />
     </Property>
+    <Property Id="VKINSTALLEDLOCATION" Secure="yes">
+      <RegistrySearch Id="PreviousLocation" Root="$(var.ThisHive)" Key="Software\Vokri\Installer"
+                      Name="Location" Type="raw" Bitness="always64" />
+    </Property>
+    <SetProperty Id="INSTALLFOLDER" Action="RestoreInstallFolder" Value="[VKINSTALLEDLOCATION]"
+                 After="AppSearch" Sequence="both" Condition="VKINSTALLEDLOCATION" />
     <Property Id="VKEXPLOREROWNER">
       <RegistrySearch Id="ExplorerOwner" Root="$(var.ThisHive)" Key="Software\Vokri\WindowsIntegration\Capabilities"
                       Name="VokriRegistrationOwner" Type="raw" Bitness="always64" />
