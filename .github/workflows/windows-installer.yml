@@ -8,6 +8,7 @@ on:
       - 'scripts/**'
       - 'src/**'
       - 'assets/**'
+      - 'qa/windows-installer-low-space.ps1'
       - 'qa/windows-installer.test.cjs'
       - 'package*.json'
   pull_request:
@@ -17,6 +18,7 @@ on:
       - 'scripts/**'
       - 'src/**'
       - 'assets/**'
+      - 'qa/windows-installer-low-space.ps1'
       - 'qa/windows-installer.test.cjs'
       - 'package*.json'
   workflow_dispatch:
@@ -57,6 +59,12 @@ jobs:
           VOKRI_TEST_INSTALLER_SCOPE: ${{ matrix.scope }}
           VOKRI_TEST_INSTALLER_STAGE: ci-installer
         run: npm run test:windows-installer
+      - name: Check upgrade with insufficient free space
+        if: matrix.scope == 'account'
+        run: |
+          $reports = @(Get-ChildItem -LiteralPath dist/windows-installer/tests -Directory -Filter 'account-*')
+          if ($reports.Count -ne 1) { throw 'Expected one current-account lifecycle report.' }
+          ./qa/windows-installer-low-space.ps1 -Reports $reports[0].FullName
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v6
