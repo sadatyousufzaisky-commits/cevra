@@ -112,7 +112,11 @@ test('real Windows Installer installs, repairs, updates, rolls back, and removes
       const app = await _electron.launch({ executablePath: path.join(target, 'VokriCode.exe'),
         args: ['--user-data-dir=' + profile, '--vokri-open', '--', file], env, cwd: scratch, chromiumSandbox: true, timeout: 30_000 });
       try {
-        assert.equal(await app.evaluate(({ app: desktop }) => desktop.getVersion()), expected);
+        assert.equal(await app.evaluate(({ app: desktop, dialog }) => {
+          const message = dialog.showMessageBoxSync;
+          dialog.showMessageBoxSync = (owner, options) => options.message === 'Quit VOKRI Code and keep your drafts?' ? 1 : message(owner, options);
+          return desktop.getVersion();
+        }), expected);
         const page = await app.firstWindow();
         page.setDefaultTimeout(12_000);
         await page.locator('#tabs [aria-current="true"]').getByText(path.basename(file), { exact: true }).waitFor();
